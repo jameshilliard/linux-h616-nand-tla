@@ -4,6 +4,8 @@ static void control_flow(void);
 static void attach_geometry(void);
 static void snapshot_cache(void);
 static void bitmap_boundaries(void);
+static void attach_policy(void);
+static void metadata_identity(void);
 
 static struct caps caps(bool variable)
 {
@@ -331,6 +333,41 @@ static void columns_and_faults(void)
     }
     fail_raw_at = 0;
     puts("column selection, tail cursor and raw-reread error propagation checks passed");
+
+    unsigned finish_cases = 0;
+    for (unsigned want = 0; want < 2; want++)
+    for (unsigned erased = 0; erased < 2; erased++)
+    for (unsigned cursor = 0; cursor < 3; cursor++)
+    for (unsigned tail = 0; tail <= 8; tail += 8)
+    for (unsigned failure = 0; failure <= 2; failure++) {
+        nand.mtd.oobsize = end + tail;
+        struct sunxi_nfc_ecc_read read = {
+            .page = 3, .oob_required = want, .has_erased_chunk = erased,
+            .max_bitflips = 7,
+        };
+        cur = cursor == 1 ? nand.mtd.writesize + end : -1;
+        column = nand.mtd.writesize + end;
+        raw_calls = plain_read_calls = random_read_calls = 0;
+        fail_raw_at = failure;
+        memset(oob_data, 0x93, sizeof(oob_data));
+        unsigned calls = want && tail ? (cursor == 1 ? 1 : 2) : 0;
+        bool error = failure && failure <= calls;
+        int ret = sunxi_nfc_oob_finish_read(&nand, &read, cursor ? &cur : NULL);
+        assert(ret == (error ? -ETIMEDOUT : 7));
+        assert(raw_calls == (error ? failure : calls));
+        assert(!memchr_inv(oob_data, 0x93, end));
+        assert(!memchr_inv(oob_data + end + tail, 0x93, sizeof(oob_data) - end - tail));
+        if (calls && !error) {
+            assert(plain_read_calls == erased && random_read_calls == !erased);
+            assert(!memchr_inv(oob_data + end, 0xa7, tail));
+            if (cursor) assert(cur == (int)(nand.mtd.writesize + nand.mtd.oobsize));
+        } else {
+            assert(!memchr_inv(oob_data + end, 0x93, tail));
+        }
+        finish_cases++;
+    }
+    fail_raw_at = 0;
+    printf("generic OOB finish: %u tail/cursor/representation/failure cases\n", finish_cases);
 }
 
 static void vendor_results(void)
@@ -462,6 +499,8 @@ int main(void)
     attach_geometry();
     snapshot_cache();
     bitmap_boundaries();
+    attach_policy();
+    metadata_identity();
     puts("ALL C CHECKS PASSED");
     return 0;
 }

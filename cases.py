@@ -129,3 +129,6 @@ mutation("NandEcc", dict(counts, Batch=1), "stale-count-cache", "StatsCorrect")
 add("NandEcc", "ecc-mixed-raw-errors", dict(
     N=3, Batch=3, Vendor=False, OobRequired=True,
     RawResult="mixed", SpareErased=False, Kinds=kinds))
+
+from extended_cases import extend
+extend(MODULES, add, mutation)

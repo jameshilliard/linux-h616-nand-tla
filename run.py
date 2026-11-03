@@ -117,9 +117,10 @@ def main():
         else:
             matched = rc == 0 and "Model checking completed. No error has been found." in log
             if matched:
-                for action, count in re.findall(
-                        r"<(\w+) line [^>]+>:\s*(\d+)", log):
-                    if int(count) and action in spec["actions"]:
+                for action, distinct, total in re.findall(
+                        r"<(\w+) line [^>]+>:\s*(\d+)(?::(\d+))?", log):
+                    # An enabled action may lead only to already-known states.
+                    if int(total or distinct) and action in spec["actions"]:
                         reached[module].add(action)
         states = re.search(r"([\d,]+) states generated, ([\d,]+) distinct states found", log)
         record = dict(name=case["name"], module=module, kind=case["kind"],

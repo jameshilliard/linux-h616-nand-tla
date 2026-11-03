@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Execute unchanged DMA/IRQ/command/timing driver bodies with API fixtures."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+
+from run_c import HERE, extract_function
+
+FUNCTIONS = [
+    "sunxi_nfc_interrupt", "sunxi_nfc_wait_events", "sunxi_nfc_wait_cmd_fifo_empty",
+    "sunxi_nfc_rst", "sunxi_nfc_dma_op_prepare", "sunxi_nfc_dma_op_cleanup",
+    "sunxi_nfc_dma_op_abort", "sunxi_nfc_select_chip", "sunxi_nfc_read_buf",
+    "sunxi_nfc_write_buf", "sunxi_nfc_randomizer_step", "sunxi_nfc_randomizer_state",
+    "sunxi_nfc_randomizer_config", "sunxi_nfc_randomizer_enable", "sunxi_nfc_randomizer_disable",
+    "sunxi_nfc_randomizer_write_buf", "sunxi_nfc_randomizer_read_buf",
+    "sunxi_nfc_hw_ecc_enable", "sunxi_nfc_hw_ecc_disable", "_sunxi_nand_lookup_timing",
+    "sunxi_nfc_setup_interface", "sunxi_nfc_exec_subop", "sunxi_nfc_soft_waitrdy", "sunxi_nfc_exec_op",
+    "sunxi_nfc_dma_init",
+]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cc", default="gcc")
+    args = parser.parse_args()
+    source = (HERE / "reference/sunxi_nand.c").read_text()
+    pin = json.loads((HERE / "source.json").read_text())
+    if hashlib.sha256(source.encode()).hexdigest() != pin["driver_sha256"]:
+        parser.error("reference source hash mismatch")
+    core = (HERE / "reference/nand_parser.c").read_text()
+    header = (HERE / "reference/nand_parser.h").read_text()
+    for text, key in ((core, "parser_excerpt_sha256"), (header, "parser_header_excerpt_sha256")):
+        if hashlib.sha256(text.encode()).hexdigest() != pin[key]:
+            parser.error("core parser excerpt hash mismatch")
+    generated = []
+    for match in re.finditer(r"^#define (?:NFC_|NDFC_|SUNXI_NFC_TIMING_STEPS)[^\n\\]*(?:\\\n[^\n\\]*)*", source, re.M):
+        generated.append(match[0])
+    for name in ("sunxi_nfc_randomizer_page_seeds", "sunxi_nfc_randomizer_ecc512_seeds",
+                 "sunxi_nfc_randomizer_ecc1024_seeds", "sun4i_a10_nfc_timings", "sun50i_h616_nfc_timings"):
+        match = re.search(r"^static const [^;{}]*\b" + name + r"[^;{}]*= \{.*?\n};", source, re.M | re.S)
+        if not match:
+            raise ValueError(name)
+        generated.append(match[0])
+    hashes = {}
+    for name in FUNCTIONS:
+        if name == "sunxi_nfc_exec_op":
+            start = source.index("static const struct nand_op_parser sunxi_nfc_op_parser")
+            end = source.index("static int sunxi_nfc_exec_op", start)
+            generated.append(source[start:end])
+        body = extract_function(source, name)
+        line = source[:source.index(body)].count("\n") + 1
+        generated.append(f'#line {line} "sunxi_nand.c"\n' + body)
+        hashes[name] = hashlib.sha256(body.encode()).hexdigest()
+    results = HERE / "results"
+    results.mkdir(exist_ok=True)
+    out = Path(tempfile.mkdtemp(prefix="lowlevel-", dir=results))
+    fixture = (HERE / "tests/lowlevel.h").read_text().replace("/* @parser-header@ */", header)
+    combined = ('#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +
+                "\n".join(generated) + '\n#line 1 "lowlevel.c"\n' +
+                (HERE / "tests/lowlevel.c").read_text())
+    (out / "check.c").write_text(combined)
+    command = [args.cc, "-std=gnu11", "-O0", "-g", "-Wall", "-Wextra", "-Werror",
+               "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",
+               "-fno-strict-aliasing", "-fno-strict-overflow", "-funsigned-char",
+               "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-no-pie",
+               "check.c", "-o", "check"]
+    build = subprocess.run(command, cwd=out, text=True, capture_output=True)
+    (out / "build.log").write_text(build.stdout + build.stderr)
+    if build.returncode:
+        print(build.stdout + build.stderr)
+        return 1
+    run = subprocess.run(["./check"], cwd=out, text=True, capture_output=True, timeout=180)
+    (out / "check.log").write_text(run.stdout + run.stderr)
+    passed = run.returncode == 0 and "ALL LOWLEVEL CHECKS PASSED" in run.stdout and not run.stderr
+    from source_coverage import build_and_collect
+    coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
+    (out / "summary.json").write_text(json.dumps(dict(
+        passed=passed, driver_sha256=pin["driver_sha256"], functions=hashes,
+        output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
+    print(run.stdout + run.stderr)
+    print("Logs:", out)
+    return 0 if passed else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

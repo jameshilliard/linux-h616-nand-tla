@@ -42,6 +42,8 @@ FUNCTIONS = [
     "sunxi_nfc_hw_ecc_write_page_dma", "sunxi_nfc_hw_ecc_read_oob",
     "sunxi_nfc_hw_ecc_write_oob",
     "sunxi_nfc_oob_init_user_data", "sunxi_nand_hw_ecc_ctrl_init",
+    "sunxi_nfc_allwinner_oob_read_subpage",
+    "sunxi_nfc_allwinner_oob_attach_chip", "sunxi_nand_attach_chip",
 ]
 STRUCTURES = [
     "sunxi_nfc_oob_ops", "sunxi_nfc_allwinner_oob_status",
@@ -83,16 +85,23 @@ def main():
             raise ValueError(name)
         generated.append(match[0])
     for name in FUNCTIONS:
+        if name == "sunxi_nfc_allwinner_oob_attach_chip":
+            for ops in ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops",
+                        "sunxi_nfc_allwinner_oob_ops"):
+                match = re.search(r"^static const struct sunxi_nfc_oob_ops " + ops +
+                                  r" = \{.*?\n};", source, re.M | re.S)
+                generated.append(match[0])
         function = extract_function(source, name)
-        generated.append(function)
+        line = source[:source.index(function)].count("\n") + 1
+        generated.append(f'#line {line} "sunxi_nand.c"\n' + function)
         hashes[name] = hashlib.sha256(function.encode()).hexdigest()
     results = HERE / "results"
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="c-", dir=results))
-    combined = ((HERE / "tests/fixtures.h").read_text() + "\n" +
-                "\n".join(generated) + "\n" + (HERE / "tests/check.c").read_text() +
-                "\n" + (HERE / "tests/flow.c").read_text() +
-                "\n" + (HERE / "tests/attach.c").read_text())
+    combined = ('#line 1 "fixtures.h"\n' + (HERE / "tests/fixtures.h").read_text() + "\n" +
+                "\n".join(generated) + '\n#line 1 "check-tests.c"\n' + (HERE / "tests/check.c").read_text() +
+                '\n#line 1 "flow.c"\n' + (HERE / "tests/flow.c").read_text() +
+                '\n#line 1 "attach.c"\n' + (HERE / "tests/attach.c").read_text())
     (out / "check.c").write_text(combined)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",
@@ -107,9 +116,11 @@ def main():
     run = subprocess.run(["./check"], cwd=out, text=True, capture_output=True, timeout=180)
     (out / "check.log").write_text(run.stdout + run.stderr)
     passed = run.returncode == 0 and "ALL C CHECKS PASSED" in run.stdout and not run.stderr
+    from source_coverage import build_and_collect
+    coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
     (out / "summary.json").write_text(json.dumps(
         dict(passed=passed, driver_sha256=pin["driver_sha256"],
-             functions=hashes, output=run.stdout, diagnostics=run.stderr,
+             functions=hashes, output=run.stdout, diagnostics=run.stderr, coverage=coverage,
              compiler=args.cc, compiler_flags=command[1:-4]), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)

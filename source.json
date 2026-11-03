@@ -6,6 +6,8 @@
   "driver_path": "drivers/mtd/nand/raw/sunxi_nand.c",
   "driver_sha256": "3d0a09939d63520e17765286f0d848b196b91b1f3c4a0c61448142ea26e68cd1",
   "binding_sha256": "3eb4fb24d2974659b1fbfe552d0f1b4cdaa61c18fd73710322bbb914c41de3ac",
+  "parser_excerpt_sha256": "850bd4d8926c8a3b5ad3a604e756519f569534c4bb1b267cd1f6d498d79b3679",
+  "parser_header_excerpt_sha256": "84253fa3d6ff09caaabcf7663a313744415a873dd3d2593a57c9aa6ef801052c",
   "tlc_version": "1.8.0",
   "tlc_sha256": "fc6878c603f0fdc18b9fe3e5bf51860cb90ab5b1154e3c371660c036d6bdd63e",
   "tlc_url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar"

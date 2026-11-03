@@ -48,6 +48,15 @@ typedef uint32_t u32;
 static unsigned fls(unsigned v) { return v ? 32 - __builtin_clz(v) : 0; }
 #define NAND_ECC_MAXIMIZE_STRENGTH 1
 #define NAND_USES_DMA 2
+#define NAND_NO_SUBPAGE_WRITE 4
+#define NAND_SUBPAGE_READ 8
+#define NAND_BBT_USE_FLASH 1
+#define NAND_BBT_NO_OOB 2
+#define NAND_ECC_ENGINE_TYPE_ON_HOST 0
+#define NAND_ECC_ENGINE_TYPE_NONE 1
+#define NAND_ECC_ENGINE_TYPE_SOFT 2
+#define NAND_ECC_ENGINE_TYPE_ON_DIE 3
+#define dev_err_probe(dev, err, ...) ((void)(dev), (err))
 #define NFC_ECC_MODE(n, m) field_prep((n)->caps->ecc_mode_mask, (m))
 #define NFC_ECC_EXCEPTION BIT(4)
 #define NFC_ECC_PIPELINE BIT(3)
@@ -78,6 +87,7 @@ static unsigned fls(unsigned v) { return v ? 32 - __builtin_clz(v) : 0; }
 struct nand_chip;
 struct nand_ecc_ctrl {
     int size, bytes, steps, strength;
+    int engine_type;
     u32 ecc_ctl;
     int (*write_page)(struct nand_chip *, const u8 *, int, int);
     int (*read_page)(struct nand_chip *, u8 *, int, int);
@@ -115,20 +125,30 @@ struct sunxi_nfc {
     void *mdma_desc;
 };
 struct sunxi_nfc_oob_ops;
+struct nand_ecc_props { unsigned step_size, strength; };
+struct nand_device { struct { struct { unsigned flags; } user_conf; } ecc;
+                     struct nand_ecc_props requirements; };
 struct nand_chip {
     struct nand_ecc_ctrl ecc;
     struct mtd_info mtd;
     struct sunxi_nfc *controller;
     u8 *oob_poi, *user_data_bytes;
     unsigned options;
+    unsigned bbt_options;
+    struct nand_device base;
     unsigned cur_cs;
     unsigned buf_align;
     const struct sunxi_nfc_oob_ops *oob_ops;
 };
 struct mtd_oob_region { unsigned offset, length; };
 struct device_node { int unused; };
-struct nand_device { struct { struct { unsigned flags; } user_conf; } ecc; };
 static struct nand_device device_config;
+static bool vendor_property, allocation_failure;
+static const struct nand_ecc_props *nanddev_get_ecc_requirements(const struct nand_device *n)
+{ return &n->requirements; }
+static struct device_node *nand_get_flash_node(struct nand_chip *n) { return NULL; }
+static bool of_property_read_bool(struct device_node *np, const char *name)
+{ assert(!strcmp(name,"allwinner,randomized-oob")); return vendor_property; }
 #define mtd_to_nanddev(m) (&device_config)
 #define sunxi_nand_chip nand_chip
 #define to_sunxi_nand(n) (n)
@@ -140,6 +160,7 @@ static struct sunxi_nfc controller;
 static u8 main_data[32768 + 64], oob_data[8192 + 64];
 static unsigned mmio_reads[0x1000 / 4], mmio_writes[0x1000 / 4];
 static unsigned raw_calls, fail_raw_at, erased_flips, column, page_reads, column_reads;
+static unsigned plain_read_calls, random_read_calls;
 static bool raw_is_erased;
 /* Ordered fault points in extracted page/control functions. These fixtures
  * assume successful DMA termination; NandTransfer checks that assumption. */
@@ -160,7 +181,8 @@ static int flow_event(enum flow_point point) {
     }
     return 0;
 }
-static void *devm_kzalloc(void *dev, size_t n, unsigned flags) { return calloc(1, n); }
+static void *devm_kzalloc(void *dev, size_t n, unsigned flags)
+{ return allocation_failure ? NULL : calloc(1, n); }
 static const void *memchr_inv(const void *data, int value, size_t n) {
     const u8 *p = data;
     for (size_t i = 0; i < n; i++) if (p[i] != (u8)value) return p + i;
@@ -211,10 +233,12 @@ static int nand_change_read_column_op(struct nand_chip *n, unsigned col,
     return transfer(n, col, dst, len);
 }
 static int sunxi_nfc_read_buf(struct nand_chip *n, u8 *dst, int len) {
+    plain_read_calls++;
     return transfer(n, column, dst, len);
 }
 static int sunxi_nfc_randomizer_read_buf(struct nand_chip *n, u8 *dst, int len,
                                        bool ecc, int page) {
+    random_read_calls++;
     return transfer(n, column, dst, len);
 }
 static int nand_check_erased_ecc_chunk(void *data, int len, void *oob, int olen,

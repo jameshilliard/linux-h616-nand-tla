@@ -21,6 +21,8 @@ jobs:
           java-version: '21'
       - name: Execute submitted C with sanitizers
         run: python3 run_c.py
+      - name: Execute DMA, IRQ, NAND-core parser, SRAM and timing checks
+        run: python3 run_lowlevel.py
       - name: Model-check positive and negative configurations
         run: python3 run.py --download
       - name: Retain diagnostics and counterexamples
@@ -34,4 +36,7 @@ jobs:
             results/**/trace*.json
             results/**/build.log
             results/**/check.log
+            results/**/gcov.log
+            results/**/coverage-build.log
+            results/**/coverage-check.log
           retention-days: 14
