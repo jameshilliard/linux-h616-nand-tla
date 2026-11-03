@@ -1,0 +1,12 @@
+{
+  "series": "sunxi NAND OOB v9 (18 patches)",
+  "message_id": "20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com",
+  "base_commit": "30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85",
+  "sent_tip": "ec81fd2e368401c75b35c78571eebc1e61bacf27",
+  "driver_path": "drivers/mtd/nand/raw/sunxi_nand.c",
+  "driver_sha256": "3d0a09939d63520e17765286f0d848b196b91b1f3c4a0c61448142ea26e68cd1",
+  "binding_sha256": "3eb4fb24d2974659b1fbfe552d0f1b4cdaa61c18fd73710322bbb914c41de3ac",
+  "tlc_version": "1.8.0",
+  "tlc_sha256": "fc6878c603f0fdc18b9fe3e5bf51860cb90ab5b1154e3c371660c036d6bdd63e",
+  "tlc_url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar"
+}
