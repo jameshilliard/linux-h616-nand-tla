@@ -56,7 +56,7 @@ open/close into NAND locks and expose close/sync within the known unbind issue.
 The [2026-11-04 real H616 measurements](docs/HARDWARE-MEASUREMENTS-20261104.md)
 add a restricted diagnostic module, sanitized captures and offline replay.
 They confirm count/SRAM/BCH contracts but disprove the earlier continuous
-normal-command randomizer assumption. The measured restart, direction and
+normal-command randomizer assumption. The measured restart, read/write asymmetry and
 non-word-tail behavior now has its own TLA+ and actual-source checks. Older
 controller behavior and genuinely failed DMA/reset retirement remain unproved.
 
@@ -164,7 +164,8 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandDetachPolicy` | Two users on the same/different chips, retained publication, partition references, partial probe and alternative lifetime policies |
 | `NandDmaBytes` | RX/TX payload publication, exact bounce copyback, neighboring cache-line bytes and mapping-generation reuse |
 | `NandRetryProtocol` | Hynix enter/write/apply and Micron SET FEATURES, accepted-but-failed commands, retry reads and failed default restoration |
-| `NandRandomizerStream` | Independent stored/read representations, phase across raw command boundaries, seed changes, zero-length requests and partial errors |
+| `NandRandomizerStream` | Conditional continuous-stream representations, seed changes, zero-length requests and partial errors; not the measured H616 contract |
+| `NandMeasuredStream` | Observed H616 normal-command restart, page-mode read/write asymmetry, non-word read tails and format-compatibility witnesses |
 | `NandDmaAperture` | 32-bit buffer/descriptor endpoints, mask/alignment/caller contracts, exact address encoding and balanced mapping cleanup |
 | `NandUserDataContext` | Persistent packed lengths across PIO/DMA requests, logical-step offsets, zero/unused slots, word boundaries and absent legacy registers |
 | `NandChildAdmission` | Available DT children, chip-select claims, absent devices, registration errors and probe rollback |
@@ -273,7 +274,8 @@ measurements, not just a model that produces the desired result.
 ## Optional CI
 
 [ci/validate.yml](ci/validate.yml) is a pinned GitHub Actions workflow template.
-It runs all thirteen suites on Ubuntu 24.04 with Java 21 and retains diagnostics and
+It runs host source/model suites and sanitized hardware-capture replay on
+Ubuntu 24.04 with Java 21 and retains diagnostics and
 counterexample traces. It is intentionally outside `.github/workflows/` in this
 initial publication because the publishing credential cannot install workflows.
 Automatic CI is not enabled. Install it as `.github/workflows/validate.yml` using

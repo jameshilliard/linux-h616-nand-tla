@@ -13,6 +13,9 @@ import struct
 import subprocess
 import sys
 
+if sys.flags.optimize:
+    raise RuntimeError('Run without Python optimization: validation assertions are required')
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from codec_oracle import scramble, encode
 
@@ -156,11 +159,21 @@ def page_image(logical, page):
     return bytes(out)
 
 
-def restore(probe, directory):
+def verified_backup(directory):
+    """Check all independent backups before issuing any destructive request."""
     full = (directory / 'module-backup-512.raw').read_bytes()
-    assert full == (directory / 'module-backup-1024.raw').read_bytes()
-    assert len(full) == 512 * RAW
-    assert full[384 * RAW:] == (directory / 'nfc-spl-3.before').read_bytes()
+    if len(full) != 512 * RAW:
+        raise ValueError('incorrect raw backup size')
+    if full != (directory / 'module-backup-1024.raw').read_bytes():
+        raise ValueError('independent module backups differ')
+    parts = [(directory / f'nfc-spl-{n}.before').read_bytes() for n in range(4)]
+    if any(len(part) != 128 * RAW for part in parts) or b''.join(parts) != full:
+        raise ValueError('MTD backups differ from module backups')
+    return full
+
+
+def restore(probe, directory):
+    full = verified_backup(directory)
     backup = full[448 * RAW:512 * RAW]
     assert len(backup) == 64 * RAW
     probe.run([request(ERASE)])
@@ -175,9 +188,7 @@ def restore(probe, directory):
 
 
 def destructive(probe, directory):
-    backup = (directory / 'module-backup-512.raw').read_bytes()
-    assert backup == (directory / 'module-backup-1024.raw').read_bytes()
-    assert len(backup) == 512 * RAW
+    backup = verified_backup(directory)
     scratch = b''.join(r[2] for r in probe.run([request(READ, page=p)
                                               for p in range(448, 512)]))
     assert scratch == backup[448 * RAW:], 'scratch changed since verified backup'

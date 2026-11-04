@@ -43,6 +43,9 @@ python3 hardware/run_probe.py --directory /path/to/private-evidence \
 This acquires independent 512/1024-command backups, compares them with the MTD
 dumps, and refuses to replace a differing existing backup. The default phase
 never erases or programs flash. Keep backups and private logs out of this repo.
+Do not use Python's `-O` or `PYTHONOPTIMIZE`; the harness rejects optimization
+because it would disable validation assertions. All independent backup files
+are checked again before any destructive phase begins.
 
 Only after those checks and explicit authorization, reload the module with
 `allow_write=1` and run:

@@ -4,8 +4,10 @@
 import hashlib
 import json
 from pathlib import Path
+import unittest
 
 from hardware.run_probe import RAW, SEEDS, measured_stream, page_image
+from hardware.test_safety import BackupSafety
 from codec_oracle import scramble
 
 HERE = Path(__file__).resolve().parent
@@ -69,6 +71,9 @@ def main():
     assert capture['erased_read']['regs'][3:5] == [3, 3]
     assert capture['all_spl_restored'] and capture['module_unloaded']
     print(f'{checks} captured hardware checks replayed; 72 stream digests each measured on three pages')
+    result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(BackupSafety))
+    if not result.wasSuccessful():
+        raise SystemExit(1)
     print('No board access. Passing replay does not validate unmeasured hardware contracts.')
 
 

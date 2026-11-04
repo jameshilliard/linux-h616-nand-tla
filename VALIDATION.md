@@ -1416,3 +1416,16 @@ In particular, this does not prove hung-DMA retirement, all IRQ/reset ordering,
 other ECC strengths or geometries, older controllers, or power-loss behavior.
 Native callback invocation does not prove DMA was used on every transfer.
 No kernel submission was changed by this measurement work.
+
+The measured source and full-suite inputs are preserved in commit `27c962b`.
+Subsequent diagnostic C/header formatting is whitespace-only; the source
+digest in the capture remains the exact tested version. The module rebuild
+and static userspace transport build pass, and checkpatch reports no errors
+or warnings for those three C/header files. Host backup preflight now checks
+all independent copies before touching hardware and rejects optimized Python;
+six host-only safety tests and all 170 capture checks pass after that change.
+Those tool-hardening changes were not represented as another hardware run.
+An exported Git archive also passes the 170 capture checks, six safety tests
+and pinned-source low-level runner, including its 32 measured-profile cases.
+This packaging smoke test uses only release files and the host compiler; the
+pinned source retains its documented expected contract witnesses.

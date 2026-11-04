@@ -47,6 +47,8 @@ jobs:
         run: python3 run_provider_boundary.py
       - name: Detect adapted historical regressions
         run: python3 run_historical.py
+      - name: Replay sanitized hardware observations and backup safety checks
+        run: python3 run_hardware.py
       - name: Model-check positive and negative configurations
         run: python3 run.py --download
       - name: Retain diagnostics and counterexamples

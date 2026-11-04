@@ -8,7 +8,11 @@ are supplied separately to source-body tests of the v10 candidate.
 The [capture](../hardware/h616-capture-20261104.json) contains register values,
 comparison results and hashes of synthetic images or XOR keystreams. No
 existing NAND contents, connection details, private paths or keys are included.
-The diagnostic source digest identifies the module used for the final tests.
+The diagnostic source digest identifies the module used for the final tests:
+[the source at commit 27c962b](https://github.com/jameshilliard/linux-h616-nand-tla/blob/27c962b/hardware/nfc_probe.c).
+Subsequent blank-line/enum formatting does not change its C tokens. Host-side
+backup preflight and transport error handling were subsequently tightened;
+the capture is not represented as a new hardware run of those tool revisions.
 
 ## Safety and measurement method
 
@@ -46,6 +50,8 @@ an 8 KiB aperture or all command/IRQ/reset ordering guarantees.
 216 read measurements cover three page contents, three seeds, eight chunk
 sizes, ordinary operation, explicit reseeding and page-size mode. All match
 the measured model. The capture retains 72 distinct XOR-keystream digests.
+These normal-command probes use ECC disabled and the documented LSB-first
+randomizer setting; MSB-first behavior was not tested.
 
 | Configuration | Observed behavior |
 | --- | --- |

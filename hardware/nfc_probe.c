@@ -53,6 +53,7 @@ static int irq;
 static int idle(void)
 {
 	u32 value;
+
 	return readl_poll_timeout(regs + ST, value, !(value & BUSY), 1, 100000);
 }
 
@@ -60,6 +61,7 @@ static int transfer(u32 count, u32 command)
 {
 	u32 value;
 	int ret = idle();
+
 	if (ret)
 		return ret;
 	writel(DONE, regs + ST);
@@ -106,8 +108,10 @@ static int stream(struct probe_request *r, bool write)
 		if (!write) {
 			if (r->flags & PROBE_WORD_READ) {
 				unsigned int j, k;
+
 				for (j = 0; j < n; j += 4) {
 					u32 word = readl(regs + RAM0 + j);
+
 					for (k = 0; k < min(4U, n - j); k++)
 						r->data[offset + j + k] = word >> (k * 8);
 				}
@@ -127,6 +131,7 @@ static int stream(struct probe_request *r, bool write)
 static int count_test(struct probe_request *r)
 {
 	int ret = nand_read_page_op(chip, r->page, 0, NULL, 0);
+
 	if (ret)
 		return ret;
 	writel(readl(regs + CTL) & ~BIT(14), regs + CTL);
@@ -144,6 +149,7 @@ static int banks_test(struct probe_request *r)
 {
 	u8 *saved = kmalloc(2048, GFP_KERNEL);
 	unsigned int i;
+
 	if (!saved)
 		return -ENOMEM;
 	writel(readl(regs + CTL) & ~BIT(14), regs + CTL);
@@ -192,6 +198,7 @@ static int pio_ecc_read(struct probe_request *r)
 	u32 spare_column = r->column ? 2112 : 2048;
 	unsigned int i;
 	int ret = nand_read_page_op(chip, r->page, r->column, NULL, 0);
+
 	if (ret)
 		return ret;
 	writel(readl(regs + CTL) & ~BIT(14), regs + CTL);
@@ -218,6 +225,7 @@ static int pio_ecc_read(struct probe_request *r)
 	memcpy_fromio(r->data, regs + RAM0, 1024);
 	for (i = 0; i < user; i += 4) {
 		u32 word = readl(regs + 0x80 + i);
+
 		memcpy(r->data + 2048 + i, &word, 4);
 	}
 	writel(DONE, regs + ST);
