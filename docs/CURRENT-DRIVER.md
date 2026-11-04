@@ -22,6 +22,7 @@ tested independently, not silently included in the sunxi candidate.
 | Driver logic | Source execution and model coverage |
 | --- | --- |
 | Probe, resources, clocks and IRQ/DMA initialization | Allocation/defer/initialization faults and unwind; lifecycle and probe models; actual scan/cleanup helpers |
+| Child admission and publication | Status/presence/order matrix; actual core lock acquisition during the next scan; wrong-CS/timing command-launch witnesses; admission/publication models |
 | Chip selection and cached clock | Actual selector and `exec_op`, repeated failures/retry, same-rate geometry changes, check-only; `NandSelection` |
 | Command parsing and raw I/O | Actual NAND-core parser, split address/data instructions, SRAM boundaries, ready/busy, polling and transfer faults; command/media models |
 | Timing | Independent minimum-period and lookup oracles, each dominating constraint, rounding, EDO boundaries and check-only; timing/negotiation models |
@@ -86,6 +87,13 @@ v10 reports instead of combining different source-line numbers.
 - **87 persistent length-register sequences:** wide-to-narrow PIO/DMA
   transitions, zero metadata, all packed-word boundaries and nonzero logical
   starts; adjacent-register sentinels and legacy no-MMIO behavior checked.
+- **28 DT child-admission cases:** seven status variants, both child positions
+  and presence/absence; 16 unavailable-child scan witnesses remain in the
+  current candidate as well as the baseline.
+- **Probe/I/O scheduling:** actual core lock acquisition for the first
+  published chip does not exclude the next scan's detector. Twelve low-level
+  schedules launch a first-chip read with the second chip's CS/timing. These
+  are explicit host schedule witnesses, not a real concurrent kernel test.
 
 Existing byte-identity, randomizer, erased-predicate, attach, lifecycle,
 core-composition and real-BCH tests also run against the candidate source.
@@ -114,6 +122,9 @@ Positive cases assume NAND-core serialization and that a failed clock
 change preserves the previous physical clock. Dropping the latter
 contract produces an explicit counterexample; it is not a newly observed
 sunxi clock-provider defect.
+The probe/publication tests show why the serialization assumption cannot be
+extended to identification of a subsequent child: that path omits the shared
+mutex while the previous child's MTD is already usable.
 
 ## Remaining gaps
 
@@ -148,6 +159,11 @@ The confirmed open-MTD-reference/unbind lifetime issue remains unresolved.
 Neither a registration reference nor a model assumption drains retained
 users before sunxi cleanup releases hardware resources. Multi-chip probe
 unwind also needs to be covered by any eventual lifetime fix.
+Two independent probe defects are also unresolved in this candidate:
+unavailable DT children are scanned, and per-child publication allows the
+next scan to race with normal I/O. They occur before the OOB changes too.
+The [probe audit](PROBE-VISIBILITY.md) distinguishes model-only fix directions
+from the unchanged kernel implementation and from the separate unbind issue.
 
 Physical DMA stop, outstanding bus retirement, late command events, MMIO
 ordering, real clock-tree behavior, physical manufacturer-specific read retry and

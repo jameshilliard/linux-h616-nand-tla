@@ -21,6 +21,10 @@ or explicitly explored alternatives, not unsupported H616 extrapolation.
 The provider audit establishes that the injected configuration error is not
 reachable through the pinned sun4i/sun6i config callbacks, which always return
 zero. Other findings are not dismissed merely because they require failures.
+The probe audit adds unavailable DT-child scanning and live first-chip I/O
+racing with the next child's identification. Both reproduce in the pinned
+source and current candidate; [PROBE-VISIBILITY.md](PROBE-VISIBILITY.md) records
+the source paths and explicit fixture boundaries.
 
 Deliberately broken variants demonstrate that the named checks can fail. They
 are regression sensitivity tests, not claims that those broken variants are in
@@ -60,9 +64,13 @@ an automatic kernel fix.
 
 ## Controller and core contracts
 
-- Operations on the shared controller are serialized by the NAND core. The
-  model allows IRQ interleavings, not two unrelated page operations executing
-  concurrently on one controller.
+- Normal MTD operations on the shared controller are serialized by the NAND
+  core. Page-transfer models allow IRQ interleavings, not two unrelated page
+  operations concurrently on one controller. This is **not** a guarantee for
+  probe: `nand_scan_ident()` does not acquire that mutex. The separate
+  `NandProbePublication` model and source tests reproduce scan/I/O interference
+  after the first child is published, and check deferred publication as a
+  model-only alternative.
 - The previous hardware command must be quiescent before another begins.
   `NandController` has negative tests for a PIO timeout with a still-active
   command and an old command event arriving after reuse. PIO has no explicit
@@ -106,7 +114,9 @@ the unchanged operation parser and suboperation helpers from that same core
 revision. The separate integration harness now compiles selected unchanged
 core request/read-retry and BBT scan/create/update/read functions. It does not
 compile core locking or device-core removal. The lifecycle runner now compiles
-scan-identification orchestration, scan-tail, cleanup and timing negotiation;
+scan-identification orchestration, scan-tail, cleanup, timing negotiation and
+the actual `nand_get_device()`/`nand_release_device()` lock sequence (with
+host mutex services, not real threads);
 the new discovery-boundary runner executes actual ONFI/ID decoders into the
 actual sunxi attach functions. Manufacturer internals and real transport remain
 fixtures. The new composed runner connects core requests and BBT traffic to
@@ -173,6 +183,11 @@ of nonzero-size, mapping-mask, coherent-allocation and hardware-reload
 assumptions. In particular, an injected above-mask DMA address is not evidence
 that the actual DMA API can return one; a successful randomized round trip is
 not proof of compatibility with an independently encoded flash image.
+DT availability and scan/publication concurrency are mapped separately in
+[PROBE-VISIBILITY.md](PROBE-VISIBILITY.md). Its positive admission and deferred
+publication policies are not implemented kernel fixes. OF node references,
+dynamic overlays and complete registration/unbind concurrency remain outside
+those bounded models.
 All distinguish modeled from
 source-executed paths. Remaining end-to-end gaps include device-core probe/unbind,
 every combination of allocation failures, concurrent provider IRQ/tasklet

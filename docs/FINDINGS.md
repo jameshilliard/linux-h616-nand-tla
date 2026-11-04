@@ -319,3 +319,52 @@ chunk offsets/randomizer configuration; baseline expectations still reproduce
 the bug. The H616 manual's two 1 KiB banks are also distinguished from the
 driver's 8 KiB capability, rather than assuming that capability is silicon
 documentation. No new hardware result or actual affected NAND part is claimed.
+
+## 12. sunxi scans NAND children marked unavailable in DT
+
+`sunxi_nand_chips_init()` uses the all-child iterator. Neither its
+`sunxi_nand_chip_init()` callee nor the core scan path checks node availability
+before claiming chip selects, detecting the NAND and registering its MTD.
+Consequently, a disabled but populated child becomes usable; a disabled,
+absent second child can fail the entire controller probe and remove the
+previously registered first child.
+
+The lifecycle harness executes the real initialization and scan bodies with
+seven status variants, either child position and presence/absence: 28 cases
+produce 16 unavailable-child scan witnesses in both posted v9 and current
+v10. The OF availability and physical-presence services remain explicit
+fixtures. `NandChildAdmission` independently checks a model-only filtered
+policy and requires the current-ordering instances to fail
+`OnlyAvailableScanned`.
+
+This is an independent sunxi DT-admission bug, also present before the OOB
+series. Filtering with the scoped available-child iterator before allocating
+chip selects is a fix candidate; no kernel fix is applied in this extension.
+
+## 13. Per-child publication allows live I/O to overlap the next NAND scan
+
+`sunxi_nand_chip_init()` scans and registers each child before the outer loop
+starts the next. MTD users can therefore access the first chip while the
+second enters `nand_scan_ident()`. Normal I/O takes `controller->lock`, but
+the identification path does not. `nand_detect()` issues RESET/READ ID through
+sunxi operations that replace the shared controller's selected chip and
+timing. A first-chip command can then launch under the second chip's context.
+
+The lifecycle fixture executes the actual core lock acquisition for the first
+published chip and reaches the second scan's detector with that lock still
+held. Twelve low-level schedules then execute the real selector, `exec_op()`
+and raw-buffer helpers, observing the wrong CS/timing at command launch across
+A10/A23/H616 profiles. `NandProbePublication` reproduces the interleaving and
+checks a model-only scan-before-publication policy separately.
+
+This is a successful-probe race between separate child nodes, not the known
+MTD-unbind lifetime issue. Source inspection of registration, MTD open/read
+and NAND detection confirms that the parent's probe lock does not exclude
+the user path. It is present before the OOB series and in both tested driver
+versions. The evidence is source control flow and host schedule/register
+witnesses, not an observed board failure or a real concurrent kernel test.
+
+Deferring MTD publication until all chips are scanned is an independent fix
+direction, requiring corresponding scanned/registered cleanup bookkeeping.
+No kernel implementation is included. Detailed caller paths, model bounds,
+review checks and remaining gaps are in [PROBE-VISIBILITY.md](PROBE-VISIBILITY.md).

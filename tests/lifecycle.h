@@ -59,7 +59,13 @@ static void list_add_tail(struct list_head *n, struct list_head *h)
 { n->prev=h->prev; n->next=h; h->prev->next=n; h->prev=n; }
 static void list_del(struct list_head *n) { n->prev->next=n->next; n->next->prev=n->prev; }
 #define list_first_entry(h,t,m) container_of((h)->next,t,m)
-struct device_node { struct device_node *child, *next; int count; u32 cs[2], rb[2]; bool vendor; };
+struct device_node {
+    struct device_node *child, *next;
+    int count;
+    u32 cs[2], rb[2];
+    bool vendor, absent;
+    const char *status;
+};
 struct device { struct device_node *of_node; struct device *parent; };
 struct platform_device { struct device dev; void *data; };
 struct resource { unsigned long start; };
@@ -70,7 +76,7 @@ struct nand_controller_ops {
     void (*detach_chip)(struct nand_chip *);
     int (*setup_interface)(struct nand_chip *, int, const struct nand_interface_config *);
 };
-struct nand_controller { const struct nand_controller_ops *ops; };
+struct nand_controller { const struct nand_controller_ops *ops; int lock; };
 struct nand_ecc_props { unsigned strength, step_size; };
 struct nand_memory_organization { unsigned ntargets; };
 struct nand_device {
@@ -115,6 +121,7 @@ struct nand_chip {
     void *secure_regions,*bbt,*fixture_manuf;
     struct { unsigned options; } *badblock_pattern;
     bool fixture_registered;
+    bool suspended;
 };
 struct nand_flash_dev { int unused; };
 struct sunxi_nand_chip_sel { u8 cs; int rb; };
@@ -142,6 +149,9 @@ static unsigned assertions, cases_run, events, fail_at, nalloc, registered, dma_
 static unsigned mode_setup_calls, set_calls, get_calls, reset_calls;
 static int host_mode, chip_mode[2], timing_fault, extra_die_fault;
 static bool have_caps, external_dma, with_calc, slc, no_features, nvddr;
+static bool hold_first_user;
+static struct nand_chip *held_user;
+static unsigned detects, unavailable_detects, scan_with_busy_controller;
 static unsigned options, engine, mode, writesize, oobsize, req_step, req_strength;
 static struct { void *p; bool managed,live; } allocations[256];
 static const char *event_names[256];
@@ -174,10 +184,13 @@ static uint64_t nanddev_target_size(struct nand_device *d) { return 1<<20; }
 static bool nand_is_slc(struct nand_chip *c) { return slc; }
 static bool nand_ecc_is_strong_enough(struct nand_device *d) { return true; }
 static const char *dev_name(struct device *d) { return "fixture-nand"; }
-static void mutex_init(int *p) { *p=1; }
+static void mutex_init(int *p) { *p=0; }
+static void mutex_lock(int *p) { CHECK(!*p); *p=1; }
+static void mutex_unlock(int *p) { CHECK(*p); *p=0; }
+#define wait_event(q,condition) CHECK(condition)
 static void init_waitqueue_head(int *p) { *p=1; }
 static void init_completion(int *p) { *p=0; }
-static void nand_controller_init(struct nand_controller *c) { }
+static void nand_controller_init(struct nand_controller *c) { mutex_init(&c->lock); }
 static bool test_bit(unsigned b,const unsigned long *p) { return !!(*p&BIT(b)); }
 static bool test_and_set_bit(unsigned b,unsigned long *p) { bool old=test_bit(b,p); *p|=BIT(b); return old; }
 static void nand_set_flash_node(struct nand_chip *c,struct device_node *n) { c->flash_node=n; }
@@ -189,6 +202,12 @@ static int of_property_read_u32_index(struct device_node *n,const char *s,int i,
 { if (fail("dt-index")) return -EINVAL; *v=!strcmp(s,"reg")?n->cs[i]:n->rb[i]; return 0; }
 /* No OF references are allocated: iterator semantics are an explicit fixture boundary. */
 #define for_each_child_of_node_scoped(n,c) for (struct device_node *c=(n)->child;c;c=c->next)
+static bool of_device_is_available(struct device_node *n)
+{ return !n->status || !strcmp(n->status,"okay") || !strcmp(n->status,"ok"); }
+static struct device_node *next_available(struct device_node *n)
+{ while (n && !of_device_is_available(n)) n=n->next; return n; }
+#define for_each_available_child_of_node_scoped(n,c) \
+    for (struct device_node *c=next_available((n)->child);c;c=next_available(c->next))
 static int io_stub(void) { CHECK(!"I/O callback unexpectedly executed during scan"); return 0; }
 #define nand_read_oob_std io_stub
 #define nand_write_oob_std io_stub
@@ -248,6 +267,16 @@ static int nand_legacy_check_hooks(struct nand_chip *c) { return fail("legacy-ho
 /* Geometry/ID decoding is deliberately a separate boundary, not claimed covered. */
 static int nand_detect(struct nand_chip *c,struct nand_flash_dev *t)
 {
+    detects++;
+    if (!of_device_is_available(c->flash_node)) unavailable_detects++;
+    /* A schedule boundary, not an emulation of ID parsing. The real detector
+     * calls nand_reset()/nand_readid_op() here without controller locking. */
+    if (held_user && held_user != c) {
+        CHECK(held_user->fixture_registered);
+        CHECK(held_user->controller==c->controller && c->controller->lock);
+        scan_with_busy_controller++;
+    }
+    if (c->flash_node->absent) return -ENODEV;
     if (fail("detect")) return -ENODEV;
     c->parameters.model=allocate(16,false); if (!c->parameters.model) return -ENOMEM;
     c->id.data[0]=0x2c; c->id.data[1]=0xda;
@@ -297,7 +326,18 @@ static const struct nand_controller_ops sunxi_nand_controller_ops={
     .attach_chip=sunxi_nand_attach_chip,.detach_chip=sunxi_nand_detach_chip,.setup_interface=setup_interface};
 static int nand_scan(struct nand_chip *c,unsigned n) { return nand_scan_with_ids(c,n,NULL); }
 static int mtd_device_register(struct mtd_info *m,const void *p,int n)
-{ if (fail("register")) return -EIO; CHECK(!mtd_to_nand(m)->fixture_registered); mtd_to_nand(m)->fixture_registered=true; registered++; return 0; }
+{
+    if (fail("register")) return -EIO;
+    CHECK(!mtd_to_nand(m)->fixture_registered);
+    mtd_to_nand(m)->fixture_registered=true; registered++;
+    /* Model a user acquiring the first visible MTD after registration. This
+     * executes the real NAND-core chip/controller lock acquisition bodies. */
+    if (hold_first_user && !held_user) {
+        held_user=mtd_to_nand(m);
+        nand_get_device(held_user);
+    }
+    return 0;
+}
 static int mtd_device_unregister(struct mtd_info *m)
 { CHECK(mtd_to_nand(m)->fixture_registered && registered); mtd_to_nand(m)->fixture_registered=false; registered--; return 0; }
 static struct resource resource;

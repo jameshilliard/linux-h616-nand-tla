@@ -122,6 +122,7 @@ static u8 registers[0x3000], media[2][20000];
 static struct {
     unsigned maps, unmaps, prep, submit, term, barrier, doorbell, serial;
     unsigned commands, reads, writes, row, column, fail_command, partial_bytes, address_cycles;
+    unsigned last_command_cs, last_command_timing;
     unsigned backend, bank_overruns, count_overruns, last_count_request;
     unsigned reg_writes[0x3000/4];
     unsigned disable, enable, wait_calls, irq_calls, poll_calls;

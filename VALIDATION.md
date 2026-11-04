@@ -928,3 +928,86 @@ kernel concurrency and C/model refinement remain outstanding. The prioritized
 follow-up table records the evidence each needs. No kernel patches, board
 state or NAND contents were changed. Public files exclude private paths,
 credentials, identifiers and captures.
+
+# Child-admission and probe-publication extension
+
+Validated on 2026-11-04. Two added models and extended source fixtures examine
+DT availability and scanning another NAND child after an MTD has been
+published. The source paths, rejected false-positive explanations and
+abstraction boundaries are in [PROBE-VISIBILITY.md](docs/PROBE-VISIBILITY.md).
+The pinned v9 and v10 candidate source digests are unchanged.
+
+## Formal results
+
+All **836 configurations across 40 models** matched their expected outcomes:
+
+- 649 positive configurations passed invariants and bounded termination.
+- 85 deliberate mutations failed their named invariant.
+- 46 assumption checks reproduced their named consequence.
+- 56 source-contract configurations reproduced their named failure.
+- All **311 required positive-model actions** were reached.
+
+The new models contribute 71 configurations: 65 positive and six current
+source-contract counterexamples. Positive instances generated 368,941 states
+and found 259,234 distinct states; all configurations together generated
+389,521 states and found 275,187 distinct states. The run took about 604 seconds
+with the pinned TLC jar, one worker, seed 1 and fingerprint polynomial 0.
+All 40 recorded model hashes match the final model files. Local full-run
+results are in `results/tlc-0a7k0eky/`.
+
+`NandChildAdmission` distinguishes missing/okay/ok status from unavailable
+children and checks chip-select admission, presence and unwind. Its filtered
+policy is model-only. `NandProbePublication` explores one to three children,
+one bounded user operation, and scan/registration failure positions. Current
+per-child publication can violate context ownership; deferred publication
+passes those bounded checks without claiming to solve resource lifetime.
+
+## Source results
+
+Both unchanged driver versions passed the expanded low-level and lifecycle
+host suites under ASan/UBSan, with no new sanitizer exclusions:
+
+| Directed check | Result per driver version |
+| --- | --- |
+| DT availability | 28 status/presence/order cases; 16 unavailable-child scan witnesses |
+| Probe versus live I/O entry | Real first-chip `nand_get_device()` leaves the controller mutex held while the next actual scan reaches detection |
+| Wrong controller context | Twelve actual selector/exec/raw-buffer schedules launch with the second chip's CS/timing across A10/A23/H616 |
+| Complete lifecycle runner | 1,040 cases, 69,882 assertions; prior timing-recovery witness retained |
+
+The detector, MTD publication and mutex implementations remain explicit host
+services. The real kernel MTD registration/open/read paths and the real
+detector's RESET/READ ID calls were inspected separately. These are not kernel
+SMP tests or physical NAND corruption measurements.
+
+Baseline results are `results/lifecycle-j1_zih3w/` and
+`results/lowlevel-5prakt6a/`; candidate results are
+`results/lifecycle-g3hsn4_j/` and `results/lowlevel-171coumv/`.
+Combining the new candidate reports with the unchanged page/ECC runner
+`results/c-0daabmn9/` still executes all 90 driver functions and reaches
+1,427/1,431 source-mapped lines and 701/712 branch edges. This adds meaningful
+state/schedule checks without pretending that a function-hit count is
+complete integration coverage. Python compilation and `git diff --check`
+also passed.
+
+## Findings, review and limits
+
+Findings 12 and 13 are independent sunxi probe defects, present before the
+OOB series and still present in both checked source versions. The second
+requires separate NAND child nodes and can occur on a successful probe; it
+does not depend on the known unbind/resource-lifetime problem. Availability
+filtering and scan-before-publication are fix directions, not kernel patches
+implemented by this update.
+
+The review used cached Sashiko technical-pattern, false-positive, callstack,
+OF, locking, I/O-accessor and cleanup guidance at
+`d048f8742f6740c38833adf02e87901412d771ca`. No dedicated NAND prompt is present.
+It explicitly checked downstream filtering, parent-device probe locking,
+normal I/O locking, detection callers and cleanup. No Sashiko bot run or
+approval is claimed. The overly broad controller-serialization statement in
+the assumptions document now distinguishes normal I/O from unlocked scan.
+
+Physical DMA retirement, late events, SRAM extent, randomizer reload,
+whole-kernel concurrency and C/model refinement remain open. No kernel
+repository change, board access or NAND write occurred. Public files retain
+the pinned sources and exclude private paths, credentials, board identifiers
+and raw captures. Hosted CI remains inactive; these are local validated runs.

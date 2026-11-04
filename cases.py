@@ -150,3 +150,6 @@ extend_hardware(MODULES, add, mutation)
 
 from contract_cases import extend_contracts
 extend_contracts(MODULES, add, mutation)
+
+from probe_cases import extend_probe
+extend_probe(MODULES, add, mutation)

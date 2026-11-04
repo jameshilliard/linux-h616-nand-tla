@@ -2,6 +2,9 @@
 static void defaults(void)
 {
     CHECK(!registered && !dma_live && !clock_live);
+    CHECK(!held_user);
+    hold_first_user=false;
+    detects=unavailable_detects=scan_with_busy_controller=0;
     for (unsigned i=0;i<nalloc;i++) CHECK(!allocations[i].live);
     memset(allocations,0,sizeof(allocations)); nalloc=events=fail_at=0;
     have_caps=slc=external_dma=true; with_calc=no_features=nvddr=false;
@@ -11,6 +14,45 @@ static void defaults(void)
     timing_fault=extra_die_fault=0; reset_deasserted=false;
     mode_setup_calls=set_calls=get_calls=reset_calls=0;
     caps.has_ecc_clk=caps.has_mbus_clk=true;
+}
+static void release_devres(void);
+static void visibility_cases(void)
+{
+    const char *statuses[]={NULL,"okay","ok","disabled","reserved","fail","fail-1"};
+    unsigned witnesses=0, runs=0;
+    for (unsigned st=0;st<ARRAY_SIZE(statuses);st++)
+        for (unsigned first=0;first<2;first++) for (unsigned present=0;present<2;present++) {
+            struct device_node nodes[3]={
+                {.count=1,.cs={0},.rb={0}}, {.count=1,.cs={1},.rb={1}}, {0}};
+            struct platform_device p={.dev.of_node=&nodes[2]};
+            defaults();
+            nodes[2].child=nodes; nodes[0].next=&nodes[1];
+            unsigned index=first?0:1;
+            nodes[index].status=statuses[st]; nodes[index].absent=!present;
+            bool skipped=FILTERED_CHILDREN && !of_device_is_available(&nodes[index]);
+            int ret=sunxi_nfc_probe(&p);
+            if (skipped) CHECK(!ret && registered==1 && detects==1);
+            else if (present) CHECK(!ret && registered==2 && detects==2);
+            else CHECK(ret==-ENODEV && !registered && detects==index+1);
+            CHECK(unavailable_detects==(!skipped && st>=3));
+            witnesses+=unavailable_detects;
+            if (!ret) sunxi_nfc_remove(&p);
+            release_devres(); runs++; cases_run++;
+        }
+    printf("DT availability: %u cases, %u unavailable-child scan witnesses\n",runs,witnesses);
+
+    /* Both children are valid and probe succeeds. No unbind or rollback is
+     * needed to expose this independent scan-versus-live-I/O conflict. */
+    struct device_node nodes[3]={
+        {.count=1,.cs={0},.rb={0}}, {.count=1,.cs={1},.rb={1}}, {0}};
+    struct platform_device p={.dev.of_node=&nodes[2]};
+    defaults(); nodes[2].child=nodes; nodes[0].next=&nodes[1]; hold_first_user=true;
+    CHECK(!sunxi_nfc_probe(&p));
+    CHECK(registered==2 && detects==2 && scan_with_busy_controller==1);
+    CHECK(held_user && held_user->lock && held_user->controller->lock);
+    nand_release_device(held_user); held_user=NULL;
+    sunxi_nfc_remove(&p); release_devres(); cases_run++;
+    puts("SOURCE WITNESS: second nand_scan_ident reaches detection while first MTD user holds controller->lock");
 }
 static void release_devres(void)
 {
@@ -114,6 +156,7 @@ int main(void)
         for (unsigned f=1;f<=count;f++) probe_case(f,variant);
     }
     timing_cases();
+    visibility_cases();
     printf("Lifecycle/ONFI cases: %u; assertions: %u\n",cases_run,assertions);
     if (FIXED_TIMING)
         puts("FIX VERIFIED: timing mismatch recovery propagates controller and RESET failures");

@@ -54,6 +54,8 @@ static void writel(u32 value, void *p)
         hw.published=true;
     }
     if (off!=NFC_REG_CMD) return;
+    hw.last_command_cs=(load(NFC_REG_CTL)>>24)&7;
+    hw.last_command_timing=load(NFC_REG_TIMING_CFG);
     /* H616 clears CMD/DMA at FSM start. Do not rely on that undocumented
      * detail for A10/A23. NandRegisterProtocol explores either alternative. */
     if(hw.backend==2)
@@ -843,6 +845,35 @@ static void selection_matrix(void)
     printf("three-backend equal/different-clock chip-switch/error/retry matrix: %u\n",runs);
 #endif
 }
+static void probe_context_interleaving(void)
+{
+    unsigned witnesses=0;
+    for(unsigned backend=0;backend<3;backend++)
+    for(unsigned same_rate=0;same_rate<2;same_rate++)
+    for(unsigned rb=0;rb<2;rb++) {
+        reset_fixture(backend);
+        struct sunxi_nand_chip other=chip;
+        chip.sels[0].cs=0;
+        other.sels[0].cs=1; other.sels[0].rb=rb?1:-1;
+        other.nand.mtd.writesize=0; other.nand.page_shift=0;
+        other.clk_rate=same_rate?chip.clk_rate:24000000;
+        other.timing_cfg=0x634;
+        /* The lifecycle fixture separately proves that the second scan can
+         * enter detection while the first chip holds controller->lock. Replay
+         * that schedule at the real selector/exec_op/raw-read boundary. */
+        sunxi_nfc_select_chip(&chip.nand,0);
+        assert(((load(NFC_REG_CTL)>>24)&7)==0);
+        struct nand_op_instr reset={.type=NAND_OP_CMD_INSTR,.ctx.cmd.opcode=0xff};
+        struct nand_operation op={.cs=0,.instrs=&reset,.ninstrs=1};
+        assert(!sunxi_nfc_exec_op(&other.nand,&op,false));
+        u8 data[16];
+        assert(!sunxi_nfc_read_buf(&chip.nand,data,sizeof(data)));
+        assert(hw.last_command_cs==1 && hw.last_command_timing==other.timing_cfg);
+        assert(hw.last_command_cs!=chip.sels[0].cs);
+        witnesses++;
+    }
+    printf("Probe/live-I/O context witnesses: %u (wrong CS/timing at command launch; no silicon claim)\n",witnesses);
+}
 static void recovery_refinement(void)
 {
     unsigned checks=0,failures=0;
@@ -882,6 +913,7 @@ int main(void)
     dma_checks(); dma_init_checks(); dma_aperture_checks(); irq_checks(); raw_media_checks();
     randomizer_stream_checks(); command_checks(); parser_checks(); timing_checks(); selection_checks();
     selection_matrix();
+    probe_context_interleaving();
     recovery_refinement();
     puts("ALL LOWLEVEL CHECKS PASSED"); return 0;
 }
