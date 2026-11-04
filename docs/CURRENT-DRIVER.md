@@ -29,6 +29,18 @@ boundary projections satisfy the separate TLA+ lifecycle protocol, including
 actual list/publication snapshot comparisons. These results do not replace
 the earlier whole-driver coverage counts or extend the hardware guarantees.
 
+The [randomized OOB/ECC pipeline checks](OOB-PIPELINE-CONFORMANCE.md) add
+430 source-helper executions for this candidate and the pinned v9 driver.
+Both produce identical observations under ASan/UBSan and separate GCOV runs.
+All 108 trace wrappers and 11 checker sensitivity controls meet their expected
+TLC outcomes. The independent full-buffer oracle checks metadata capture,
+erased/zero precedence, raw parity/tail regions, representation conversion,
+transport failures and final ECC statistics. This finite matrix neither proves
+arbitrary C executions nor establishes the physical randomizer/BCH contract.
+The complementary software BCH/driver checks also pass against this candidate;
+exact results and remaining boundaries are recorded in
+[VALIDATION.md](../VALIDATION.md).
+
 ## Earlier full-driver audit
 
 This audit checks the v10 draft's driver, not just the original v9 snapshot.

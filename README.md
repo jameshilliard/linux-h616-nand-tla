@@ -44,6 +44,9 @@ model ownership with the C fixture's snapshots after each event.
 The [recovery trace checker](docs/RECOVERY-TRACE-CONFORMANCE.md) connects actual
 DMA/IRQ/abort/cleanup helper execution to independent ownership and register
 checks, including timeout races and explicit late-event/retirement assumptions.
+The [randomized OOB pipeline checker](docs/OOB-PIPELINE-CONFORMANCE.md) connects
+decoded metadata, batch ECC status, erased-page decisions, raw parity/tail
+reads and final bytes/accounting to an independent TLA+ stage model.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -71,6 +74,7 @@ python3 run_core.py
 python3 run_lifecycle.py
 python3 run_providers.py
 python3 run_codec.py
+python3 run_oob_pipeline.py --download
 python3 run_composed.py
 python3 run_transport.py
 python3 run_transport.py --count-boundary
@@ -147,6 +151,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandProbePublication` | Scan-versus-published-I/O chip/context interference; scan-before-publication ordering, supplemented by candidate C checks |
 | `NandProbeTrace` | Source-generated probe/unwind traces, independent membership transitions, actual fixture snapshots and checker mutation controls |
 | `NandRecoveryTrace` | Source-helper DMA/wait/abort/reuse traces, interrupt cleanup, mapping ownership and explicit retirement/event-causality assumptions; dedicated runner |
+| `NandOobPipeline` | Source-helper decoded-metadata/ECC/classification/raw-read observations, byte-exact PIO/DMA representations and error/statistics ordering; dedicated runner |
 
 The driver harnesses now extract all 90 function bodies **unchanged** from the
 bundled submitted driver, verify its hash, then compile them with host fixtures.

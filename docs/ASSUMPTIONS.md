@@ -161,6 +161,15 @@ assumptions in this particular recovery sequence.
   bootloader version or NAND part. That still requires authoritative vendor
   information and actual media/hardware tests.
 
+`NandOobPipeline` adds byte-exact source-observation checks across metadata
+capture, ECC accumulation, re-encoded spare classification and raw reads.
+Its status and decoded-byte inputs are explicit fixtures, not an emulated
+hardware decoder. The caller loop invokes batch/finish helpers rather than
+the entire page entrypoint. Its synthetic parity inputs complement, but do
+not replace, the real software BCH checks. See
+[OOB-PIPELINE-CONFORMANCE.md](OOB-PIPELINE-CONFORMANCE.md) for the finite
+matrix, negative controls and still-unmeasured hardware boundaries.
+
 ## Deliberate abstraction boundaries
 
 The models are hand-written, with function-level correspondence documented in

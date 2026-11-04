@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -67,6 +68,8 @@ def main():
     parser.add_argument("--cc", default="gcc")
     parser.add_argument("--candidate-source", type=Path,
                         help="test this sunxi_nand.c without replacing the pinned reference")
+    parser.add_argument("--oob-vectors", type=Path,
+                        help="observe randomized-OOB classification/transport vectors")
     args = parser.parse_args()
     source = (HERE / "reference/sunxi_nand.c").read_text()
     pin = json.loads((HERE / "source.json").read_text())
@@ -112,7 +115,8 @@ def main():
                 '\n#line 1 "attach.c"\n' + (HERE / "tests/attach.c").read_text() +
                 '\n#line 1 "format.c"\n' + (HERE / "tests/format.c").read_text() +
                 '\n#line 1 "compat.c"\n' + (HERE / "tests/compat.c").read_text() +
-                '\n#line 1 "codec_bridge.c"\n' + (HERE / "tests/codec_bridge.c").read_text())
+                '\n#line 1 "codec_bridge.c"\n' + (HERE / "tests/codec_bridge.c").read_text() +
+                '\n#line 1 "oob_pipeline.c"\n' + (HERE / "tests/oob_pipeline.c").read_text())
     (out / "check.c").write_text(combined)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",
@@ -124,16 +128,31 @@ def main():
     if build.returncode:
         print(build.stdout + build.stderr)
         return 1
+    vectors = args.oob_vectors.read_bytes() if args.oob_vectors else None
+    if vectors is not None:
+        (out / "oob-vectors.bin").write_bytes(vectors)
+        os.environ["NAND_OOB_VECTORS"] = str(out / "oob-vectors.bin")
+        os.environ["NAND_OOB_TRACE"] = str(out / "oob-traces.jsonl")
+    else:
+        os.environ.pop("NAND_OOB_VECTORS", None)
+        os.environ.pop("NAND_OOB_TRACE", None)
     run = subprocess.run(["./check"], cwd=out, text=True, capture_output=True, timeout=180)
     (out / "check.log").write_text(run.stdout + run.stderr)
     passed = run.returncode == 0 and "ALL C CHECKS PASSED" in run.stdout and not run.stderr
+    traces = (out / "oob-traces.jsonl").read_bytes() if passed and args.oob_vectors else None
     from source_coverage import build_and_collect
     coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
+    if traces is not None and (out / "oob-traces.jsonl").read_bytes() != traces:
+        raise RuntimeError("ASan/UBSan and GCOV builds produced different OOB traces")
     (out / "summary.json").write_text(json.dumps(
         dict(passed=passed, driver_sha256=hashlib.sha256(source.encode()).hexdigest(),
              candidate=bool(args.candidate_source),
              functions=hashes, compatibility_functions=compat_hashes,
              output=run.stdout, diagnostics=run.stderr, coverage=coverage,
+             oob_traces_sha256=hashlib.sha256(traces).hexdigest() if traces is not None else None,
+             oob_trace_count=len(traces.splitlines()) if traces is not None else 0,
+             oob_vectors_sha256=hashlib.sha256(vectors).hexdigest() if vectors is not None else None,
+             fixture_sha256=hashlib.sha256(combined.encode()).hexdigest(),
              compiler=args.cc, compiler_flags=command[1:-4]), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)

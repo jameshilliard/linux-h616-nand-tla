@@ -216,15 +216,22 @@ static void memcpy_fromio(void *dst, const void *src, size_t n) {
 /* Optional persistent raw image, used only by the cross-path format oracle. */
 static const u8 *format_image;
 static size_t format_image_len;
+/* Optional observer at the hosted transport boundary, not inside driver C. */
+static void (*oob_transfer_observer)(struct nand_chip *, unsigned, void *, unsigned, int);
 static int transfer(struct nand_chip *n, unsigned col, void *dst, unsigned len) {
     assert(col + len <= n->mtd.writesize + n->mtd.oobsize);
-    if (flow_event(FP_READ)) return -ETIMEDOUT;
-    if (++raw_calls == fail_raw_at) return -ETIMEDOUT;
+    int ret = flow_event(FP_READ);
+    if (!ret && ++raw_calls == fail_raw_at) ret = -ETIMEDOUT;
+    if (ret) {
+        if (oob_transfer_observer) oob_transfer_observer(n, col, dst, len, ret);
+        return ret;
+    }
     if (dst && format_image) {
         assert(col + len <= format_image_len);
         memcpy(dst, format_image + col, len);
     } else if (dst) memset(dst, 0xa7, len);
     column = col + len;
+    if (oob_transfer_observer) oob_transfer_observer(n, col, dst, len, 0);
     return 0;
 }
 static int nand_read_page_op(struct nand_chip *n, unsigned page,

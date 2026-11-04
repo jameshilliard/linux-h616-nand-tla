@@ -9,6 +9,7 @@ static void metadata_identity(void);
 static void format_roundtrip(void);
 static void compatibility(void);
 static void codec_bridge(void);
+static void oob_pipeline(void);
 
 static struct caps caps(bool variable)
 {
@@ -572,6 +573,7 @@ int main(void)
     format_roundtrip();
     compatibility();
     codec_bridge();
+    oob_pipeline();
     puts("ALL C CHECKS PASSED");
     return 0;
 }

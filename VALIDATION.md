@@ -1214,3 +1214,77 @@ lifetime and randomizer behavior limits remain explicit in
 [RECOVERY-TRACE-CONFORMANCE.md](docs/RECOVERY-TRACE-CONFORMANCE.md).
 No board access or flash write occurred. Public additions contain no private
 paths, credentials, board identifiers or raw hardware captures.
+
+# Source-to-model randomized OOB/ECC pipeline conformance
+
+Validated on 2026-11-04 against the pinned v9 driver and the unchanged
+23-patch v10 draft at `c95239dadd36c5d4c012c228ed4a95971c89b65a`.
+Its driver SHA-256 remains
+`f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
+No kernel implementation, pinned reference or source manifest changed.
+
+Each driver passes 430 new source-helper executions under ASan/UBSan and
+separate GCOV execution. Both builds and both source revisions produce the
+same observation bytes. The matrix contains 607 raw-read calls, 52 transport
+failures, 56 all-zero results and 164 erased-page results. An independent
+Python reference checks complete captured/final OOB buffers, read regions,
+statistics, return values and the main-buffer class. Source artifacts are
+`results/oob-pipeline-by7jbrv3/` with `results/c-p69s06p9/` for v10 and
+`results/oob-pipeline-lujdkwki/` with `results/c-ie93rner/` for v9.
+
+- Shared input-vector SHA-256:
+  `c1bd40bbad2e5adbcfb28aafa568717cd0db3f17b30f95b63b70b4bff5a2c65f`.
+- Shared observation SHA-256:
+  `1415a13a70612cb10d3001f3e7ffc7e481e446afb463d07ab6816dd2851868f8`.
+- Candidate combined-fixture SHA-256:
+  `7597dc75e931f7f0b490fb9655e477fb8d8f9b7d2fd696667c7c1ad550585741`.
+
+The final `NandOobPipeline` run passes **119/119 expectations** in
+`results/tlc-qv6os6x4/`: 108 wrappers cover every source record, and eleven
+altered-observation/input controls violate their intended invariants. The
+shared observations are checked once, not counted as two independent TLC
+runs. All seven stage actions are reached. The checker independently defines
+protected-byte geometry, maximal raw-read regions, re-encoded spare
+classification, PIO/DMA representation differences and deferred accounting.
+Input reuse verifies both the independent generator and the source-recorded
+vector digest. These checks supplement rather than replace the C execution.
+
+Targeted existing regressions pass **49/49** expectations selected by `oob`
+in `results/tlc-rhp5j05c/` and **34/34** selected by `stream` in
+`results/tlc-0vae9tn9/`. These are not full-suite reruns. The dedicated pipeline
+runner remains separate from the standard configuration catalog.
+
+The complementary candidate codec run passes in `results/codec-pjlw5_cw/`
+with driver bridge results in `results/c-t9miou_h/`: 600 codec error cases,
+120 independent driver/parity vectors, 84 sunxi-tools images, 204 source
+round trips and 80 wrong-seed witnesses. The selected beyond-capacity matrix
+rejects 120 cases with no observed miscorrection; it does not prove that
+beyond-capacity errors can never miscorrect. These are software images, not
+independently captured hardware golden images.
+
+Development runs exposed TLC evaluator memory/time limits. The final model
+memoizes immutable input/layout data and cursor-derived read bounds, then
+binds each chosen region once before the byte update. Focused equivalent
+formulations retain 43 generated / 39 distinct states for source wrapper 030
+and 103 generated / 99 distinct states for wrapper 046. The final complete
+run has no parser, JVM, timeout or unexpected-invariant failures. No such
+failure is counted as a successful negative control. Python compilation,
+whitespace checks and CI-template YAML parsing pass; hosted CI execution is
+not claimed.
+
+An archive of the staged public tree, excluding unrelated local MTD drafts,
+also passes all 430 pinned-source traces and the selected capture-corruption
+control. This checks that the released runner does not depend on those drafts;
+it is a packaging smoke test, not another full TLC run.
+
+The fixture supplies hardware-decoded USER_DATA, ECC/pattern status and raw
+media bytes. It invokes the real batch/finish helpers through a hosted caller
+loop, not the complete ECC page entrypoint. The directed inputs do not cover
+the full Cartesian product, arbitrary C inputs, compound faults or actual
+concurrent kernel execution. Synthetic parity in this matrix complements the
+separate real-BCH checks. Hardware LFSR continuity/reload, physical BCH,
+DMA retirement and retained-MTD/unbind lifetime remain unproved boundaries.
+No new kernel defect was established. Details are in
+[OOB-PIPELINE-CONFORMANCE.md](docs/OOB-PIPELINE-CONFORMANCE.md).
+No board access or NAND write occurred; public additions contain no private
+paths, credentials, board identifiers or raw hardware captures.
