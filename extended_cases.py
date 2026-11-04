@@ -7,7 +7,7 @@ def extend(modules, add, mutation):
         "NandController": dict(
             invariants=["NoUnsafeUnmap", "NoStaleIrq", "NoWriteReplay", "ConfirmOnce",
                         "ReadAccounting", "CleanReturn"],
-            actions=["Prepare", "PrepareFail", "Issue", "Hardware", "IrqRead", "IrqAck",
+            actions=["Prepare", "PrepareFail", "Issue", "Hardware", "IrqRead", "IrqReadMask", "IrqAck", "IrqMask",
                      "IrqSignal", "Wake", "Poll", "Timeout", "Drain", "Check", "Disarm",
                      "Abort", "Cleanup", "Fallback", "Fail", "Advance", "Finish", "Return"]),
         "NandDma": dict(

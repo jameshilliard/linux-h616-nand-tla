@@ -3,6 +3,10 @@
 All seven follow-up areas have executable models and corresponding source-level
 checks or an explicit boundary. These are bounded models of contracts, not a
 claim that every execution of every driver function has been proved correct.
+This document records the first extension. The later
+[integration extension](INTEGRATION-COVERAGE.md) adds actual MTD/BBT source
+execution, persistent format and scheduling/program-budget checks; its results
+supersede the earlier boundaries where noted below.
 
 ## Model-to-source map
 
@@ -66,16 +70,18 @@ by these fixtures; no claim of 100% C branch coverage is made.
 
 ## Boundaries that remain
 
-- Fine-grained IRQ register races are checked in `NandIrq`; the composed model
-  combines the status/mask read into one action to control its state space.
+- Fine-grained IRQ register races are checked in `NandIrq`. The integration
+  extension now also separates status read, mask read, status acknowledgement
+  and mask write in `NandController`; `NandRt` separately checks scheduling.
 - DMA descriptor visibility is an abstract CPU/device ordering model, not a
   Linux memory-model proof or IOMMU/cache-coherency emulator.
 - The media model uses a reversible scrambling mask, not BCH. Raw C fixtures
   implement a separate bit-level LFSR but assume the modeled command/reset and
   media behavior. They do not prove the physical controller's seed reload rules.
 - Model partial programs may alter arbitrary requested cells. C fault tests
-  use a prefix. Device partial-program-count limits, erase, wear, retention and
-  analog/power-failure behavior remain outside scope.
+  use a prefix. The integration extension models finite program budgets, erase
+  and interrupted mirrored BBT updates. Physical wear, retention and analog
+  power-failure behavior remain outside scope.
 - The core model wraps bounded counters modulo 256; the C test checks actual
   32-bit counter wrapping. Neither proves arbitrary lifetime-wide statistics
   behavior or every MTD/read-retry algorithm.

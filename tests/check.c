@@ -6,6 +6,7 @@ static void snapshot_cache(void);
 static void bitmap_boundaries(void);
 static void attach_policy(void);
 static void metadata_identity(void);
+static void format_roundtrip(void);
 
 static struct caps caps(bool variable)
 {
@@ -501,6 +502,7 @@ int main(void)
     bitmap_boundaries();
     attach_policy();
     metadata_identity();
+    format_roundtrip();
     puts("ALL C CHECKS PASSED");
     return 0;
 }

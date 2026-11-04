@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""GCOV of extracted driver bodies only; fixtures are deliberately excluded."""
+"""GCOV of extracted source bodies only; fixtures are deliberately excluded."""
 import gzip
 import json
 import subprocess
@@ -29,28 +29,33 @@ def collect(directory, source, names):
         raise RuntimeError("gcov failed; see gcov.log")
     with gzip.open(directory / "check.gcov.json.gz", "rt") as stream:
         report = json.load(stream)
-    files = [f for f in report["files"] if f["file"] == "sunxi_nand.c"]
-    if len(files) != 1:
-        raise RuntimeError("missing source-mapped coverage")
-    data = files[0]
+    files = {f["file"]: f for f in report["files"]}
+    # Existing driver runners pass a list; the core runner supplies per-file
+    # names. Never count fixture branches or accidentally merge same-name code.
+    by_file = names if isinstance(names, dict) else {"sunxi_nand.c": names}
     result = {}
-    for name in names:
-        functions = [f for f in data["functions"] if f["name"] == name]
-        if len(functions) != 1:
-            raise RuntimeError("missing source function coverage: " + name)
-        function = functions[0]
-        lines = [line for line in data["lines"] if line.get("function_name") == name]
-        branches = [b for line in lines for b in line.get("branches", [])]
-        result[name] = dict(calls=function["execution_count"],
-            lines=len(lines), lines_hit=sum(line["count"] > 0 for line in lines),
-            branches=len(branches), branches_hit=sum(b["count"] > 0 for b in branches),
-            missed_lines=[line["line_number"] for line in lines if not line["count"]],
-            source_lines=[line["line_number"] for line in lines],
-            covered_lines=[line["line_number"] for line in lines if line["count"]],
-            source_branches=[f"{line['line_number']}:{i}" for line in lines
-                             for i, branch in enumerate(line.get("branches", []))],
-            covered_branches=[f"{line['line_number']}:{i}" for line in lines
-                              for i, branch in enumerate(line.get("branches", [])) if branch["count"]])
+    for filename, function_names in by_file.items():
+        if filename not in files:
+            raise RuntimeError("missing source-mapped coverage: " + filename)
+        data = files[filename]
+        for name in function_names:
+            functions = [f for f in data["functions"] if f["name"] == name]
+            if len(functions) != 1:
+                raise RuntimeError("missing source function coverage: " + name)
+            function = functions[0]
+            lines = [line for line in data["lines"] if line.get("function_name") == name]
+            branches = [b for line in lines for b in line.get("branches", [])]
+            key = f"{filename}:{name}" if isinstance(names, dict) else name
+            result[key] = dict(calls=function["execution_count"],
+                lines=len(lines), lines_hit=sum(line["count"] > 0 for line in lines),
+                branches=len(branches), branches_hit=sum(b["count"] > 0 for b in branches),
+                missed_lines=[line["line_number"] for line in lines if not line["count"]],
+                source_lines=[line["line_number"] for line in lines],
+                covered_lines=[line["line_number"] for line in lines if line["count"]],
+                source_branches=[f"{line['line_number']}:{i}" for line in lines
+                                 for i, branch in enumerate(line.get("branches", []))],
+                covered_branches=[f"{line['line_number']}:{i}" for line in lines
+                                  for i, branch in enumerate(line.get("branches", [])) if branch["count"]])
     return dict(kind="host-source-gcov-not-kernel-coverage", functions=result,
                 totals={k: sum(v[k] for v in result.values())
                         for k in ("lines", "lines_hit", "branches", "branches_hit")})

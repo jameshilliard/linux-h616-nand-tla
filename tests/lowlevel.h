@@ -58,7 +58,7 @@ struct sunxi_nfc_timings { u8 setup_cycles; s32 tWB[4], tADL[4], tWHR[4], tRHW[4
 struct sunxi_nfc_caps {
     bool has_mdma, has_mdma_desc;
     unsigned reg_spare_area, random_en_mask;
-    unsigned reg_io_data, dma_maxburst;
+    unsigned reg_io_data, dma_maxburst, max_ecc_steps;
     int sram_size;
     const struct sunxi_nfc_timings *timings;
 };
@@ -119,6 +119,7 @@ static u8 registers[0x3000], media[2][20000];
 static struct {
     unsigned maps, unmaps, prep, submit, term, barrier, doorbell, serial;
     unsigned commands, reads, writes, row, column, fail_command, partial_bytes, address_cycles;
+    unsigned reg_writes[0x3000/4];
     unsigned disable, enable, wait_calls, irq_calls, poll_calls;
     enum dma_data_direction map_direction, unmap_direction;
     enum dma_transfer_direction prep_direction;

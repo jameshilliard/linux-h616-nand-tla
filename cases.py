@@ -34,11 +34,11 @@ MODULES = {
 }
 
 
-def add(module, name, constants, *, expected=None, kind="positive"):
+def add(module, name, constants, *, expected=None, kind="positive", temporal=False):
     config = dict(constants)
     config.setdefault("Mutation", "none")
     CASES.append(dict(module=module, name=name, constants=config,
-                      expected=expected, kind=kind))
+                      expected=expected, kind=kind, temporal=temporal))
 
 
 def mutation(module, base, mutation_name, invariant, **changes):
@@ -132,3 +132,6 @@ add("NandEcc", "ecc-mixed-raw-errors", dict(
 
 from extended_cases import extend
 extend(MODULES, add, mutation)
+
+from integration_cases import extend_integration
+extend_integration(MODULES, add, mutation)

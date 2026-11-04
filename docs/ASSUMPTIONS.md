@@ -3,9 +3,10 @@
 ## Results and their classification
 
 The positive model configurations and host checks pass under their stated
-contracts. The extended tests also reproduce three conditional source-level
-failures: split address-cycle loss, a failed clock change cached as successful,
-and ignored external DMA configuration failure. Their actual-source
+contracts. The tests also reproduce six conditional source-level failures:
+split address-cycle loss, a failed clock change cached as successful, ignored
+external DMA configuration failure, read-retry OOB misplacement, and ignored
+BBT scan/read transport errors. Their actual-source
 reproducers and reachability limits are in [FINDINGS.md](FINDINGS.md).
 
 Deliberately broken variants demonstrate that the named checks can fail. They
@@ -60,7 +61,9 @@ an automatic kernel fix.
 - `disable_irq()` is modeled as blocking new handler entries and waiting for
   the running handler. MMIO writes/readback have their documented ordering.
   Descriptor publication separately models stores, visibility and `dma_wmb()`;
-  this is not a complete weak-memory, posted-write or cache-coherency model.
+  `NandOwnership` adds streaming-map/unmap visibility and nondeterministic early
+  visibility for coherent descriptors. This is not a complete weak-memory,
+  posted-write, Linux memory-model or cache-coherency model.
 - A later hardware slot in a PAGE_OP uses page-relative main-data columns.
   After a manual nonzero column change, the driver therefore limits later
   variable-length batches to one slot and restores the spare base. This is an
@@ -85,7 +88,9 @@ submission: `nand_get_device()`, `nand_read_page_op()`,
 `nand_change_read_column_op()`, `nand_prog_page_begin_op()`,
 `nand_prog_page_end_op()`, and `nand_scan_tail()`. The low-level harness compiles
 the unchanged operation parser and suboperation helpers from that same core
-revision; it does not compile core locking, scanning, read-retry or BBT code.
+revision. The separate integration harness now compiles selected unchanged
+core request/read-retry and BBT scan/create/update/read functions. It does not
+compile the complete scan/identification flow, core locking or device removal.
 
 The contracts are consistent with the
 [DMAengine client interface](https://docs.kernel.org/driver-api/dmaengine/client.html),
@@ -98,8 +103,10 @@ assumptions in this particular recovery sequence.
 
 - ECC results and corrected bytes are inputs to the model. Bit-level NAND
   programming and partial-program failures are modeled, and repeated programming
-  is tested in C. BCH decoding, erase, analog errors, device partial-program-count
-  limits, power failure and wear remain outside scope.
+  is tested in C. Erase, finite program-count limits and interrupted BBT updates
+  now have explicit models. The limits are device/caller contracts, not a
+  generic policy enforced by sunxi. BCH decoding, analog cell behavior, wear,
+  retention and a specific part's power-failure guarantees remain outside scope.
 - The Allwinner erased-page check is a firmware compatibility heuristic over
   re-encoded, ECC-corrected protected bytes. Passing it is not mathematical
   proof that the physical page was never programmed. The zero-page rule has
@@ -107,8 +114,10 @@ assumptions in this particular recovery sequence.
   consumers.
 - PIO and DMA intentionally expose different normal parity-byte representations;
   both use the page seed for the unprotected tail. `NandOob` uses representation
-  labels; `NandMedia` uses reversible masks. C checks actual transforms against
-  a bit-level oracle, but this is not an end-to-end hardware BCH/page emulator.
+  labels; `NandMedia` uses reversible masks. The integration C checks build a
+  physical-byte image, discard scratch registers, and read it with matching
+  PIO/DMA paths against a bit-level oracle. Parity is synthetic: this is not an
+  end-to-end hardware BCH/page emulator or a vendor-media golden-image test.
 - A raw reread is allowed to disturb controller scratch/user-data state in the
   fixtures. This adversarial assumption checks the two-pass capture contract;
   it is not a claim that every controller overwrites every scratch register.
@@ -126,11 +135,21 @@ control-flow tests. Counter values are bounded examples plus a direct C wrap
 check, not a proof against arbitrary lifetime-wide statistics errors. Liveness
 uses weak fairness and makes no real-time latency guarantee.
 
-The seven requested follow-up areas now have coverage, itemized in
-[EXTENDED-COVERAGE.md](EXTENDED-COVERAGE.md), including the distinctions between
-modeled and source-executed paths. Remaining end-to-end gaps include device-core
-probe/unbind and every allocation failure, provider internals/IOMMU behavior,
-physical reset/clock/pinctrl, full MTD/BBT algorithms, firmware/device-tree
-parsing, and real hardware memory ordering. The driver supplies no PM callbacks
-whose suspend/resume protocol could be validated here. No new hardware testing
-was performed for either the initial or extended validation.
+The first seven follow-up areas are itemized in
+[EXTENDED-COVERAGE.md](EXTENDED-COVERAGE.md); the six integration areas are in
+[INTEGRATION-COVERAGE.md](INTEGRATION-COVERAGE.md). Both distinguish modeled from
+source-executed paths. Remaining end-to-end gaps include device-core probe/unbind,
+every allocation failure, provider internals/IOMMU behavior, physical
+reset/clock/pinctrl, complete NAND discovery and optional BBT formats,
+firmware/device-tree parsing, and real hardware memory ordering. The driver
+supplies no PM callbacks whose suspend/resume protocol could be validated here.
+No new hardware testing was performed by these validation runs.
+
+`NandRt` checks safety and eventual progress separately. Removing eventual IRQ
+thread scheduling must produce a termination counterexample even though the
+drain-before-reuse safety rule still holds. No bounded RT latency is claimed.
+
+The BBT persistence model assumes torn payloads are rejected when `DetectTorn`
+is true. Turning that off shows why a recognizable table header is insufficient
+to prove an interrupted write preserved its entries. This is not a new checksum
+or atomic-commit mechanism implemented by the driver or core.

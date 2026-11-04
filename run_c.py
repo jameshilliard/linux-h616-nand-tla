@@ -101,7 +101,8 @@ def main():
     combined = ('#line 1 "fixtures.h"\n' + (HERE / "tests/fixtures.h").read_text() + "\n" +
                 "\n".join(generated) + '\n#line 1 "check-tests.c"\n' + (HERE / "tests/check.c").read_text() +
                 '\n#line 1 "flow.c"\n' + (HERE / "tests/flow.c").read_text() +
-                '\n#line 1 "attach.c"\n' + (HERE / "tests/attach.c").read_text())
+                '\n#line 1 "attach.c"\n' + (HERE / "tests/attach.c").read_text() +
+                '\n#line 1 "format.c"\n' + (HERE / "tests/format.c").read_text())
     (out / "check.c").write_text(combined)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",

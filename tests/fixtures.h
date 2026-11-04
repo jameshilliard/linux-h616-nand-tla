@@ -213,11 +213,17 @@ static void memcpy_fromio(void *dst, const void *src, size_t n) {
     assert(off >= 0 && off + n <= sizeof(controller.regs));
     memcpy(dst, src, n);
 }
+/* Optional persistent raw image, used only by the cross-path format oracle. */
+static const u8 *format_image;
+static size_t format_image_len;
 static int transfer(struct nand_chip *n, unsigned col, void *dst, unsigned len) {
     assert(col + len <= n->mtd.writesize + n->mtd.oobsize);
     if (flow_event(FP_READ)) return -ETIMEDOUT;
     if (++raw_calls == fail_raw_at) return -ETIMEDOUT;
-    if (dst) memset(dst, 0xa7, len);
+    if (dst && format_image) {
+        assert(col + len <= format_image_len);
+        memcpy(dst, format_image + col, len);
+    } else if (dst) memset(dst, 0xa7, len);
     column = col + len;
     return 0;
 }

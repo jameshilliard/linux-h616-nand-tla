@@ -58,6 +58,9 @@ def main():
         parser.error("reference driver differs from the pinned submission")
     if digest(HERE / "reference/allwinner,sun4i-a10-nand.yaml") != SOURCE["binding_sha256"]:
         parser.error("reference binding differs from the pinned submission")
+    for name, info in SOURCE["core_sources"].items():
+        if digest(HERE / "reference" / name) != info["sha256"]:
+            parser.error("reference core source differs from the pinned submission: " + name)
     jar = args.jar.resolve()
     if not jar.exists() and args.download:
         jar.parent.mkdir(parents=True, exist_ok=True)
@@ -88,10 +91,13 @@ def main():
         (case_dir / (wrapper + ".tla")).write_text(
             f"---- MODULE {wrapper} ----\nEXTENDS {module}\n" +
             "\n".join(definitions) + "\n====\n")
-        invariants = [case["expected"]] if case["expected"] else spec["invariants"]
+        temporal = case.get("temporal", False)
+        invariants = [case["expected"]] if case["expected"] and not temporal else spec["invariants"]
         cfg = ("SPECIFICATION Spec\nCONSTANTS\n" + "\n".join(assignments) +
                "\nINVARIANTS\n  " + "\n  ".join(invariants) + "\n")
-        if not case["expected"]:
+        if temporal:
+            cfg += "PROPERTY " + case["expected"] + "\n"
+        elif not case["expected"]:
             cfg += "PROPERTY Terminates\n"
         (case_dir / "model.cfg").write_text(cfg)
         command = ["java", "-Xmx1g", "-XX:+UseParallelGC", "-cp", str(jar),
@@ -110,7 +116,10 @@ def main():
             log += "\nHARNESS TIMEOUT\n"
             rc = -1
         (case_dir / "tlc.log").write_text(log)
-        if case["expected"]:
+        if temporal:
+            matched = (rc == 13 and f"Temporal property {case['expected']} was violated." in log and
+                       "The following behavior constitutes a counter-example:" in log)
+        elif case["expected"]:
             matched = (rc == 12 and
                        f"Invariant {case['expected']} is violated." in log and
                        "The behavior up to this point is:" in log)

@@ -47,11 +47,19 @@ LateEvent ==
                        !.late = FALSE]
 IrqRead ==
     /\ s.irq = "idle" /\ ~s.disabled /\ s.mask \cap s.status # {}
-    /\ s' = [s EXCEPT !.irq = "ack", !.hs = s.status, !.hi = s.mask,
+    /\ s' = [s EXCEPT !.irq = "read-mask", !.hs = s.status,
                        !.hgen = IF "cmd" \in s.status THEN s.statusEpoch ELSE s.epoch]
+IrqReadMask ==
+    /\ s.irq = "read-mask"
+    /\ s' = [s EXCEPT !.hi = s.mask,
+        !.irq = IF s.hs \cap s.mask = {} THEN "idle" ELSE "ack"]
 IrqAck ==
     /\ s.irq = "ack"
-    /\ s' = [s EXCEPT !.status = @ \ s.hs, !.mask = s.hi \ s.hs,
+    /\ s' = [s EXCEPT !.status = @ \ s.hs,
+        !.stale = @ \/ s.hgen # s.epoch, !.irq = "mask"]
+IrqMask ==
+    /\ s.irq = "mask"
+    /\ s' = [s EXCEPT !.mask = s.hi \ s.hs,
         !.stale = @ \/ s.hgen # s.epoch, !.irq = "signal"]
 IrqSignal ==
     /\ s.irq = "signal"
@@ -124,7 +132,7 @@ Return ==
 Done == s.cpu = "done" /\ s.irq = "idle" /\ UNCHANGED vars
 Cpu == Prepare \/ PrepareFail \/ Issue \/ Wake \/ Poll \/ Timeout \/ Drain \/
     Check \/ Disarm \/ Abort \/ Cleanup \/ Fallback \/ Fail \/ Advance \/ Finish \/ Return
-Irq == IrqRead \/ IrqAck \/ IrqSignal
+Irq == IrqRead \/ IrqReadMask \/ IrqAck \/ IrqMask \/ IrqSignal
 Next == Cpu \/ Irq \/ Hardware \/ LateEvent \/ Done
 Spec == Init /\ [][Next]_vars /\ WF_vars(Cpu) /\ WF_vars(Irq)
 NoUnsafeUnmap == ~s.unsafe

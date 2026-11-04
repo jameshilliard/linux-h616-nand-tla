@@ -8,7 +8,18 @@
   "binding_sha256": "3eb4fb24d2974659b1fbfe552d0f1b4cdaa61c18fd73710322bbb914c41de3ac",
   "parser_excerpt_sha256": "850bd4d8926c8a3b5ad3a604e756519f569534c4bb1b267cd1f6d498d79b3679",
   "parser_header_excerpt_sha256": "84253fa3d6ff09caaabcf7663a313744415a873dd3d2593a57c9aa6ef801052c",
+  "core_sources": {
+    "nand_base.c": {"path": "drivers/mtd/nand/raw/nand_base.c", "sha256": "a2e5a09d191eac2834e712a8c4b8616fa15fda5c5b061e9a800d53bfd89dd231"},
+    "nand_bbt.c": {"path": "drivers/mtd/nand/raw/nand_bbt.c", "sha256": "1287239af1a6c37bdcf53972d3d902ae31d53bf8594bb5c86f43d4e93b11f821"},
+    "mtdcore.c": {"path": "drivers/mtd/mtdcore.c", "sha256": "216f5235b8827145f54de960dd05e80832b288ef815f5e182b310089e743a3a8"},
+    "rawnand.h": {"path": "include/linux/mtd/rawnand.h", "sha256": "7f6a37a4ea6a2e8f32bc374ec2419b469dfe715482a61de0e0f6ed304ee790c9"},
+    "bbm.h": {"path": "include/linux/mtd/bbm.h", "sha256": "cca4e9c7384c9b7427809fc7d5b684a30a76afa094557cb4fab9fec8e28cc5eb"},
+    "mtd.h": {"path": "include/linux/mtd/mtd.h", "sha256": "7ffee580bb12556e4074f07e6fdf13d56d9a5ca18d2eb69ebb4d3c0c9896badb"}
+  },
   "tlc_version": "1.8.0",
-  "tlc_sha256": "fc6878c603f0fdc18b9fe3e5bf51860cb90ab5b1154e3c371660c036d6bdd63e",
+  "tlc_build": "2026.11.03.180953",
+  "tlc_sha256": "e20447644bfabd29d6bd0fc2c0eb1473fb301c1a0e4dfe1961938ce5a191edbf",
+  "tlc_release_asset_id": 706603562,
+  "previous_tlc_sha256": "fc6878c603f0fdc18b9fe3e5bf51860cb90ab5b1154e3c371660c036d6bdd63e",
   "tlc_url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar"
 }

@@ -25,6 +25,7 @@ static void writel(u32 value, void *p)
 {
     unsigned off=regoff(p);
     hw.writes++; hw.serial++;
+    hw.reg_writes[off/4]++;
     if (off==NFC_REG_ST || off==NFC_REG_H6_MDMA_STA) {
         store(off,load(off)&~value); return;
     }
@@ -88,10 +89,8 @@ static void reset_fixture(unsigned backend)
     memset(&hw,0,sizeof(hw)); memset(&nfc,0,sizeof(nfc));
     memset(registers,0,sizeof(registers)); memset(&desc,0xa5,sizeof(desc));
     memset(&chip,0,sizeof(chip)); memset(media,0xff,sizeof(media));
-    caps=(struct sunxi_nfc_caps){.has_mdma=backend==1,.has_mdma_desc=backend==2,
-        .reg_spare_area=backend==2 ? NFC_REG_H6_SPARE_AREA : NFC_REG_A10_SPARE_AREA,
-        .random_en_mask=backend==2 ? BIT(5) : BIT(9), .sram_size=backend==2 ? 8192 : 1024,
-        .timings=backend==2 ? &sun50i_h616_nfc_timings : &sun4i_a10_nfc_timings};
+    assert(backend<ARRAY_SIZE(source_caps));
+    caps=source_caps[backend];
     nfc.regs=registers; nfc.caps=&caps; nfc.use_mdma=backend!=0;
     nfc.mdma_desc=backend==2 ? &desc : NULL; nfc.mdma_desc_dma=0x12345000;
     hw.map_address=0x9abc0000;
@@ -109,6 +108,7 @@ static void dma_checks(void)
     for(unsigned fault=0;fault<4;fault++)
     for(unsigned chunks=1;chunks<=32;chunks*=2) {
         reset_fixture(backend);
+        if(chunks>caps.max_ecc_steps) continue;
         hw.map_fail=fault==1; hw.prep_fail=fault==2; hw.submit_fail=fault==3;
         store(NFC_REG_CTL,0x80008001);
         struct scatterlist sg;
@@ -117,6 +117,8 @@ static void dma_checks(void)
         assert((ret<0)==fail);
         if(!fail) {
             assert(hw.mapped && (load(NFC_REG_CTL)&NFC_RAM_METHOD));
+            assert(load(NFC_REG_CTL)==((0x80008001|NFC_RAM_METHOD)&
+                                     ~(backend ? NFC_DMA_TYPE_NORMAL : 0)));
             assert(load(NFC_REG_CNT)==1024);
             assert(load(NFC_REG_SECTOR_NUM)==(backend==2 ? GENMASK(chunks-1,0) : chunks));
             if(backend==2) {
@@ -135,6 +137,14 @@ static void dma_checks(void)
         if(hw.unmaps) assert(hw.unmap_direction==(enum dma_data_direction)direction);
         if(hw.prep) assert(hw.prep_direction==(direction==DMA_FROM_DEVICE ? DMA_DEV_TO_MEM : DMA_MEM_TO_DEV));
         assert(!(load(NFC_REG_CTL)&NFC_RAM_METHOD));
+        for(unsigned off=0;off<sizeof(registers);off+=4) if(hw.reg_writes[off/4]) {
+            bool common=off==NFC_REG_CTL || off==NFC_REG_CNT || off==NFC_REG_SECTOR_NUM;
+            bool legacy=backend==1 && (off==NFC_REG_MDMA_ADDR || off==NFC_REG_MDMA_CNT);
+            bool h6=backend==2 && (off==NFC_REG_H6_MDMA_DLBA_REG || off==NFC_REG_H6_MDMA_STA);
+            assert(common || legacy || h6);
+        }
+        /* On external DMA this bit is not owned by the driver's MDMA path. */
+        if(!backend) assert(load(NFC_REG_CTL)&NFC_DMA_TYPE_NORMAL);
         runs++;
     }
     static const unsigned lengths[]={1,7,8,511,512,1024,65528,65535,65536};
@@ -166,8 +176,6 @@ static void dma_init_checks(void)
     for(unsigned backend=0;backend<3;backend++)
     for(unsigned fail=0;fail<6;fail++) {
         reset_fixture(backend); nfc.use_mdma=false; nfc.mdma_desc=NULL; nfc.dmac=NULL;
-        caps.reg_io_data=backend ? 0x300 : 0x30;
-        caps.dma_maxburst=backend ? 8 : 4;
         hw.mask_fail=fail==1; hw.alloc_fail=fail==2;
         hw.channel_error=fail==3 ? -EIO : fail==4 ? -EPROBE_DEFER : 0;
         hw.config_error=fail==5 ? -EIO : 0;

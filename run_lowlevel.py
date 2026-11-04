@@ -46,6 +46,23 @@ def main():
         if not match:
             raise ValueError(name)
         generated.append(match[0])
+    # Keep each exercised capability expression tied to the submitted SoC data,
+    # rather than reconstructing A10/A23/H616 values in the fixture.
+    fields = ("has_mdma", "has_mdma_desc", "reg_spare_area", "random_en_mask",
+              "reg_io_data", "dma_maxburst", "sram_size", "timings", "max_ecc_steps")
+    generated.append("static const struct sunxi_nfc_caps source_caps[] = {")
+    for soc in ("a10", "a23", "h616"):
+        match = re.search(r"^static const struct sunxi_nfc_caps sunxi_nfc_" + soc +
+                          r"_caps = \{(.*?)\n};", source, re.M | re.S)
+        if not match:
+            raise ValueError("missing SoC capabilities: " + soc)
+        values = []
+        for field in fields:
+            value = re.search(r"^\s*\." + field + r"\s*=\s*(.*),$", match[1], re.M)
+            if value:
+                values.append(f".{field} = {value[1]}")
+        generated.append("{ " + ", ".join(values) + " },")
+    generated.append("};")
     hashes = {}
     for name in FUNCTIONS:
         if name == "sunxi_nfc_exec_op":

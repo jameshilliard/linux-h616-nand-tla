@@ -144,3 +144,112 @@ quiescence, clock behavior and core lifetime remain explicit contracts.
 Public files were checked for local paths and private test-hardware details.
 The inactive CI template includes both C suites and the full model run. Hosted
 CI is still not enabled with the available publishing credential.
+
+# Integration validation record
+
+Validated on 2026-11-03 against the same pinned v9 implementation and its
+matching MTD/NAND-core/BBT sources. The preceding records remain historical;
+this extension adds the six areas in
+[INTEGRATION-COVERAGE.md](docs/INTEGRATION-COVERAGE.md).
+
+## Reproducible TLC pin
+
+The earlier records used a TLC build labeled 1.8.0 with SHA-256
+`fc6878c603f0fdc18b9fe3e5bf51860cb90ab5b1154e3c371660c036d6bdd63e`.
+During clean-download validation, that digest did not match the asset served
+by the recorded v1.8.0 prerelease URL. The previous metadata therefore did not
+provide a working fresh-download reproduction.
+
+The current pin is the publicly downloaded v1.8.0 prerelease asset
+`706603562`, build `2026.11.03.180953`, SHA-256
+`e20447644bfabd29d6bd0fc2c0eb1473fb301c1a0e4dfe1961938ce5a191edbf`.
+The official release metadata and downloaded bytes agreed. All configurations
+were rerun with this exact jar, not merely relabeled. A future upstream asset
+replacement must fail digest verification. The original digest is retained in
+`source.json` for auditability.
+
+## Integration TLC result
+
+All **276 configurations across 20 models** matched their expectations:
+
+- 205 positive configurations passed their invariants and termination property.
+- 52 deliberate mutations failed the specified invariant.
+- 13 assumption tests reproduced the specified safety or liveness failure.
+- 6 source-contract configurations reproduced the named failure in the modeled
+  implementation. These are configurations, not six newly discovered bugs.
+- All **174 required positive-model actions** were reached; none was uncovered.
+
+Positive configurations generated **347,012 states** and found **245,746
+distinct states**. Across positive and negative configurations the respective
+sums were **362,912** and **259,066**. These sums describe separate bounded
+instances, not an unbounded proof. The run used one worker, seed 1 and
+fingerprint polynomial 0, and took approximately 233 seconds locally.
+
+| Added model | Positive | Mutation | Assumption / source-contract |
+| --- | ---: | ---: | ---: |
+| NandRequest | 15 | 1 | 2 |
+| NandBbt | 4 | 1 | 3 |
+| NandFormat | 19 | 1 | 0 |
+| NandOwnership | 12 | 4 | 1 |
+| NandPersistence | 8 | 1 | 1 |
+| NandRt | 1 | 1 | 1 |
+| NandProgram | 3 | 1 | 1 |
+
+The RT starvation test must fail `Terminates` specifically. An unrelated TLC
+error, unexpected invariant violation, timeout or missing counterexample is
+not accepted as its expected result.
+
+## Integration source execution
+
+All three C harnesses passed ASan/UBSan and their separate GCOV executions:
+
+| Check | Result |
+| --- | --- |
+| Existing driver matrices | All earlier layout/ECC/control/parser/timing assertions remain passing |
+| Stored-image format oracle | 168 matching-format PIO/DMA writer-reader combinations, including distinct main/protected OOB, BBM, parity representations, tails and page-seed boundaries |
+| SoC/backend DMA matrix | 200 source-capability-based preparation/direction/alignment/failure cases; MMIO whitelist and external-DMA bit preservation checked |
+| DMA initialization and IRQ matrices | 18 init and 280 IRQ/poll cases remain passing |
+| Core/MTD/BBT execution | 46 unchanged functions, all executed; 19,422 assertions passed |
+| Core witnesses | Read-retry OOB duplication and ignored BBT scan/read transport errors reproduced in exact source |
+| Persistent BBT | Actual mirror repair, reserved-region handling, no-marker mode, relocation and interrupted update across version rollover checked |
+
+The backend count changed from 216 to 200 because the A10/A23 matrix now uses
+their actual 16-step limit instead of also testing impossible 32-step inputs.
+H616's 32-step cases remain. Driver-source coverage is unchanged: **82 of 90
+functions**, **1,268 / 1,291 lines**, **601 / 644 branch edges**. Core-source
+coverage is reported separately: **46 extracted/executed functions**,
+**788 / 898 lines**, **371 / 501 branch edges**. No 100% source-branch or
+whole-kernel coverage is implied.
+
+All six added source/header files were compared byte-for-byte with the sent
+kernel commit, independently of their local hash manifest. The source files
+and kernel working tree were not modified.
+Authored-file whitespace checks passed. Two existing trailing spaces in the
+verbatim `mtdcore.c` input were retained to preserve source identity.
+
+## Validation-design corrections and limits
+
+The complete mutation run exposed an initially weak `RetryStats` assertion:
+it checked the counters only when the result was already success, allowing
+leaked counters to produce a false ECC result without failing the assertion.
+It now also requires success for the model's guaranteed-successful second
+attempt. The deliberate mutation fails as intended; the underlying C test
+already checked this behavior. This was a validation fix, not a kernel fix.
+
+Other construction checks caught a mismatched symbolic record/string
+comparison and an incorrect expected TLC temporal-error message before the
+final run. They were corrected without weakening the checked properties.
+
+Three new conditional core findings are documented alongside the three earlier
+driver findings in [FINDINGS.md](docs/FINDINGS.md). No claim is made that the
+sunxi OOB patches introduced the core issues. Torn-write detection, hardware
+DMA stop, controller seed reload, device-specific programming rules and IRQ
+schedulability remain explicit contracts. Hardware BCH encoding, analog power
+loss, real memory ordering and complete kernel integration are not proved.
+
+The applicable general, false-positive, locking, I/O, alignment and allocation
+Sashiko prompts were checked as documented in the integration coverage map.
+No production driver change, destructive NAND operation, or new hardware test
+was performed. Public files were checked for private paths/hardware details.
+The CI template includes the core runner but remains inactive until installed
+with a workflow-authorized credential.
