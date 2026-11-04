@@ -11,10 +11,10 @@ Candidate results are not evidence that the baseline has been fixed.
 | --- | --- | --- |
 | 1, split address suboperations | `submit/sunxi-nand-fixes-v10` | Iterate over the returned cycle count, using the start offset only to index the input. |
 | 2, failed clock setup | Same sunxi branch | Return the clock error before changing controller registers or the cached rate; propagate it to callers. |
-| 4, read-retry OOB accounting | `submit/rawnand-core-error-handling-v1` | Copy OOB and advance its output pointer only after the retry decision. |
-| 5, BBT marker-scan error | Same NAND-core branch | Return the scan failure before publishing an incomplete table. |
-| 6, BBT read transport error | Same NAND-core branch | Return non-ECC transport errors from either selected copy, retaining existing ECC recovery. |
-| 7, timing fallback error | Same NAND-core branch | Check controller and chip reset errors, preserve an earlier error, and skip chip RESET after controller fallback fails. |
+| 4, read-retry OOB accounting | `submit/rawnand-read-retry-oob-v1` | Copy OOB and advance its output pointer only after the retry decision. |
+| 5, BBT marker-scan error | `submit/rawnand-bbt-scan-error-v1` | Return the scan failure before publishing an incomplete table. |
+| 6, BBT read transport error | `submit/rawnand-bbt-read-error-v1` | Return non-ECC transport errors from either selected copy, retaining existing ECC recovery. |
+| 7, timing fallback error | `submit/rawnand-timing-recovery-v1` | Check controller and chip reset errors, preserve an earlier error, and skip chip RESET after controller fallback fails. |
 | 9, IRQ bank dispatch | `submit/sun6i-dma-irq-banks-v1` | Separate fixes for the physical-channel index and partial final bank, using the current per-controller bank width. |
 | 10, cyclic callback lifetime | `submit/sun4i-dma-callback-lifetime-v1` | Serialize IRQ handling with termination, retain terminated cyclic descriptors, and drain IRQ/tasklet execution before freeing them. |
 
@@ -23,14 +23,49 @@ NAND-core and provider branches apply independently of the sunxi OOB series.
 The sunxi series remains based on NAND's `nand/next` at `30daaf3e7897`;
 the DMA branches use `dmaengine/fixes` at `6628e7d4c6b2`.
 
+The four NAND-core fixes are independent one-patch branches on the same
+NAND base. Each exports one patch without a cover message and has no patch
+prerequisites. The original `submit/rawnand-core-error-handling-v1` branch
+is retained unchanged. Splitting preserved each diff, commit message,
+authorship, Fixes tag and sign-off.
+
 ## Running candidate checks
 
 With the appropriate branch checked out in a separate kernel repository:
 
 ```sh
 python3 run_lowlevel.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
-python3 run_core.py --candidate-dir ../linux/drivers/mtd/nand/raw
+python3 run_c.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_codec.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_lifecycle.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_composed.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_discovery_boundary.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_lifetime_boundary.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+```
+
+For the combined core branch, use `run_core.py --candidate-dir` without
+`--fix`. For an individual core branch, select just its expected fix:
+
+```sh
+python3 run_core.py --candidate-dir ../linux/drivers/mtd/nand/raw --fix read-retry-oob
 python3 run_lifecycle.py --candidate-nand-base ../linux/drivers/mtd/nand/raw/nand_base.c
+```
+
+Check all four committed branches without switching checkouts:
+
+```sh
+python3 run_split_core.py --kernel-dir ../linux \
+  --ref read-retry-oob=submit/rawnand-read-retry-oob-v1 \
+  --ref bbt-scan=submit/rawnand-bbt-scan-error-v1 \
+  --ref bbt-read=submit/rawnand-bbt-read-error-v1 \
+  --ref timing-recovery=submit/rawnand-timing-recovery-v1
+```
+
+Each run expects only the selected fix and retains witnesses for the
+unfixed core bugs. It records the resolved Git commit and source hashes.
+For the separate provider branches:
+
+```sh
 python3 run_irq_regression.py --kernel-dir ../linux --ref submit/sun6i-dma-irq-banks-v1
 python3 run_provider_boundary.py --candidate-sun4i ../linux/drivers/dma/sun4i-dma.c
 ```

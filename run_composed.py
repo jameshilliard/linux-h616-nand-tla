@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
 """NAND-core requests and BBT operations through real sunxi page callbacks."""
+import argparse
+from pathlib import Path
 import re
 from boundary_common import HERE, sources, bodies, check
 from driver_boundary import generate
 from run_core import FUNCTIONS
 
 
-def units():
-    src=sources()
+def units(candidate_source=None):
+    src=sources(candidate_source)
     header=(HERE/"tests/core.h").read_text().replace("/* @bbm@ */",src["bbm.h"])
     defines=[]
     for name in ("rawnand.h","nand_bbt.c"):
@@ -23,7 +25,10 @@ def units():
 
 
 if __name__=="__main__":
-    unit,hashes,src=units()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--candidate-source", type=Path)
+    args = parser.parse_args()
+    unit,hashes,src=units(args.candidate_source)
     coverage_names = {}
     for key in hashes:
         filename, name = key.split(":", 1)

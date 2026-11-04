@@ -24,6 +24,9 @@ whatever happens to be in the latest kernel tree**.
 Optional [candidate-fix checks](docs/CANDIDATE-FIXES.md) exercise local fixes
 alongside that baseline, with separate source hashes and positive regression
 expectations. They do not replace the pinned submission or its counterexamples.
+The [current-driver audit](docs/CURRENT-DRIVER.md) maps the updated sunxi
+draft to the source tests and the chip-selection model, including remaining
+branch gaps and hardware/lifetime limitations.
 
 ## Run
 
@@ -95,10 +98,12 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandNegotiation` | Bootloader timing handoff, SET/GET_FEATURES, SDR mode changes, fallback and failed recovery |
 | `NandRelocation` | BBT replacement failure/exhaustion, mirror separation, restart and torn-table rejection |
 | `NandSequence` | Persistent chip/seed/column/spare state and enable-bit cleanup across mixed operations |
+| `NandSelection` | Equal/different-rate chip switches, repeated clock failures, check-only purity and error propagation in both operation callers |
 | `NandMtdLifetime` | Registration references versus open users and NAND resource lifetime |
 | `NandProvider` | Command completion, provider IRQ/tasklet completion, memory drain and termination; explicit no-client-callback case |
 | `NandDiscovery` | Parameter-copy admission, geometry requirements and callback publication |
 | `NandProviderBanks` | Physical-channel ownership and complete IRQ-bank dispatch |
+| `NandCyclicLifetime` | IRQ/tasklet/termination lifetime for one DMA virtual channel; adjacent provider work, not a NAND transfer mode |
 
 The driver harnesses now extract all 90 function bodies **unchanged** from the
 bundled submitted driver, verify its hash, then compile them with host fixtures.

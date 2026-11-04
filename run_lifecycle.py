@@ -27,6 +27,8 @@ FUNCTIONS = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--candidate-source", type=Path,
+                        help="test this sunxi_nand.c without replacing the pinned reference")
     parser.add_argument("--candidate-nand-base", type=Path,
                         help="nand_base.c containing the timing recovery error fix")
     args = parser.parse_args()
@@ -40,6 +42,9 @@ def main():
             parser.error("source hash mismatch: " + name)
         if name == "nand_base.c" and args.candidate_nand_base:
             src = args.candidate_nand_base.read_text()
+            sources[name] = src
+        if name == "sunxi_nand.c" and args.candidate_source:
+            src = args.candidate_source.read_text()
             sources[name] = src
         for func in names:
             body = extract(src, func)
@@ -72,8 +77,9 @@ def main():
     coverage = build_and_collect(out, command, sources, FUNCTIONS) if passed else None
     if coverage:
         assert all(v["calls"] for v in coverage["functions"].values()), "unexecuted lifecycle function"
-    (out / "summary.json").write_text(json.dumps(dict(passed=passed, driver_sha256=pin["driver_sha256"], functions=hashes,
-        candidate=bool(args.candidate_nand_base),
+    (out / "summary.json").write_text(json.dumps(dict(passed=passed,
+        driver_sha256=hashlib.sha256(sources["sunxi_nand.c"].encode()).hexdigest(), functions=hashes,
+        candidate=bool(args.candidate_nand_base or args.candidate_source),
         source_sha256={n: hashlib.sha256(s.encode()).hexdigest() for n, s in sources.items()},
         output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
     print(run.stdout + run.stderr)

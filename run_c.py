@@ -65,11 +65,15 @@ def extract_function(source, name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--candidate-source", type=Path,
+                        help="test this sunxi_nand.c without replacing the pinned reference")
     args = parser.parse_args()
     source = (HERE / "reference/sunxi_nand.c").read_text()
     pin = json.loads((HERE / "source.json").read_text())
     if hashlib.sha256(source.encode()).hexdigest() != pin["driver_sha256"]:
         parser.error("source hash mismatch")
+    if args.candidate_source:
+        source = args.candidate_source.read_text()
     binding = (HERE / "reference/allwinner,sun4i-a10-nand.yaml").read_bytes()
     if hashlib.sha256(binding).hexdigest() != pin["binding_sha256"]:
         parser.error("binding hash mismatch")
@@ -100,7 +104,8 @@ def main():
     out = Path(tempfile.mkdtemp(prefix="c-", dir=results))
     from compat_sources import generate
     compat, compat_hashes = generate(HERE)
-    combined = ('#line 1 "fixtures.h"\n' + (HERE / "tests/fixtures.h").read_text() + "\n" +
+    combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
+                '#line 1 "fixtures.h"\n' + (HERE / "tests/fixtures.h").read_text() + "\n" +
                 "\n".join(generated) + '\n#line 1 "compat-source.c"\n' + compat +
                 '\n#line 1 "check-tests.c"\n' + (HERE / "tests/check.c").read_text() +
                 '\n#line 1 "flow.c"\n' + (HERE / "tests/flow.c").read_text() +
@@ -125,7 +130,8 @@ def main():
     from source_coverage import build_and_collect
     coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
     (out / "summary.json").write_text(json.dumps(
-        dict(passed=passed, driver_sha256=pin["driver_sha256"],
+        dict(passed=passed, driver_sha256=hashlib.sha256(source.encode()).hexdigest(),
+             candidate=bool(args.candidate_source),
              functions=hashes, compatibility_functions=compat_hashes,
              output=run.stdout, diagnostics=run.stderr, coverage=coverage,
              compiler=args.cc, compiler_flags=command[1:-4]), indent=2) + "\n")

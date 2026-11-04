@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Execute ONFI/extended-ID decoding into actual sunxi attach/layout selection."""
+import argparse
+from pathlib import Path
 import re
 import sys
 from boundary_common import HERE, sources, bodies, check
@@ -14,9 +16,12 @@ FUNCTIONS = {
 }
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--candidate-source", type=Path)
+    args = parser.parse_args()
     if sys.byteorder != "little":
         raise SystemExit("ONFI host fixtures currently require a little-endian host")
-    src=sources()
+    src=sources(args.candidate_source)
     code,proto,hashes=bodies(src,FUNCTIONS)
     header=re.sub(r"^#include.*\n", "", src["onfi.h"],flags=re.M)
     fixture=(HERE/"tests/discovery_boundary.h").read_text().replace("/* @onfi@ */",header)

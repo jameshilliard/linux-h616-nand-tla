@@ -52,6 +52,8 @@ static u8 bitrev8(u8 v) { u8 r=0; for (int i=0;i<8;i++) { r=(r<<1)|(v&1); v>>=1;
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--candidate-source", type=Path,
+                        help="compose BCH vectors with this sunxi_nand.c instead of the pinned driver")
     args = parser.parse_args()
     pin = json.loads((HERE / "reference/codec/source.json").read_text())
     results = HERE / "results"
@@ -222,14 +224,25 @@ def main():
     # Vector headers have a fixed little-endian serialization.
     assert sys.byteorder=="little", "bridge runner currently requires a little-endian host"
     env=dict(os.environ,NAND_CODEC_VECTORS=str(vector_path))
-    checked=subprocess.run([sys.executable,str(HERE/"run_c.py"),"--cc",args.cc],
+    command=[sys.executable,str(HERE/"run_c.py"),"--cc",args.cc]
+    driver = args.candidate_source or HERE / "reference/sunxi_nand.c"
+    driver_data = driver.read_bytes()
+    driver_hash = hashlib.sha256(driver_data).hexdigest()
+    if args.candidate_source:
+        # Match the digest to the bytes tested even if the kernel checkout
+        # changes while this subprocess is compiling.
+        snapshot = out / "candidate-sunxi_nand.c"
+        snapshot.write_bytes(driver_data)
+        command += ["--candidate-source", str(snapshot)]
+    checked=subprocess.run(command,
                            env=env,text=True,capture_output=True,timeout=180)
     (out / "driver-bridge.log").write_text(checked.stdout+checked.stderr)
     assert not checked.returncode and "real BCH/driver composition:" in checked.stdout, checked.stdout+checked.stderr
     print(checked.stdout)
     summary=dict(passed=True,codec_cases=count,page_images=images,vectors=vectors,beyond_capacity=beyond,
                  driver_vectors=bridge_cases,driver_round_trips=bridge_round_trips,wrong_seed_witnesses=wrong_seed,
-                 source=pin,limits=["No captured hardware/BSP golden image", "Beyond-capacity BCH errors can miscorrect",
+                 source=pin,driver_sha256=driver_hash,candidate=bool(args.candidate_source),
+                 limits=["No captured hardware/BSP golden image", "Beyond-capacity BCH errors can miscorrect",
                     "sunxi-tools image builder describes the legacy four-user-byte layout, not H616 vendor packing"])
     (out / "summary.json").write_text(json.dumps(summary,indent=2)+"\n")
     print(f"BCH: {count} correction/over-capacity cases; {len(vectors)} independent parity vectors; {images} sunxi-tools page images")

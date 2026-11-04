@@ -195,7 +195,7 @@ static void request_checks(void)
         if (mode==MTD_OPS_AUTO_OOB) CHECK(mtd_ooblayout_get_databytes(&chip.mtd,expected,spare[1],0,per)==0);
         else memcpy(expected,spare[1],per);
         CHECK(reads==3 && chip.mtd.ecc_stats.failed==0);
-#if FIXED_CORE
+#if FIX_READ_RETRY_OOB
         CHECK(!memcmp(oob+per,expected,per));
         if (mode==MTD_OPS_AUTO_OOB) CHECK(!mtd_ooblayout_get_databytes(&chip.mtd,expected,spare[0],0,per));
         else memcpy(expected,spare[0],per);
@@ -204,7 +204,7 @@ static void request_checks(void)
         CHECK(memcmp(oob+per,expected,per)!=0);
 #endif
     }
-#if FIXED_CORE
+#if FIX_READ_RETRY_OOB
     puts("FIX VERIFIED: read retries publish only final-attempt OOB, once per page");
 #else
     puts("SOURCE WITNESS: successful read retry duplicates page-0 OOB into page-1 output");
@@ -328,7 +328,7 @@ static void bbt_checks(void)
         mirror=primary; mirror.pattern=mirror_pattern;
         page_error[PPB]=-EIO; spare[2*PPB][0]=0;
         CHECK(create_bbt(&chip,buf,&bad,-1)==-EIO);
-#if FIXED_CORE
+#if FIX_BBT_SCAN
         CHECK(check_create(&chip,buf,&bad)==-EIO);
         CHECK(primary.pages[0]==-1 && mirror.pages[0]==-1);
         CHECK(!writes && !primary.version[0] && !mirror.version[0]);
@@ -337,7 +337,7 @@ static void bbt_checks(void)
         CHECK(bbt_get_entry(&chip,2)==BBT_BLOCK_GOOD);
 #endif
     }
-#if FIXED_CORE
+#if FIX_BBT_SCAN
     puts("FIX VERIFIED: marker-scan failure does not publish an incomplete BBT");
 #else
     puts("SOURCE WITNESS: check_create ignores scan EIO and writes an incomplete BBT");
@@ -349,14 +349,14 @@ static void bbt_checks(void)
         CHECK(check_create(&chip,buf,&bad)==0);
         bbt_mark_entry(&chip,7,BBT_BLOCK_WORN); CHECK(nand_update_bbt(&chip,0)==0);
         memset(ram_bbt,0,sizeof(ram_bbt)); main_error[primary.pages[0]]=-EIO;
-#if FIXED_CORE
+#if FIX_BBT_READ
         unsigned before=writes;
         CHECK(check_create(&chip,buf,&bad)==-EIO && writes==before);
 #else
         CHECK(check_create(&chip,buf,&bad)==0 && bbt_get_entry(&chip,7)==BBT_BLOCK_GOOD);
 #endif
     }
-#if FIXED_CORE
+#if FIX_BBT_READ
     for (int versioned=0;versioned<2;versioned++) for (int which=0;which<2;which++) {
         reset(false);
         if (!versioned) primary.options &= ~NAND_BBT_VERSION;
@@ -390,7 +390,7 @@ static void compound_checks(void)
         CHECK(data[PAGE]==0xa5 && !chip.mtd.ecc_stats.failed && chip.selected==-1);
         CHECK(retry_mode==0 && retries==(mode==MTD_OPS_RAW?0:2));
         if (with_oob) {
-#if FIXED_CORE
+#if FIX_READ_RETRY_OOB
             CHECK(ops.oobretlen==per && oob[per]==0xa5);
 #else
             /* Source witness persists on error, not just successful reads. */

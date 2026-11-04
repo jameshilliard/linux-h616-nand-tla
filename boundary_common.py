@@ -11,7 +11,7 @@ from run_core import extract
 HERE = Path(__file__).resolve().parent
 
 
-def sources():
+def sources(candidate_source=None):
     pin = json.loads((HERE / "source.json").read_text())
     extra = json.loads((HERE / "reference/boundaries.json").read_text())
     expected = {name: info["sha256"] for name, info in pin["core_sources"].items()}
@@ -23,6 +23,8 @@ def sources():
         if hashlib.sha256(data).hexdigest() != digest:
             raise ValueError("reference hash mismatch: " + name)
         result[name] = data.decode()
+    if candidate_source:
+        result["sunxi_nand.c"] = candidate_source.read_text()
     return result
 
 
@@ -69,7 +71,11 @@ def check(name, units, hashes, *, cc="gcc", args=(), expected="ALL CHECKS PASSED
         generated_sha256={n: hashlib.sha256(t.encode()).hexdigest() for n, t in units.items()},
         compiler_command=command,
         compiler_version=subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
-        limits=list(limits), coverage=cov), indent=2) + "\n")
+        limits=list(limits), coverage=cov,
+        source_sha256={n: hashlib.sha256(s.encode()).hexdigest()
+                       for n, s in coverage[0].items()} if coverage else {},
+        driver_sha256=hashlib.sha256(coverage[0]["sunxi_nand.c"].encode()).hexdigest()
+                      if coverage and "sunxi_nand.c" in coverage[0] else None), indent=2) + "\n")
     print(run.stdout + run.stderr, end="")
     print("Logs:", out, flush=True)
     if not passed:

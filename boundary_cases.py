@@ -4,6 +4,9 @@
 
 def extend_boundaries(modules, add, mutation):
     modules.update({
+        "NandSelection": dict(invariants=["CacheMatchesClock", "CheckOnlyPure",
+            "FailedSelectionPure", "CorrectTransfer", "BoundedProgress"],
+            actions=["Begin", "Clock", "Cached", "Program", "Transfer", "Return", "Finish"]),
         "NandSequence": dict(invariants=["CurrentContext", "NoInheritedEnable", "CompletedPrefix"],
             actions=["Select", "Configure", "Transfer", "Cleanup", "Finish"]),
         "NandMtdLifetime": dict(invariants=["ReferenceBalance", "ReleaseAtZero", "ResourcesWhileActive"],
@@ -18,6 +21,18 @@ def extend_boundaries(modules, add, mutation):
             actions=["IrqLookup", "IrqLock", "IrqEnqueue", "IrqUnlock",
                      "TaskCapture", "TaskFinish", "Terminate", "DrainIRQ", "DrainTask"]),
     })
+    for rates in ((1, 1), (1, 2), (1, 1, 2)):
+        for caller in ("exec", "dma", "check", "mixed"):
+            base = dict(Steps=3, Rates=rates, ErrorKeepsClock=True,
+                        Callers={"exec", "dma", "check"} if caller == "mixed" else {caller})
+            add("NandSelection", f"selection-{'-'.join(map(str, rates))}-{caller}", base)
+    mutation("NandSelection", base, "cache-failed-rate", "CacheMatchesClock")
+    mutation("NandSelection", base, "ignore-error-exec", "CorrectTransfer")
+    mutation("NandSelection", base, "ignore-error-dma", "CorrectTransfer")
+    mutation("NandSelection", base, "skip-equal-context", "CorrectTransfer")
+    mutation("NandSelection", base, "program-check-only", "CheckOnlyPure")
+    add("NandSelection", "selection-provider-partial-clock-failure",
+        dict(base, ErrorKeepsClock=False), kind="assumption", expected="CacheMatchesClock")
     for kinds in (("ecc", "raw", "ecc"), ("ecc", "status", "ecc"), ("raw", "ecc", "raw")):
         ops = tuple(dict(kind=k, chip=i % 2, page=i + 1, column=i * 1024,
                          spare=(i % 2 + 1) * 2048) for i, k in enumerate(kinds))

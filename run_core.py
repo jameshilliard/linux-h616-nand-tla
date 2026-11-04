@@ -46,7 +46,13 @@ def main():
     parser.add_argument("--cc", default="gcc")
     parser.add_argument("--candidate-dir", type=Path,
                         help="raw NAND directory containing the OOB retry and BBT error fixes")
+    parser.add_argument("--fix", action="append",
+                        choices=("read-retry-oob", "bbt-scan", "bbt-read"),
+                        help="expect only these candidate fixes; defaults to all for --candidate-dir")
     args = parser.parse_args()
+    if args.fix and not args.candidate_dir:
+        parser.error("--fix requires --candidate-dir")
+    fixes = set(args.fix or ("read-retry-oob", "bbt-scan", "bbt-read")) if args.candidate_dir else set()
     pin = json.loads((HERE / "source.json").read_text())
     sources = {}
     for name, info in pin["core_sources"].items():
@@ -74,7 +80,9 @@ def main():
             line = sources[filename][:sources[filename].index(body)].count("\n") + 1
             generated.append(f'#line {line} "{filename}"\n' + body)
             hashes[f"{filename}:{name}"] = hashlib.sha256(body.encode()).hexdigest()
-    combined = (f'#define FIXED_CORE {int(bool(args.candidate_dir))}\n' +
+    fix_definitions = "".join(f"#define FIX_{fix.upper().replace('-', '_')} {int(fix in fixes)}\n"
+                              for fix in ("read-retry-oob", "bbt-scan", "bbt-read"))
+    combined = (fix_definitions +
                 "\n".join(definitions) + '\n#line 1 "core.h"\n' + header +
                 "\n" + "\n".join(generated) + '\n#line 1 "core.c"\n' +
                 (HERE / "tests/core.c").read_text())
@@ -105,6 +113,7 @@ def main():
         passed=passed, functions=hashes, output=run.stdout, diagnostics=run.stderr,
         coverage=coverage,
         candidate=bool(args.candidate_dir),
+        expected_fixes=sorted(fixes),
         source_sha256={n: hashlib.sha256(s.encode()).hexdigest() for n, s in sources.items()}), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)

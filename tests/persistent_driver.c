@@ -25,11 +25,13 @@ static int transfer(struct nand_chip *n,unsigned col,void *dst,unsigned len)
     }
     column=col+len; return 0;
 }
-static void sunxi_nfc_select_chip(struct nand_chip *n,unsigned cs)
+static int sunxi_nfc_select_chip(struct nand_chip *n,unsigned cs)
 {
+    if (select_error) return select_error;
     assert(cs<B_TARGETS); target=cs;
     u32 base=n->mtd.writesize;
     memcpy(controller.regs+NFC_REG_SPARE_AREA(&controller),&base,4);
+    return 0;
 }
 static int nand_read_page_op(struct nand_chip *n,unsigned page,unsigned col,void *dst,unsigned len)
 {

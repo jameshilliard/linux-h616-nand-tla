@@ -72,6 +72,38 @@ static void attach_geometry(void)
     }
     printf("source-extracted ECC init: %u accepted, %u rejected, %u core-fallback cases (%u over-limit geometries)\n",
            accepted, rejected, core_fallback, overlarge);
+    unsigned selection=0;
+    for(unsigned variable=0;variable<2;variable++)
+    for(unsigned backend=0;backend<3;backend++)
+    for(unsigned small=0;small<2;small++) {
+        if(variable && small) continue; /* H616 has no 512-byte ECC block. */
+        struct caps c=caps(variable);
+        c.ecc_strengths=variable ? sunxi_ecc_strengths_h6 : sunxi_ecc_strengths_a10;
+        c.nstrengths=variable ? ARRAY_SIZE(sunxi_ecc_strengths_h6) : ARRAY_SIZE(sunxi_ecc_strengths_a10);
+        c.ecc_mode_mask=variable ? GENMASK(15,8) : GENMASK(15,12);
+        c.has_ecc_block_512=!variable;
+        controller.caps=&c;
+        controller.dmac=backend==1 ? &controller : NULL;
+        controller.use_mdma=backend==2;
+        controller.mdma_desc=NULL;
+        struct nand_chip nand=chip(small ? 1 : 2,28,small ? 64 : 256);
+        struct sunxi_nfc_oob_ops ops={.min_user_data=sunxi_nfc_oob_min_user_data,
+                                     .init_user_data=sunxi_nfc_oob_init_user_data};
+        nand.oob_ops=&ops;
+        nand.mtd.writesize=small ? 512 : 2048;
+        nand.ecc.size=small ? 512 : 1024;
+        nand.ecc.strength=16;
+        device_config.ecc.user_conf.flags=0;
+        assert(!sunxi_nand_hw_ecc_ctrl_init(&nand,&nand.ecc,NULL));
+        bool dma=backend && !small;
+        assert(!!(nand.options&NAND_USES_DMA)==dma);
+        assert(nand.ecc.read_page==(dma ? sunxi_nfc_hw_ecc_read_page_dma : sunxi_nfc_hw_ecc_read_page));
+        assert(nand.ecc.write_page==(dma ? sunxi_nfc_hw_ecc_write_page_dma : sunxi_nfc_hw_ecc_write_page));
+        free(nand.user_data_bytes);
+        selection++;
+    }
+    controller.dmac=NULL;
+    printf("PIO/external-DMA/internal-DMA attach callback selection: %u\n",selection);
 }
 
 static unsigned whole_page_calls;

@@ -287,7 +287,8 @@ static void sunxi_nfc_dma_op_cleanup(struct sunxi_nfc *n, int dir,
     flow.mapped = false;
 }
 static void dma_async_issue_pending(void *dmac) { assert(flow.mapped); }
-static void sunxi_nfc_select_chip(struct nand_chip *n, unsigned cs) { }
+static int select_error;
+static int sunxi_nfc_select_chip(struct nand_chip *n, unsigned cs) { return select_error; }
 static void sunxi_nfc_hw_ecc_enable(struct nand_chip *n) {
     assert(!flow.ecc);
     flow.ecc = true;

@@ -501,3 +501,99 @@ configuration-error observation remains conditional because both supported
 provider callbacks return zero. Physical bus retirement and cross-vchan
 physical-channel reuse are not proved by the new one-vchan lifetime model.
 No hardware operation was performed for these candidate checks.
+
+# Independent core branches and current-driver audit
+
+Validated on 2026-11-03. Earlier records remain historical results; the
+current sunxi source and coverage boundaries are recorded in
+[CURRENT-DRIVER.md](docs/CURRENT-DRIVER.md).
+
+## Independent fixes
+
+The four NAND-core patches were split into one-patch branches, each based
+directly on `30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85` without the other
+fixes or sunxi prerequisites:
+
+| Branch | Patch commit |
+| --- | --- |
+| `submit/rawnand-read-retry-oob-v1` | `eb2ce5869ad103db21e25471c6485148990d0365` |
+| `submit/rawnand-bbt-scan-error-v1` | `8e66378be96a4aedb0e8ead1f613bfbb3bfcd028` |
+| `submit/rawnand-bbt-read-error-v1` | `7b52969f0dd731da2eddc24d28249817709e301e` |
+| `submit/rawnand-timing-recovery-v1` | `ecd6bb737d5f9d6c07f7d130c9b7aec0d0817fc4` |
+
+Each branch contains one implementation commit and one internal b4
+tracking commit. The exported message count is one, without a cover
+message. Local b4 checks, dependency checks and recipient discovery
+completed. No messages were sent. The combined branch remains unchanged
+at `5ee8144849a949b308b4e9b5275ac9ef8de5634c`.
+
+The split preserves patch IDs, full messages, authorship and the single
+matching sign-off. Fixes references were rechecked against Git history.
+`run_split_core.py` reads each independent Git revision and tests only its
+intended fix, retaining witnesses for the other unfixed core defects.
+All four passed their source-executed regression checks. This is stronger
+than testing only the combined patch stack; it is not a full kernel build
+or hardware test of each branch.
+
+## Current sunxi checks
+
+The current-driver options were added to the page, lifecycle, composed,
+discovery, lifetime and real-codec runners; low-level tests already had
+that option. Source summaries now identify the driver actually compiled.
+The coverage combiner checks both full-source and function-body hashes.
+A negative test confirmed that mixing a v9 report with v10 reports fails.
+The codec runner snapshots candidate bytes before invoking its driver
+subprocess, preventing a checkout change from invalidating provenance.
+
+Candidate suites passed with ASan/UBSan and source-mapped GCOV:
+
+| Area | Result |
+| --- | --- |
+| Three complementary driver runners | 90/90 functions executed; 1,427/1,431 lines and 701/712 branch edges reached |
+| Write-path fault matrix | Expanded from 412 to 1,636 executions; optional OOB and plain/scrambled variants |
+| Generic batch / vendor finish transport errors | 114 executions; errors propagate without out-of-range writes or premature vendor-statistics publication |
+| Direct DMA-write selection errors | 16 page/OOB failure-and-retry cases |
+| Concrete chip selection | 24 equal/different-rate, three-backend, two-select error/retry cases |
+| Timing setup | 2,096 full-interface cases plus 960,120 lookup cases |
+| DMA/PIO callback selection | 9 no-DMA/external/internal and small/large-page profiles |
+| Real BCH / driver composition | 600 codec cases, 120 parity vectors, 84 sunxi-tools images and 204 driver round trips |
+| Core/driver composition | 30 profiles, 192 requests and 1,158 page/OOB adapter calls |
+| Discovery and lifecycle | 483 discovery scenarios and 1,011 lifecycle/ONFI cases |
+| MTD lifetime | 36 schedules; all 12 expected retained-user/resource-cleanup witnesses remain |
+
+The pinned baseline suites also passed again, preserving their documented
+source/assumption witnesses. The four adapted historical regressions still
+fail their specifically expected assertions. Adjacent provider checks retain
+the previously documented function-local sanitizer exception; no such
+exception is used for the sunxi candidate driver tests.
+
+## Expanded formal checks
+
+The complete suite passed **446/446 expected results across 30 models**:
+325 positive configurations, 63 mutations, 36 assumption tests and 22
+source-contract witnesses. Every required positive-model action was reached.
+The recorded model snapshots match the checked-in model bytes.
+
+The new `NandSelection` contributes twelve positive configurations, five
+mutations and one provider-contract counterexample. Its positive runs
+explored 5,020 distinct states summed across the finite configurations.
+It explicitly models same-rate chip switches, check-only operations,
+clock-cache consistency, both callers' error propagation, repeated failures
+and successful retries. This is a bounded abstraction connected to actual
+source tests, not an automatically proved refinement of the C driver.
+
+## Review and outstanding limits
+
+Review used cached Sashiko general/core, technical-pattern, false-positive,
+callstack, locking, I/O-accessor, allocation, alignment, OF and Fixes-tag
+guidance. The public prompt refresh failed, so this record does not claim
+the latest prompt revision was obtained. No dedicated NAND prompt exists
+in the inspected snapshot. No production code was changed solely to
+silence a speculative review warning.
+
+No additional confirmed driver bug was found in this extension. The known
+MTD-user/unbind lifetime issue remains open. Physical DMA quiescence,
+posted bus accesses, late controller events, clock-provider failure and
+rounding behavior, and actual hardware ECC/randomizer behavior remain
+explicit assumptions or validation gaps. No board or NAND operation was
+performed, and no public repository push was made for this extension.

@@ -424,6 +424,27 @@ static u32 oracle_period(const struct nand_sdr_timings *t,const struct sunxi_nfc
     if(!t->tRLOH_min && t->tREA_max>p) p=t->tREA_max;
     return p;
 }
+static void check_interface(const struct nand_interface_config *c)
+{
+    unsigned period=oracle_period(&c->sdr,caps.timings);
+    unsigned long rate=1000000000UL/(period/1000+!!(period%1000));
+    unsigned oldcfg=chip.timing_cfg,oldctl=chip.timing_ctl;
+    unsigned long oldrate=chip.clk_rate;
+    assert(!sunxi_nfc_setup_interface(&chip.nand,NAND_DATA_IFACE_CHECK_ONLY,c));
+    assert(!hw.clock_calls && !hw.writes && chip.clk_rate==oldrate);
+    assert(chip.timing_cfg==oldcfg && chip.timing_ctl==oldctl);
+    assert(!sunxi_nfc_setup_interface(&chip.nand,0,c));
+    assert(chip.clk_rate==rate && hw.requested_rate==rate);
+    const s32 *tables[]={caps.timings->tWB,caps.timings->tADL,caps.timings->tWHR,caps.timings->tRHW};
+    const unsigned duration[]={c->sdr.tWB_max,c->sdr.tADL_min,c->sdr.tWHR_min,c->sdr.tRHW_min};
+    for(unsigned i=0;i<4;i++) {
+        unsigned enc=(chip.timing_cfg>>(2*i))&3;
+        assert((u64)tables[i][enc]*period>=duration[i]);
+        assert(!enc || (u64)tables[i][enc-1]*period<duration[i]);
+    }
+    unsigned ns=1000000000UL/(hw.rounded_rate ? hw.rounded_rate : rate);
+    assert(!!chip.timing_ctl==(ns*2<30 || ns*1000<c->sdr.tREA_max));
+}
 static void timing_checks(void)
 {
     unsigned runs=0;
@@ -453,22 +474,34 @@ static void timing_checks(void)
         for(unsigned i=0;i<ARRAY_SIZE(fields);i++)
             *fields[i]=1+((sample*7919+i*104729)%300001);
         c.sdr.tREA_max=10000+sample*71; c.sdr.tRLOH_min=rloh ? 5000 : 0;
-        unsigned period=oracle_period(&c.sdr,caps.timings);
-        unsigned long rate=1000000000UL/(period/1000+!!(period%1000));
-        unsigned oldcfg=chip.timing_cfg,oldctl=chip.timing_ctl;
-        assert(!sunxi_nfc_setup_interface(&chip.nand,NAND_DATA_IFACE_CHECK_ONLY,&c));
-        assert(!hw.clock_calls && chip.timing_cfg==oldcfg && chip.timing_ctl==oldctl);
-        assert(!sunxi_nfc_setup_interface(&chip.nand,0,&c));
-        assert(chip.clk_rate==rate && hw.requested_rate==rate);
-        const s32 *tables[]={caps.timings->tWB,caps.timings->tADL,caps.timings->tWHR,caps.timings->tRHW};
-        const unsigned duration[]={c.sdr.tWB_max,c.sdr.tADL_min,c.sdr.tWHR_min,c.sdr.tRHW_min};
-        for(unsigned i=0;i<4;i++) {
-            unsigned enc=(chip.timing_cfg>>(2*i))&3;
-            assert((u64)tables[i][enc]*period>=duration[i]);
-            assert(!enc || (u64)tables[i][enc-1]*period<duration[i]);
-        }
-        unsigned ns=1000000000UL/rate;
-        assert(!!chip.timing_ctl==(ns*2<30 || ns*1000<c.sdr.tREA_max));
+        check_interface(&c);
+        interfaces++;
+    }
+    /* Let every timing field dominate independently. Random combinations can
+     * leave late maxima completely shadowed by an earlier, larger field. */
+    for(unsigned backend=0;backend<3;backend+=2)
+    for(unsigned dominant=0;dominant<20;dominant++) {
+        reset_fixture(backend);
+        struct nand_interface_config c={0};
+        u32 *fields[]={&c.sdr.tCLS_min,&c.sdr.tCLH_min,&c.sdr.tCS_min,&c.sdr.tCH_min,
+            &c.sdr.tWP_min,&c.sdr.tWH_min,&c.sdr.tALS_min,&c.sdr.tDS_min,&c.sdr.tDH_min,
+            &c.sdr.tRR_min,&c.sdr.tALH_min,&c.sdr.tRP_min,&c.sdr.tREH_min,&c.sdr.tRC_min,
+            &c.sdr.tWC_min,&c.sdr.tWB_max,&c.sdr.tADL_min,&c.sdr.tWHR_min,&c.sdr.tRHW_min,
+            &c.sdr.tREA_max};
+        for(unsigned i=0;i<ARRAY_SIZE(fields);i++) *fields[i]=1000;
+        *fields[dominant]=300001;
+        check_interface(&c);
+        interfaces++;
+    }
+    /* Both EDO conditions, the 30 ns boundary, and a slower rounded clock. */
+    for(unsigned backend=0;backend<3;backend+=2)
+    for(unsigned wp=10000;wp<=16000;wp+=1000)
+    for(unsigned rea=10000;rea<=20000;rea+=10000)
+    for(unsigned rounded=0;rounded<2;rounded++) {
+        reset_fixture(backend);
+        struct nand_interface_config c={.sdr={.tWP_min=wp,.tREA_max=rea,.tRLOH_min=5000}};
+        hw.rounded_rate=rounded ? 50000000 : 0;
+        check_interface(&c);
         interfaces++;
     }
     reset_fixture(2);
@@ -522,8 +555,55 @@ static void selection_checks(void)
     puts("chip context alternation passes; SOURCE CONTRACT WITNESS: failed clk_set_rate leaves cached/requested and physical clocks different");
 #endif
 }
+
+static void selection_matrix(void)
+{
+#if FIXED_SUNXI
+    unsigned runs=0;
+    for(unsigned backend=0;backend<3;backend++)
+    for(unsigned same_rate=0;same_rate<2;same_rate++)
+    for(unsigned error=0;error<2;error++)
+    for(unsigned sel=0;sel<2;sel++) {
+        reset_fixture(backend);
+        struct sunxi_nand_chip other=chip;
+        other.nand.mtd.writesize=4096; other.nand.page_shift=12;
+        other.clk_rate=same_rate ? chip.clk_rate : 48000000;
+        other.timing_cfg=0x634; other.timing_ctl=0;
+        assert(!sunxi_nfc_select_chip(&chip.nand,0));
+        u8 saved[sizeof(registers)]; memcpy(saved,registers,sizeof(saved));
+        unsigned calls=hw.clock_calls,writes=hw.writes;
+        hw.clock_set_error=error ? -EINVAL : -EBUSY;
+        struct nand_op_instr cmd={.type=NAND_OP_CMD_INSTR,.ctx.cmd.opcode=0x70};
+        struct nand_operation op={.cs=sel,.instrs=&cmd,.ninstrs=1};
+        assert(!sunxi_nfc_exec_op(&other.nand,&op,true));
+        assert(hw.clock_calls==calls && hw.writes==writes);
+        assert(!memcmp(saved,registers,sizeof(saved)));
+        if(!same_rate) {
+            for(unsigned retry=0;retry<3;retry++) {
+                assert(sunxi_nfc_exec_op(&other.nand,&op,false)==hw.clock_set_error);
+                assert(hw.clock_calls==calls+retry+1 && !hw.commands);
+                assert(nfc.clk_rate==chip.clk_rate && hw.real_rate==chip.clk_rate);
+                assert(hw.writes==writes && !memcmp(saved,registers,sizeof(saved)));
+            }
+        }
+        hw.clock_set_error=0;
+        assert(!sunxi_nfc_exec_op(&other.nand,&op,false));
+        assert(hw.commands==1 && nfc.clk_rate==other.clk_rate);
+        assert(load(caps.reg_spare_area)==4096);
+        assert(load(NFC_REG_TIMING_CFG)==other.timing_cfg && load(NFC_REG_TIMING_CTL)==0);
+        assert(((load(NFC_REG_CTL)>>24)&7)==other.sels[sel].cs);
+        assert(!!(load(NFC_REG_CTL)&NFC_RB_SEL_MSK)==!!other.sels[sel].rb);
+        if(same_rate) assert(hw.clock_calls==calls);
+        assert(!sunxi_nfc_select_chip(&chip.nand,0));
+        assert(load(caps.reg_spare_area)==2048 && load(NFC_REG_TIMING_CFG)==chip.timing_cfg);
+        runs++;
+    }
+    printf("three-backend equal/different-clock chip-switch/error/retry matrix: %u\n",runs);
+#endif
+}
 int main(void)
 {
     dma_checks(); dma_init_checks(); irq_checks(); raw_media_checks(); command_checks(); parser_checks(); timing_checks(); selection_checks();
+    selection_matrix();
     puts("ALL LOWLEVEL CHECKS PASSED"); return 0;
 }
