@@ -155,3 +155,30 @@ verified final restoration and module unload. It never reads the raw backup
 files. Still inspect exported content before publishing; the privacy check is
 not a general secret detector. The original capture is immutable: use a new
 filename for a new run rather than replacing historical evidence.
+
+## Post-abort data-path isolation
+
+The [follow-up report](../docs/POST-ABORT-DATAPATH.md) documents the scope and
+limits of the subsequent reset experiments. The same backup, RAM-only boot,
+UBI exclusion and restore requirements apply. These matrices write only the
+authorized block and issue only read-side aborts:
+
+```sh
+python3 hardware/run_reset_diagnosis.py --ram-only-confirmed \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+python3 hardware/run_reset_diagnosis.py --ram-only-confirmed --followup-matrix --repeat 6 \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+python3 hardware/run_reset_diagnosis.py --ram-only-confirmed --bus-reset-matrix --repeat 6 \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+```
+
+Use the updated probe and bridge together. `--followup-matrix` adds restricted
+SRAM inspection/fill and a single NORMAL read. `--bus-reset-matrix` additionally
+requires the diagnostic kernel's `sunxi_nfc_lab_bus_reset` helper, which uses
+the driver's owned reset control. No arbitrary MMIO or CCU access is exposed.
+The helper is test-only and is not a proposed production error path.
+
+After final restoration and unload with `finish_extended.py`, use
+`export_reset.py` to export only these synthetic matrices. It never reads
+original flash dumps. `run_hardware.py` replays the captured bytes offline
+and deliberately preserves the observed soft-reset failures.

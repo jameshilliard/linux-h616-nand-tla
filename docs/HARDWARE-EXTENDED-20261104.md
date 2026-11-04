@@ -122,6 +122,11 @@ exclude regenerated parity; AUTO and RAW compare all requested OOB bytes.
 
 ## Unresolved first-read-after-abort finding
 
+Follow-up: the [distinct-pattern reset investigation](POST-ABORT-DATAPATH.md)
+narrows this to controller data-path state, reproduces raw SRAM displacement,
+and compares AHB bus reset. The original observations below are retained
+unchanged; that follow-up is a separate capture.
+
 The read-side recovery probe launches a valid two-step MDMA read into a retained
 coherent buffer, asserts reset while the controller may still be active, waits
 for reset-bit clearance, restores configuration, and issues NAND RESET before

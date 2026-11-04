@@ -17,7 +17,13 @@ all on-chip BCH modes as isolated codewords, metadata reuse, public callers,
 randomizer toggles and real timeout-status rechecks. It also finds that the
 first read after an active abort can be incorrect despite reset-bit clearance
 and quiet retained DMA memory. The models must not equate those observations
-with fully restored data-path state; the cause remains unresolved.
+with fully restored data-path state. The [post-abort investigation](POST-ABORT-DATAPATH.md)
+isolates a controller data-path problem: raw data can be displaced, clearing
+SRAM does not fix it, and AHB bus reset prevents it in the tested comparison.
+The precise internal state remains unidentified. Normal-command SRAM/count
+observations apply to a clean controller; post-abort short commands can modify
+SRAM outside the requested prefix. `NandPostAbortRequest` keeps these recovery
+contracts explicit rather than assuming that reset-bit clearance restores them.
 
 ## Manual-backed register contracts
 

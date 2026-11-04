@@ -202,7 +202,7 @@ static int validate(const struct probe_request *r)
 {
 	if (poisoned)
 		return -EIO;
-	if (r->op > PROBE_MASKED_NATIVE_READ || r->op == 22 || r->op == 23 ||
+	if (r->op > PROBE_RESET_FOLLOWUP || r->op == 22 || r->op == 23 ||
 	    r->flags & ~127U || r->seed > 0x7fff)
 		return -EINVAL;
 	if (r->op == PROBE_INFO || r->op == PROBE_BANKS)
@@ -236,12 +236,18 @@ static int validate(const struct probe_request *r)
 			return -EINVAL;
 	}
 	if (r->op == PROBE_RECOVERY &&
-	    (!allow_recovery || r->page < FIRST_PAGE || r->chunk > 10000 || r->flags > 5))
+	    (!allow_recovery || r->page < FIRST_PAGE || r->chunk > 10000 || r->flags > 6))
 		return -EPERM;
 	if (r->op == PROBE_RECOVERY)
 		return no_attached_ubi();
 	if (r->op == PROBE_MASKED_NATIVE_READ) {
 		if (!allow_recovery || r->page < FIRST_PAGE)
+			return -EPERM;
+		return no_attached_ubi();
+	}
+	if (r->op == PROBE_RESET_FOLLOWUP) {
+		if (!allow_recovery || r->page < FIRST_PAGE || r->column ||
+		    r->length != 2048 || r->chunk > 1024 || r->flags > 3)
 			return -EPERM;
 		return no_attached_ubi();
 	}
@@ -461,6 +467,25 @@ static int recovery_test(struct probe_request *r)
 			return reset_ret;
 		}
 	}
+	if (r->flags == 6) {
+		int (*bus_reset)(struct nand_chip *);
+
+		bus_reset = __symbol_get("sunxi_nfc_lab_bus_reset");
+		if (!bus_reset) {
+			ret = -EOPNOTSUPP;
+			goto restore_context;
+		}
+		reset_ret = bus_reset(chip);
+		__symbol_put("sunxi_nfc_lab_bus_reset");
+		r->regs[13] = readl(regs + CTL);
+		r->regs[14] = readl(regs + ST);
+		if (reset_ret) {
+			poisoned = true;
+			__module_get(THIS_MODULE);
+			kfree(snapshot);
+			return reset_ret;
+		}
+	}
 	r->regs[12] = 1;
 	for (i = 0; i < 128; i++)
 		if (buf[i] != 0xa5 || buf[2176 + i] != 0xa5)
@@ -599,6 +624,30 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 		r->regs[1] = readl(regs + 0x204);
 		r->regs[2] = !memchr_inv(recovery_mem, 0xa5, 128) &&
 			!memchr_inv(recovery_mem + 2176, 0xa5, 128);
+		break;
+	case PROBE_RESET_FOLLOWUP:
+		/* Isolate SRAM placement with ECC/randomization disabled. No writes
+		 * to NAND: optional RESET and one bounded NORMAL read command only.
+		 * flags: bit 0 fills both SRAM banks; bit 1 issues NAND RESET first.
+		 */
+		writel(ctl & ~BIT(14), regs + CTL);
+		if (r->flags & BIT(0)) {
+			memset_io(regs + RAM0, 0xa5, 1024);
+			memset_io(regs + RAM1, 0xa5, 1024);
+		}
+		if (r->flags & BIT(1))
+			ret = nand_reset_op(chip);
+		if (!ret && r->chunk) {
+			ret = nand_read_page_op(chip, r->page, 0, NULL, 0);
+			if (!ret)
+				ret = transfer(r->chunk, READ_DATA);
+		}
+		memcpy_fromio(r->data, regs + RAM0, 1024);
+		memcpy_fromio(r->data + 1024, regs + RAM1, 1024);
+		r->regs[0] = readl(regs + ST);
+		r->regs[1] = readl(regs + CNT);
+		r->regs[2] = readl(regs + ECC_CTL);
+		r->regs[3] = readl(regs + 0x214);
 		break;
 	case PROBE_EVENTS:
 		ret = nand_read_page_op(chip, r->page, 0, NULL, 0);

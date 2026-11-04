@@ -8,8 +8,10 @@ import unittest
 
 from hardware.run_probe import RAW, SEEDS, measured_stream, page_image
 from hardware.test_safety import BackupSafety
+from hardware.test_reset import ResetEvidence
 from codec_oracle import scramble
 from hardware.replay_extended import replay
+from hardware.replay_reset import replay as replay_reset
 
 HERE = Path(__file__).resolve().parent
 
@@ -72,10 +74,13 @@ def main():
     assert capture['erased_read']['regs'][3:5] == [3, 3]
     assert capture['all_spl_restored'] and capture['module_unloaded']
     print(f'{checks} captured hardware checks replayed; 72 stream digests each measured on three pages')
-    result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(BackupSafety))
+    tests = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case)
+                               for case in (BackupSafety, ResetEvidence))
+    result = unittest.TextTestRunner().run(tests)
     if not result.wasSuccessful():
         raise SystemExit(1)
     replay(HERE / 'hardware/h616-extended-20261104.json')
+    replay_reset(HERE / 'hardware/h616-reset-20261104.json')
     print('No board access. Passing replay does not validate unmeasured hardware contracts.')
 
 

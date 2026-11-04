@@ -90,3 +90,24 @@ int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(sunxi_nfc_lab_native);
+
+/* The probe retains DMA memory and excludes flash users before calling this.
+ * Use the driver's owned reset handle, never a second owner or raw CCU writes.
+ */
+int sunxi_nfc_lab_bus_reset(struct nand_chip *nand);
+int sunxi_nfc_lab_bus_reset(struct nand_chip *nand)
+{
+	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
+	int ret;
+
+	lockdep_assert_held(&nand->lock);
+	lockdep_assert_held(&nand->controller->lock);
+	if (!nfc->caps->has_mdma_desc || !nfc->use_mdma || !nfc->reset)
+		return -EOPNOTSUPP;
+	ret = reset_control_assert(nfc->reset);
+	if (ret)
+		return ret;
+	udelay(2);
+	return reset_control_deassert(nfc->reset);
+}
+EXPORT_SYMBOL_GPL(sunxi_nfc_lab_bus_reset);

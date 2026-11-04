@@ -68,6 +68,14 @@ The captures also retain an **unresolved first-read-after-active-reset anomaly**
 quiet DMA memory does not establish that the next read is correct. Two further
 models check randomizer enable transitions and those recovery evidence limits.
 
+The [post-abort investigation](docs/POST-ABORT-DATAPATH.md) adds 396 controlled
+trials with distinct synthetic pages. Raw and ECC reads expose incorrect
+first-block placement after soft reset; clearing SRAM or resetting the NAND
+chip does not reliably recover it. AHB bus reset passed the bounded comparison.
+A new request-level model separates internal data ordering from reset
+completion, DMA retirement and successful ECC status, without assuming a
+universally safe recovery recipe.
+
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
 implementation. This repository validates that pinned implementation, **not
@@ -159,6 +167,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandRt` | Fine-grained threaded-IRQ draining and safety versus eventual scheduling/liveness |
 | `NandProgram` | Finite partial-program budgets, bit monotonicity, erase, torn programs and no implicit write replay |
 | `NandRecovery` | Backend stop, outstanding bus transactions, IRQ drain and late controller completion are separate obligations |
+| `NandPostAbortRequest` | Post-abort internal data ordering, separate CMD/DMA completion, ECC status versus delivered bytes, continuation policies and conditional recovery across two requests |
 | `NandNegotiation` | Bootloader timing handoff, SET/GET_FEATURES, SDR mode changes, fallback and failed recovery |
 | `NandRelocation` | BBT replacement failure/exhaustion, mirror separation, restart and torn-table rejection |
 | `NandSequence` | Persistent chip/seed/column/spare state and enable-bit cleanup across mixed operations |

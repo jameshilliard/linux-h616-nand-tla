@@ -162,3 +162,6 @@ extend_mtd(MODULES, add, mutation)
 
 from measured_extension_cases import extend_measured
 extend_measured(MODULES, add, mutation)
+
+from post_abort_cases import extend_post_abort
+extend_post_abort(MODULES, add, mutation)

@@ -25,6 +25,14 @@ active DMA exposed an unresolved first-subsequent-read anomaly, including cases
 without failed-ECC accounting. It is recorded separately from normal operation
 and does not yet establish a kernel fix. All scratch data was restored.
 
+The [post-abort follow-up](POST-ABORT-DATAPATH.md) now localizes that anomaly to
+controller data-path state surviving soft reset. Its 396 trials include raw
+byte-displacement witnesses and an interleaved AHB bus-reset comparison with
+no incorrect first reads in 36 trials. The composed request/recovery model
+separates successful ECC from correct delivered data and tests weakened reset
+contracts. This is a bounded recovery candidate, not a production change or
+proof of the exact internal hardware mechanism.
+
 The full-driver rerun for this exact digest executes all **90 functions**,
 covering **1,430 of 1,434 source-mapped lines** and **706 of 718 branch
 edges**. These totals combine matching source/function hashes only; the older
