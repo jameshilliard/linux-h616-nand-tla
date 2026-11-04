@@ -1,0 +1,12 @@
+{
+  "linux_commit": "30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85",
+  "bsp_repository": "https://github.com/radxa/allwinner-bsp",
+  "bsp_commit": "2045a3ca2a01f088c0314dc924bda59d154e363e",
+  "bsp_directory": "modules/nand/common1/phy-nand/rawnand",
+  "files": {
+    "ndfc_base.c": "20bc11c0222cf7237df2cea21c9cb6e6907435ae9e1b1d7f5deef37ab959dcec",
+    "rawnand_chip.c": "a40920b8ce5ea801a3ff30e806a95fbdd8023106c5f6e02520cca603ba182cc5",
+    "rawnand_ops.c": "214b2316d7a44e953b8a8d82de26bdbd4e0a003d46b6dac248244c1b126fa5af",
+    "sunxi_nand_base.c": "0d7cc0f3a897814f0e01e2dab3ec16aff1a726698185826c277dc7e1bf354f01"
+  }
+}

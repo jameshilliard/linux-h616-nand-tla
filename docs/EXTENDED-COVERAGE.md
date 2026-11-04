@@ -1,5 +1,10 @@
 # Extended driver coverage
 
+This records the first extension. The later [deep-validation map](DEEP-VALIDATION.md)
+supersedes its extraction gaps: all 90 driver bodies now execute, with kernel
+services and hardware boundaries still explicit. Earlier counts below are
+retained to make the progression auditable.
+
 All seven follow-up areas have executable models and corresponding source-level
 checks or an explicit boundary. These are bounded models of contracts, not a
 claim that every execution of every driver function has been proved correct.

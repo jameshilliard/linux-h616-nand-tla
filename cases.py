@@ -135,3 +135,6 @@ extend(MODULES, add, mutation)
 
 from integration_cases import extend_integration
 extend_integration(MODULES, add, mutation)
+
+from validation_cases import extend_validation
+extend_validation(MODULES, add, mutation)

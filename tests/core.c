@@ -6,6 +6,8 @@ static u8 media[PAGES][PAGE], spare[PAGES][SPARE];
 static u8 bounce[PAGE], oobbuf[SPARE], ram_bbt[BLOCKS * TARGETS / 4];
 static int page_error[PAGES], main_error[PAGES], retry_mode, retry_fail_page;
 static int erase_fail_block, program_fail_page, retry_setup_error, retry_reset_error;
+static bool compound_program_fail[PAGES];
+static bool compound_erase_fail[BLOCKS*TARGETS];
 static unsigned int reads, raw_reads, subreads, writes, raw_writes, subwrites, retries;
 static unsigned int scanned, scan_modes, programs[PAGES];
 static u8 good_pattern[] = {255, 255}, primary_pattern[] = {'B','b','t','0'};
@@ -63,7 +65,7 @@ static int program(struct nand_chip *c, const u8 *b, int need_oob, int p, bool r
 {
     int g = global_page(c,p);
     writes++; raw_writes += raw;
-    if (g == program_fail_page) return -EIO;
+    if (g == program_fail_page || compound_program_fail[g]) return -EIO;
     programs[g]++;
     if (b) for (int i = 0; i < PAGE; i++) media[g][i] &= b[i];
     if (need_oob) for (int i = 0; i < SPARE; i++) spare[g][i] &= c->oob_poi[i];
@@ -100,7 +102,7 @@ static int nand_erase_nand(struct nand_chip *c, struct erase_info *e, int allowb
 {
     unsigned int b = e->addr / (PPB * PAGE);
     CHECK(e->addr % (PPB * PAGE) == 0 && e->len == PPB * PAGE && b < BLOCKS * TARGETS);
-    if ((int)b == erase_fail_block) return -EIO;
+    if ((int)b == erase_fail_block || compound_erase_fail[b]) return -EIO;
     memset(media[b * PPB],255,PPB * PAGE);
     memset(spare[b * PPB],255,PPB * SPARE);
     memset(programs + b * PPB,0,PPB * sizeof(*programs));
@@ -111,6 +113,8 @@ static void reset(bool patterned)
     memset(&chip,0,sizeof(chip)); memset(media,255,sizeof(media)); memset(spare,255,sizeof(spare));
     memset(ram_bbt,0,sizeof(ram_bbt)); memset(page_error,0,sizeof(page_error));
     memset(main_error,0,sizeof(main_error)); memset(programs,0,sizeof(programs));
+    memset(compound_program_fail,0,sizeof(compound_program_fail));
+    memset(compound_erase_fail,0,sizeof(compound_erase_fail));
     chip.mtd = (struct mtd_info){.writesize=PAGE,.oobsize=SPARE,.oobavail=6,
         .erasesize=PPB*PAGE,.size=sizeof(media),.ooblayout=&layout};
     chip.base = (struct nand_device){.targetsize=BLOCKS*PPB*PAGE,.targets=TARGETS};
@@ -328,9 +332,65 @@ static void bbt_checks(void)
     puts("SOURCE WITNESS: check_create accepts BBT read EIO without recovering the bad-block entries");
     puts("BBT: BBM page/width, PLACE_OOB, scan/create, mirrors, in-band/OOB, per-chip, update, relocation, reserved regions and version wrap checked");
 }
+static void compound_checks(void)
+{
+    u8 data[3*PAGE],oob[3*SPARE+16],buf[PPB*(PAGE+SPARE)];
+    unsigned cases=0;
+    for (int mode=0;mode<3;mode++) for (int with_oob=0;with_oob<2;with_oob++) {
+        reset(true); retry_fail_page=0; page_error[1]=-EIO;
+        memset(data,0xa5,sizeof(data)); memset(oob,0xa5,sizeof(oob));
+        unsigned per=mode==MTD_OPS_AUTO_OOB?6:SPARE;
+        struct mtd_oob_ops ops={.mode=mode,.len=3*PAGE,.datbuf=data,
+            .oobbuf=with_oob?oob:NULL,.ooblen=with_oob?3*per:0};
+        CHECK(nand_do_read_ops(&chip,0,&ops)==-EIO);
+        CHECK(ops.retlen==PAGE && !memcmp(data,media[0],PAGE));
+        CHECK(data[PAGE]==0xa5 && !chip.mtd.ecc_stats.failed && chip.selected==-1);
+        CHECK(retry_mode==0 && retries==(mode==MTD_OPS_RAW?0:2));
+        if (with_oob) {
+            /* Source witness persists on error, not just successful reads. */
+            CHECK(ops.oobretlen==(mode==MTD_OPS_RAW?per:2*per));
+            CHECK(oob[3*per]==0xa5);
+        }
+        cases++;
+    }
+    for (int inband=0;inband<2;inband++) for (int exhausted=0;exhausted<2;exhausted++) {
+        reset(false);
+        if (inband) { primary.options|=NAND_BBT_NO_OOB; primary.veroffs=4; primary.offs=0; }
+        mirror=primary; mirror.pattern=mirror_pattern;
+        bbt_mark_entry(&chip,1,BBT_BLOCK_WORN);
+        CHECK(write_bbt(&chip,buf,&primary,&mirror,-1)==0);
+        CHECK(write_bbt(&chip,buf,&mirror,&primary,-1)==0);
+        int p=primary.pages[0],m=mirror.pages[0];
+        u8 saved_mirror[PAGE]; memcpy(saved_mirror,media[m],PAGE);
+        bbt_mark_entry(&chip,7,BBT_BLOCK_WORN);
+        compound_erase_fail[p/PPB]=true;
+        /* Initial destination fails erase; its replacement fails program. */
+        compound_program_fail[(BLOCKS*TARGETS-3)*PPB]=true;
+        if (exhausted) compound_program_fail[(BLOCKS*TARGETS-4)*PPB]=true;
+        int ret=nand_update_bbt(&chip,0);
+        CHECK(ret==(exhausted?-ENOSPC:0));
+        CHECK(primary.pages[0]!=mirror.pages[0]);
+        if (exhausted) {
+            CHECK(!memcmp(saved_mirror,media[m],PAGE));
+            memset(ram_bbt,0,sizeof(ram_bbt));
+            CHECK(read_abs_bbt(&chip,buf,&mirror,-1)==0);
+            CHECK(bbt_get_entry(&chip,1)==BBT_BLOCK_WORN);
+            /* Failed updates make no durability promise for the new mark. */
+            CHECK(bbt_get_entry(&chip,7)==BBT_BLOCK_GOOD);
+        } else {
+            memset(ram_bbt,0,sizeof(ram_bbt)); search_read_bbts(&chip,buf,&primary,&mirror);
+            CHECK(check_create(&chip,buf,&bad)==0);
+            CHECK(bbt_get_entry(&chip,1)==BBT_BLOCK_WORN && bbt_get_entry(&chip,7)==BBT_BLOCK_WORN);
+            CHECK(bbt_get_entry(&chip,p/PPB)!=BBT_BLOCK_GOOD);
+            CHECK(bbt_get_entry(&chip,BLOCKS*TARGETS-3)!=BBT_BLOCK_GOOD);
+        }
+        cases++;
+    }
+    printf("compound failures: %u retry/transport and BBT erase/replacement/exhaustion/restart cases\n",cases);
+}
 int main(void)
 {
-    request_checks(); bbt_checks();
+    request_checks(); bbt_checks(); compound_checks();
     printf("ALL CORE CHECKS PASSED (%u assertions)\n",checks);
     return 0;
 }

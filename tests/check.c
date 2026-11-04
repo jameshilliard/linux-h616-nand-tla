@@ -7,6 +7,8 @@ static void bitmap_boundaries(void);
 static void attach_policy(void);
 static void metadata_identity(void);
 static void format_roundtrip(void);
+static void compatibility(void);
+static void codec_bridge(void);
 
 static struct caps caps(bool variable)
 {
@@ -503,6 +505,8 @@ int main(void)
     attach_policy();
     metadata_identity();
     format_roundtrip();
+    compatibility();
+    codec_bridge();
     puts("ALL C CHECKS PASSED");
     return 0;
 }

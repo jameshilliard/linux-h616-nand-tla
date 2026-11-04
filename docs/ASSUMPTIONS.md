@@ -3,11 +3,14 @@
 ## Results and their classification
 
 The positive model configurations and host checks pass under their stated
-contracts. The tests also reproduce six conditional source-level failures:
+contracts. The tests also reproduce seven conditional source-level observations:
 split address-cycle loss, a failed clock change cached as successful, ignored
 external DMA configuration failure, read-retry OOB misplacement, and ignored
-BBT scan/read transport errors. Their actual-source
+BBT scan/read transport errors, and ignored timing-recovery failures. Their actual-source
 reproducers and reachability limits are in [FINDINGS.md](FINDINGS.md).
+The provider audit establishes that the injected configuration error is not
+reachable through the pinned sun4i/sun6i config callbacks, which always return
+zero. Other findings are not dismissed merely because they require failures.
 
 Deliberately broken variants demonstrate that the named checks can fail. They
 are regression sensitivity tests, not claims that those broken variants are in
@@ -90,7 +93,9 @@ submission: `nand_get_device()`, `nand_read_page_op()`,
 the unchanged operation parser and suboperation helpers from that same core
 revision. The separate integration harness now compiles selected unchanged
 core request/read-retry and BBT scan/create/update/read functions. It does not
-compile the complete scan/identification flow, core locking or device removal.
+compile core locking or device-core removal. The lifecycle runner now compiles
+scan-identification orchestration, scan-tail, cleanup and timing negotiation;
+ID/ONFI decoders and manufacturer internals are still fixtures.
 
 The contracts are consistent with the
 [DMAengine client interface](https://docs.kernel.org/driver-api/dmaengine/client.html),
@@ -105,7 +110,9 @@ assumptions in this particular recovery sequence.
   programming and partial-program failures are modeled, and repeated programming
   is tested in C. Erase, finite program-count limits and interrupted BBT updates
   now have explicit models. The limits are device/caller contracts, not a
-  generic policy enforced by sunxi. BCH decoding, analog cell behavior, wear,
+  generic policy enforced by sunxi. Software BCH encoding/decoding is now checked
+  against an independent polynomial encoder and composed with driver helpers.
+  Hardware BCH behavior, analog cell behavior, wear,
   retention and a specific part's power-failure guarantees remain outside scope.
 - The Allwinner erased-page check is a firmware compatibility heuristic over
   re-encoded, ECC-corrected protected bytes. Passing it is not mathematical
@@ -116,8 +123,9 @@ assumptions in this particular recovery sequence.
   both use the page seed for the unprotected tail. `NandOob` uses representation
   labels; `NandMedia` uses reversible masks. The integration C checks build a
   physical-byte image, discard scratch registers, and read it with matching
-  PIO/DMA paths against a bit-level oracle. Parity is synthetic: this is not an
-  end-to-end hardware BCH/page emulator or a vendor-media golden-image test.
+  PIO/DMA paths against a bit-level oracle. The original matrix uses synthetic
+  parity; the codec extension uses real software BCH parity and correction.
+  Neither is an end-to-end hardware emulator or a captured-media golden test.
 - A raw reread is allowed to disturb controller scratch/user-data state in the
   fixtures. This adversarial assumption checks the two-pass capture contract;
   it is not a claim that every controller overwrites every scratch register.
@@ -137,10 +145,11 @@ uses weak fairness and makes no real-time latency guarantee.
 
 The first seven follow-up areas are itemized in
 [EXTENDED-COVERAGE.md](EXTENDED-COVERAGE.md); the six integration areas are in
-[INTEGRATION-COVERAGE.md](INTEGRATION-COVERAGE.md). Both distinguish modeled from
+[INTEGRATION-COVERAGE.md](INTEGRATION-COVERAGE.md). The deeper six-area extension
+is in [DEEP-VALIDATION.md](DEEP-VALIDATION.md). All distinguish modeled from
 source-executed paths. Remaining end-to-end gaps include device-core probe/unbind,
-every allocation failure, provider internals/IOMMU behavior, physical
-reset/clock/pinctrl, complete NAND discovery and optional BBT formats,
+every combination of allocation failures, provider IRQ/tasklet/IOMMU behavior,
+physical reset/clock/pinctrl, complete NAND discovery and optional BBT formats,
 firmware/device-tree parsing, and real hardware memory ordering. The driver
 supplies no PM callbacks whose suspend/resume protocol could be validated here.
 No new hardware testing was performed by these validation runs.
@@ -153,3 +162,10 @@ The BBT persistence model assumes torn payloads are rejected when `DetectTorn`
 is true. Turning that off shows why a recognizable table header is insufficient
 to prove an interrupted write preserved its entries. This is not a new checksum
 or atomic-commit mechanism implemented by the driver or core.
+
+`NandRecovery` makes outstanding bus writes explicit. Clearing a DMA enable bit
+and draining the software IRQ do not, by themselves, prove those writes have
+retired. `run_providers.py` checks actual stop/config entrypoint control flow,
+but its list and MMIO fixtures do not prove provider concurrency or electrical
+quiescence. New late-event, active-command and pending-write counterexamples
+record the distinct guarantees still needed from hardware.

@@ -25,6 +25,12 @@ jobs:
         run: python3 run_lowlevel.py
       - name: Execute MTD request, read-retry and BBT source checks
         run: python3 run_core.py
+      - name: Execute scan, cleanup and ONFI negotiation checks
+        run: python3 run_lifecycle.py
+      - name: Execute external DMA provider entrypoints
+        run: python3 run_providers.py
+      - name: Cross-check real BCH and independent page formats
+        run: python3 run_codec.py
       - name: Model-check positive and negative configurations
         run: python3 run.py --download
       - name: Retain diagnostics and counterexamples
@@ -41,4 +47,6 @@ jobs:
             results/**/gcov.log
             results/**/coverage-build.log
             results/**/coverage-check.log
+            results/**/*-build.log
+            results/**/driver-bridge.log
           retention-days: 14

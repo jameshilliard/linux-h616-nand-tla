@@ -1,8 +1,10 @@
 # Coverage of the submitted v9 series
 
 The exact driver is [reference/sunxi_nand.c](../reference/sunxi_nand.c).
-`run_c.py` and `run_lowlevel.py` list every extracted function; the summaries
-record their hashes.
+`run_c.py`, `run_lowlevel.py` and `run_lifecycle.py` list every extracted driver
+function; the summaries record their hashes. Broader core, provider and codec
+checks are mapped in [INTEGRATION-COVERAGE.md](INTEGRATION-COVERAGE.md) and
+[DEEP-VALIDATION.md](DEEP-VALIDATION.md).
 The table distinguishes modeled behavior from directly executed driver bodies.
 It does not imply full kernel line/branch coverage.
 
@@ -46,27 +48,32 @@ It does not imply full kernel line/branch coverage.
   the driver's classification helper twice. C covers 6,912 generic and 3,456
   vendor combinations, plus 16/32-step bitmap boundaries.
 - Read/write fault injection executes unchanged page, subpage, and OOB wrapper
-  functions. Transport/IRQ/DMA APIs are fixtures. Each run injects at most one
-  fault; a subsequent fallback is allowed to succeed. Both ECC statistics are
-  tested for rollback after a failed DMA read.
+  functions. Transport/IRQ/DMA APIs are fixtures. These driver-path matrices
+  inject at most one fault per run; a subsequent fallback is allowed to succeed.
+  Both ECC statistics are tested for rollback after a failed DMA read. Separate
+  core tests add compound retry/transport and BBT replacement failures.
 - The low-level suite separately executes the actual IRQ, DMA backend,
   command-parser, SRAM, randomizer-control, chip-selection and timing functions.
-  The two harnesses do not link every layer together in one kernel execution.
+  The harnesses do not link every layer together in one kernel execution.
 - Distinct-byte media fixtures exercise raw PIO round trips, page/column
   identity and partial programs. Generic OOB finish checks include absent tails,
   optional/matching cursors, both representations and read failures. Separate
   metadata tests check protected bytes, BBM compensation and untouched sentinels.
 - Actual attach policy covers engines, format selection, inherited ECC
-  requirements and allocation failure. The core read-retry/statistics protocol
-  is modeled, not executed; only the operation parser and suboperation helpers
-  are compiled from NAND core.
+  requirements and allocation failure. The core harness now executes actual
+  request/retry/statistics and BBT bodies. The lifecycle harness adds actual
+  scan/cleanup and timing negotiation while retaining the documented service
+  and manufacturer boundaries.
+- Independent BCH polynomial encoding, real decoding and sunxi-tools image
+  construction supplement the original synthetic-media tests. Exact old Linux
+  and BSP routines check legacy offsets, seed selection and metadata packing.
 - Sanitizers check host memory accesses. They cannot validate real MMIO side
   effects, DMA coherency, or the kernel ABI from these simplified structures.
 
 ## Finite state spaces
 
-`cases.py` and `extended_cases.py` are the executable lists of bounds and
-assumptions. Layouts include
+`cases.py`, `extended_cases.py`, `integration_cases.py` and `validation_cases.py`
+are the executable lists of bounds and assumptions. Layouts include
 legacy 16-step pages, H616 2/32-step packed-prefix pages, a 32-step geometry
 exceeding one user-data bank, uneven lengths, nonzero subpage starts, and a
 512-byte small page. OOB models test both DMA and PIO representations and an

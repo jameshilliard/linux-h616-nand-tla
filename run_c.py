@@ -98,11 +98,16 @@ def main():
     results = HERE / "results"
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="c-", dir=results))
+    from compat_sources import generate
+    compat, compat_hashes = generate(HERE)
     combined = ('#line 1 "fixtures.h"\n' + (HERE / "tests/fixtures.h").read_text() + "\n" +
-                "\n".join(generated) + '\n#line 1 "check-tests.c"\n' + (HERE / "tests/check.c").read_text() +
+                "\n".join(generated) + '\n#line 1 "compat-source.c"\n' + compat +
+                '\n#line 1 "check-tests.c"\n' + (HERE / "tests/check.c").read_text() +
                 '\n#line 1 "flow.c"\n' + (HERE / "tests/flow.c").read_text() +
                 '\n#line 1 "attach.c"\n' + (HERE / "tests/attach.c").read_text() +
-                '\n#line 1 "format.c"\n' + (HERE / "tests/format.c").read_text())
+                '\n#line 1 "format.c"\n' + (HERE / "tests/format.c").read_text() +
+                '\n#line 1 "compat.c"\n' + (HERE / "tests/compat.c").read_text() +
+                '\n#line 1 "codec_bridge.c"\n' + (HERE / "tests/codec_bridge.c").read_text())
     (out / "check.c").write_text(combined)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",
@@ -121,7 +126,8 @@ def main():
     coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
     (out / "summary.json").write_text(json.dumps(
         dict(passed=passed, driver_sha256=pin["driver_sha256"],
-             functions=hashes, output=run.stdout, diagnostics=run.stderr, coverage=coverage,
+             functions=hashes, compatibility_functions=compat_hashes,
+             output=run.stdout, diagnostics=run.stderr, coverage=coverage,
              compiler=args.cc, compiler_flags=command[1:-4]), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)

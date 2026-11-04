@@ -9,6 +9,9 @@ parser, SRAM/media identity, NAND-core contracts, shared-controller lifecycle,
 probe unwinding, and timing calculations. Integration checks cover BBM/BBT
 lifecycle, real MTD request/retry code, stored-byte format equivalence, RT IRQ
 draining, DMA visibility, device program budgets and interrupted BBT updates.
+Deeper checks execute scan/cleanup and ONFI negotiation, compare pre-series and
+BSP layouts, compose real BCH correction with the driver, and inject compound
+read/BBT failures.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -17,7 +20,7 @@ whatever happens to be in the latest kernel tree**.
 
 ## Run
 
-Requirements: Python 3.9+, Java 17+ (the CI template uses 21), and GCC with its
+Requirements: Python 3.10+, Java 17+ (the CI template uses 21), and GCC with its
 matching `gcov`, AddressSanitizer and UndefinedBehaviorSanitizer. No board, root
 privileges, or kernel build is needed. The tests do not access NAND devices.
 
@@ -26,6 +29,9 @@ python3 run.py --download
 python3 run_c.py
 python3 run_lowlevel.py
 python3 run_core.py
+python3 run_lifecycle.py
+python3 run_providers.py
+python3 run_codec.py
 ```
 
 `--download` fetches the official TLA+ tools v1.8.0 prerelease asset and verifies
@@ -70,33 +76,42 @@ starvation case); an arbitrary TLC failure does not count as success.
 | `NandPersistence` | Interrupted mirrored BBT erase/program, eight-bit version rollover and detectable/undetected torn tables |
 | `NandRt` | Fine-grained threaded-IRQ draining and safety versus eventual scheduling/liveness |
 | `NandProgram` | Finite partial-program budgets, bit monotonicity, erase, torn programs and no implicit write replay |
+| `NandRecovery` | Backend stop, outstanding bus transactions, IRQ drain and late controller completion are separate obligations |
+| `NandNegotiation` | Bootloader timing handoff, SET/GET_FEATURES, SDR mode changes, fallback and failed recovery |
+| `NandRelocation` | BBT replacement failure/exhaustion, mirror separation, restart and torn-table rejection |
 
-The two driver C harnesses extract 82 function bodies **unchanged** from the bundled
-submitted driver, verify its hash, then compile them with host-side fixtures.
+The driver harnesses now extract all 90 function bodies **unchanged** from the
+bundled submitted driver, verify its hash, then compile them with host fixtures.
 The low-level harness also executes the actual NAND-core operation parser and
-suboperation helpers from the same revision. They supplement the models;
-neither is a full NAND controller emulator or kernel integration test.
-The third C harness executes 46 unchanged NAND-core/MTD/BBT functions against a
+suboperation helpers from the same revision. These harnesses supplement the
+models; they are not full NAND controller emulators or kernel integration tests.
+The core C harness executes 46 unchanged NAND-core/MTD/BBT functions against a
 finite, fault-injectable NAND fixture. It checks actual core control flow, not
 only an abstract contract. The stored-byte tests exercise source randomizer,
 metadata and batching helpers across 168 PIO/DMA writer-reader combinations;
-their synthetic parity is not a BCH encoder.
+their synthetic parity is not a BCH encoder. `run_codec.py` adds independent
+polynomial encoding, unmodified Linux BCH decoding and sunxi-tools page
+encoding, then runs additional real-codec vectors through the driver harness.
+`run_lifecycle.py` adds actual scan/cleanup and timing-mode negotiation;
+`run_providers.py` executes external DMA config/stop entrypoints. These retain
+explicit kernel-service and hardware boundaries.
 
-The suite has 276 TLC configurations across 20 models, including positive checks,
+The suite has 356 TLC configurations across 23 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),
 [the integration coverage map](docs/INTEGRATION-COVERAGE.md),
+[the six-area deep-validation map](docs/DEEP-VALIDATION.md),
 [patch-by-patch coverage](docs/COVERAGE.md),
 [source-level findings](docs/FINDINGS.md), and
 [assumptions and limits](docs/ASSUMPTIONS.md).
 
-Each C runner also makes a separate, unsanitized GCOV build. To combine the two driver runners'
-source-mapped coverage reports, substitute the result directories printed by
-the runners:
+The source-extraction runners also make a separate, unsanitized GCOV build.
+To combine the driver runners' source-mapped coverage reports, substitute the
+result directories printed by the runners:
 
 ```sh
-python3 coverage_report.py results/c-RUN/summary.json results/lowlevel-RUN/summary.json
+python3 coverage_report.py results/c-RUN/summary.json results/lowlevel-RUN/summary.json results/lifecycle-RUN/summary.json
 ```
 
 This reports unexecuted functions and missed source lines explicitly. GCOV
@@ -104,6 +119,9 @@ coverage of extracted functions under host fixtures is not whole-kernel branch
 coverage; TLC action coverage is a separate measure.
 The core runner records its multi-file coverage separately in its own summary,
 and fails if any extracted core function was not executed.
+The codec runner invokes `run_c.py` with generated binary vectors; it currently
+requires a little-endian host. It records parity/image/correction results rather
+than claiming exhaustive branch coverage of the BCH library.
 
 ## Interpreting the result
 
@@ -125,19 +143,21 @@ was fixed. Reachability and outstanding hardware contracts are documented.
 digests, and TLC version/digest. `reference/` contains the exact submitted driver
 and binding, unchanged NAND-core parser excerpts, and the matching full
 NAND-core/MTD/BBT source inputs, with original licensing.
+Additional manifests under `reference/codec`, `reference/compat` and
+`reference/providers` pin the independent comparison inputs and DMA providers.
 Source functions and their hashes are listed in each C-run summary. The
 reference files are inputs, not a second driver to edit.
 
 When changing the reference revision, replace it from the actual submitted
 series, update `source.json`, review the function-to-model mapping, and rerun all
-four runners. Do not update a digest merely to make a mismatch disappear.
+seven runners. Do not update a digest merely to make a mismatch disappear.
 Changes to hardware assumptions require independent documentation or
 measurements, not just a model that produces the desired result.
 
 ## Optional CI
 
 [ci/validate.yml](ci/validate.yml) is a pinned GitHub Actions workflow template.
-It runs all four suites on Ubuntu 24.04 with Java 21 and retains diagnostics and
+It runs all seven suites on Ubuntu 24.04 with Java 21 and retains diagnostics and
 counterexample traces. It is intentionally outside `.github/workflows/` in this
 initial publication because the publishing credential cannot install workflows.
 Automatic CI is not enabled. Install it as `.github/workflows/validate.yml` using

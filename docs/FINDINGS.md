@@ -1,7 +1,7 @@
 # Source-level findings and reachability
 
 These tests preserve the submitted driver and matching core. They reproduce
-six conditional source-level failures; they do not silently apply fixes or
+seven conditional source-level observations; they do not silently apply fixes or
 establish that the OOB series introduced them. None has been observed on
 hardware by this suite.
 
@@ -56,17 +56,19 @@ success. `probe-source-config-failure` reaches `DmaConfigured`'s counterexample;
 the low-level C test executes this exact source path.
 
 This applies to external DMAengine, **not** H616's descriptor-MDMA branch.
-The test has not established that a supported provider rejects this driver's
-four-byte bus widths, addresses and burst settings in normal operation. It is
-a conditional provider-error handling finding, not a demonstrated H616 data
-corruption report.
+The deeper audit executes the pinned sun4i and sun6i configuration callbacks:
+both only copy the configuration and return zero. Thus the injected error is
+not reachable through either of those implementations. Retain it as a
+conditional client/API robustness observation, not a bug demonstrated with
+these providers or a H616 data-corruption report. This narrowing is based on
+the actual callback bodies, not a presumption that configuration usually works.
 
 ## Separate unresolved contracts
 
 Ineffective abort/reset, command completion preceding DMA completion, PIO
 timeout leaving a command active, and old-command interrupts arriving after
 reuse have explicit counterexamples. These remain hardware/provider questions
-until independently verified; they are not folded into the six source
+until independently verified; they are not folded into the seven source
 findings above. Core-user draining and MMIO ordering are also assumptions.
 
 The false-positive review distinguishes these classes deliberately. A formal
@@ -96,6 +98,11 @@ additional retry modes, an ECC failure followed by a successful retry, and a
 combined data/OOB request. OOB-only reads and raw reads do not exercise this
 retry path. The suite has not established that the connected H616 NAND meets
 those conditions or reproduced this on hardware.
+
+The compound-error test also retries page 0 successfully before page 1 returns
+`-EIO`. Main-data `retlen` covers only page 0, while OOB accounting has consumed
+two slots. Both `AUTO_OOB` and `PLACE_OOB` reproduce this; raw reads do not retry.
+`validation-compound-retry-transport-oob-*` fail `OobErrorPrefix` accordingly.
 
 ## 5. BBT creation ignores a marker-scan transport error
 
@@ -136,6 +143,30 @@ The injected read obeys the MTD contract: negative transport status and no
 returned bytes. Reaching that particular error after successful table discovery
 is a conditional scenario, not an observed hardware event. The OOB series does
 not change this core function, and this repository does not patch it.
+
+## 7. Timing-mode mismatch can hide a failed recovery
+
+Location: `nand_setup_interface()`'s `err_reset_chip` path in the pinned
+[NAND core](../reference/nand_base.c).
+
+A successful GET_FEATURES returning a different timing mode intentionally
+falls back to SDR mode 0. That fallback is not itself a bug. However, the core
+ignores both `nand_reset_interface()` and `nand_reset_op()` return values and
+returns the earlier GET_FEATURES status, zero in the mismatch case.
+
+The lifecycle runner executes the unmodified function with either a failing
+controller mode-0 setup callback or a failing RESET transport call. It returns
+zero even though recovery failed. The fixture's host or chip mode can remain
+at the previously selected mode; the current-interface pointer has already
+been changed to the reset configuration. `NandNegotiation` independently
+reproduces `RecoveryError` for both cases.
+
+This requires a timing-acknowledgment mismatch **and** a recovery failure.
+A GET_FEATURES transport error already returns nonzero and is not confused
+with this case. Actual H616 mode negotiation/reset failure has not been
+reproduced, and supported-provider reachability of a failing mode-0 setup is
+not established. The source handling is confirmed under these callback
+contracts; it is not attributed to the sunxi OOB series.
 
 ## Other observed core behavior
 

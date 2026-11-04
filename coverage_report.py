@@ -20,6 +20,10 @@ def main():
         if not report["passed"] or report["driver_sha256"] != pin["driver_sha256"]:
             parser.error("report is failed or refers to a different reference")
         for name, info in report["coverage"]["functions"].items():
+            if ":" in name:
+                filename,name=name.split(":",1)
+                if filename!="sunxi_nand.c":
+                    continue
             combined = functions.setdefault(name, dict(calls=0, lines=set(), hit=set(), branches=set(), branches_hit=set()))
             combined["calls"] += info["calls"]
             for dst, src in (("lines", "source_lines"), ("hit", "covered_lines"),

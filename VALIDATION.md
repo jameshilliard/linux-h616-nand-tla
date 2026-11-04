@@ -253,3 +253,112 @@ No production driver change, destructive NAND operation, or new hardware test
 was performed. Public files were checked for private paths/hardware details.
 The CI template includes the core runner but remains inactive until installed
 with a workflow-authorized credential.
+
+# Deep validation record
+
+Validated on 2026-11-03 against the same pinned OOB v9 implementation. The
+preceding records remain historical. This extension covers all six follow-up
+areas in [DEEP-VALIDATION.md](docs/DEEP-VALIDATION.md): discovery and cleanup,
+backend recovery, bootloader/ONFI timing handoff, cross-version formats, real
+BCH/randomizer composition, and compound read/BBT failures.
+
+## Full TLC regression
+
+All **356 configurations across 23 models** matched their expectations:
+
+- 260 positive configurations passed their invariants and termination property.
+- 54 deliberately broken implementations failed the specified invariant.
+- 32 assumption tests reproduced the specified safety or liveness failure.
+- 10 source-contract cases reproduced their named failures; this is not a count
+  of ten distinct bugs.
+- All **199 required positive-model actions** were reached; none was missing.
+
+Positive cases generated **348,300 states** and found **246,695 distinct
+states**. Across all cases the respective sums were **365,233** and **260,690**.
+These are sums across bounded configurations. The complete run took about
+282 seconds with the pinned TLC jar, one worker, seed 1 and fingerprint
+polynomial 0. Every copied model used for a case was compared byte-for-byte
+with the final model, as well as checking the summary's model hashes.
+
+| New model | Positive | Mutation | Assumption / source-contract |
+| --- | ---: | ---: | ---: |
+| NandRecovery | 5 | 1 | 18 |
+| NandNegotiation | 31 | 0 | 2 |
+| NandRelocation | 16 | 1 | 1 |
+
+Five additional `NandRequest` configurations cover successful retry followed
+by transport failure: three main-data checks and two OOB error-prefix witnesses.
+The recovery model distinguishes stopping the DMA producer, retiring pending
+bus writes, stopping the NAND command, suppressing late events, and draining
+the IRQ. No single stop-register write is treated as proof of all five.
+
+## Source execution and independent format checks
+
+All source-extraction suites passed their sanitizer and separate GCOV runs.
+The codec/library and image-builder tests passed ASan/UBSan too. Earlier
+layout, parser, ECC, IRQ, initialization and arithmetic matrices remain passing.
+
+| Added or extended check | Result |
+| --- | --- |
+| Discovery, attach, registration, cleanup and ONFI negotiation | 20 unchanged driver/core bodies; 1,011 fixture cases and 65,973 assertions |
+| Provider configuration/termination | Four unchanged sun4i/sun6i entrypoints; 64 cases; all 52 compiled lines and 12 branch edges reached |
+| Pre-series Linux/BSP compatibility | 6,864 layout, seed and bidirectional user-data/register-packing cases |
+| Independent BCH parity | 120 vectors spanning all 15 driver strengths, 512/1024-byte messages and 0/4/16/32 protected bytes |
+| BCH errors | 600 correction/over-capacity cases; all selected in-capacity errors corrected, all 120 selected over-capacity witnesses rejected |
+| Independent sunxi-tools page reconstruction | 84 complete images, including randomizer seed boundaries |
+| Real BCH composed with exact driver helpers | 120 binary profiles, 204 PIO/DMA round trips, and 80 wrong-seed witnesses |
+| Compound requests and BBT replacement | Ten retry/transport and erase/program/exhaustion/restart cases; core suite now passes 19,592 assertions |
+
+The BCH result does **not** promise detection of all errors beyond capacity.
+Unused parity padding bits are excluded from correctable-symbol counts. The
+image-builder comparison respects its post-encoding BBM overwrite; it does not
+incorrectly equate that format with Linux's pre-encoding plain-BBM transform or
+the BSP's packed normal-page metadata. No captured silicon-generated golden
+image was used.
+
+Combined unchanged-driver-body coverage is now:
+
+- **90 / 90 functions extracted and executed**.
+- **1,401 / 1,424 compiled source lines** reached.
+- **667 / 708 compiled branch edges** taken.
+
+These are host-fixture measurements, not whole-kernel coverage. Twenty-three
+lines and 41 branch edges remain uncovered; most missed lines are timing
+constraint rejections, with other OOB validation/error exits. The core request
+suite separately reports **791 / 898 lines** and **374 / 501 branch edges**.
+The lifecycle/core harness reports **442 / 485 lines** and **206 / 258 edges**;
+these overlap other harnesses and must not be added to the driver total.
+
+## Audit corrections, findings and limits
+
+The source-identity audit compared the added kernel and sunxi-tools inputs with
+their exact Git objects, and the BSP inputs with their pinned public snapshot.
+It caught one extra terminal blank line in the imported `rawnand_chip.c`; the
+reference and digest were corrected to the public bytes, and the codec/driver
+compatibility suite was rerun. No extracted function or spare-capacity
+expression changed. Original reference whitespace is otherwise preserved.
+
+While constructing the tests, error-position selection was corrected to avoid
+duplicate flips and BCH padding bits. The composed driver profiles were also
+restricted to admitted 512-byte single-step and larger 1-KiB-step geometries,
+with legacy strengths capped at 64. These were fixture/oracle corrections,
+not kernel changes or weakened success assertions.
+
+One new conditional source finding is recorded: timing-mode mismatch recovery
+can return success after a failed mode-0 setup or RESET. The actual core body
+and two model cases reproduce it; hardware reachability is not established.
+The compound read tests extend the existing retry/OOB finding rather than
+adding another distinct bug. The provider audit narrows the earlier ignored
+DMA-configuration error: the pinned sun4i and sun6i callbacks always return
+zero, so that injected error is not reachable through those implementations.
+See [FINDINGS.md](docs/FINDINGS.md) for all seven conditional observations.
+
+The applicable Sashiko guidance and historical review sources are listed in
+the deep-validation map. Remaining contracts include actual bus retirement,
+late hardware-event suppression, kernel-service concurrency, hardware BCH and
+randomizer behavior, and torn-write detection. Neither formal models nor host
+fixtures establish those physical guarantees.
+
+No production kernel changes, NAND writes or new hardware tests were performed.
+Public artifacts were checked for private paths and test-hardware details.
+The updated seven-suite GitHub Actions template remains inactive.

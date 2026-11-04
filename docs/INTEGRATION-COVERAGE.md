@@ -1,5 +1,10 @@
 # NAND-core, media and recovery integration coverage
 
+This records the integration extension. The later
+[deep-validation map](DEEP-VALIDATION.md) adds scan/cleanup and timing bodies,
+real software BCH composition, BSP comparisons and compound failures. Earlier
+counts and boundaries below describe this stage, not the full current suite.
+
 This extension covers the six requested follow-up areas. It adds seven models
 and a third C harness without changing the pinned kernel implementation.
 Coverage means the listed finite cases and source paths were exercised; it does

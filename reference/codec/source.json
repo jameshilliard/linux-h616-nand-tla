@@ -1,0 +1,10 @@
+{
+  "kernel_commit": "ec81fd2e368401c75b35c78571eebc1e61bacf27",
+  "sunxi_tools_commit": "d4320e2b5ea69ad3255ddeec0b2191755e6e59f8",
+  "sunxi_tools_repository": "https://github.com/linux-sunxi/sunxi-tools",
+  "files": {
+    "bch.c": "72461c786fe3d832a6c2f6506cbf8f9d925aae55f1253d723f51832b5b314600",
+    "bch.h": "4ccd9352123676facafc59fa0ee29673be62e8e597e65a495e0bd414f3187c22",
+    "nand-image-builder.c": "3876bac0aca5d5160d2f05f1715444c8e65cc72898f77c17e614147e21cbfc0d"
+  }
+}

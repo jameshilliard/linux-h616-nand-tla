@@ -1,0 +1,7 @@
+{
+  "kernel_commit": "ec81fd2e368401c75b35c78571eebc1e61bacf27",
+  "files": {
+    "sun4i-dma.c": "7108a05070503755e150743bb15b692e6cdc74667e2f3146af12b9e9df0faa9d",
+    "sun6i-dma.c": "682d8c8bce4fae3b0769a752b854620042d78ca2361f99de11f11b333654fd4b"
+  }
+}

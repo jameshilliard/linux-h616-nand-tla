@@ -49,5 +49,7 @@ OobIdentity == s.result = "ok" /\ Oob => s.oob = [i \in 1..Pages |-> i]
 RetryStats == (s.result = "ok" => s.failed = 0) /\
     (Retry /\ s.result \in {"ok", "ecc"} => s.failed = 0 /\ s.result = "ok")
 ErrorPrefix == s.result = "io" => s.retlen = TransportPage - 1
+OobErrorPrefix == s.result = "io" /\ Oob =>
+    Len(s.oob) = s.retlen /\ (\A i \in 1..Len(s.oob) : s.oob[i] = i)
 Terminates == <> (s.pc = "done")
 =============================================================================
