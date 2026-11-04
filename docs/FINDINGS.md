@@ -223,6 +223,15 @@ IDR entry when the final reference is dropped; subsequent lookups then fail.
 `NandDetachPolicy` checks alternative entry-gating/resource-lifetime policies,
 including partial probe publication. Those policies are not implemented fixes.
 
+The [file-lifetime extension](FD-LIFETIME-CONFORMANCE.md) follows actual
+`mtdchar_close()` through `mtd_sync()` and `nand_sync()`. A writable close
+locks the chip and controller before dropping its retained MTD reference.
+Four bounded schedules therefore reach already-cleaned lock storage even
+without another explicit I/O. This is another path through finding 8, not a
+new independent defect. Any entry-gating policy must account for close/sync
+as well as reads and writes. Real device-core/devres concurrency remains a
+separate validation boundary.
+
 ## 9. The pinned sun6i DMA IRQ dispatch mishandles upper banks
 
 Location: `sun6i_dma_interrupt()` in the pinned

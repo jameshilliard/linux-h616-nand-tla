@@ -24,7 +24,7 @@ struct mtd_info {
 };
 struct mtd_notifier { struct list_head list; void (*remove)(struct mtd_info *); };
 struct nand_chip { struct mtd_info mtd; bool resources; };
-struct sunxi_nand_chip { struct nand_chip nand; struct list_head node; };
+struct sunxi_nand_chip { struct nand_chip nand; struct list_head node; bool registered; };
 struct sunxi_nfc { struct list_head chips; };
 static struct lock mtd_table_mutex;
 static struct mtd_info *mtd_idr[8];

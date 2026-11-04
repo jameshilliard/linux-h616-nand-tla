@@ -18,10 +18,14 @@ and ARM64 GCC `W=1` object builds pass. The [probe audit](PROBE-VISIBILITY.md)
 records the corrected admission/publication behavior and partial-error unwind.
 The generic NAND-core and DMA-provider fixes remain on separate branches.
 
-The full-driver coverage totals below belong to the earlier source digest,
-not this integration. They have not been recomputed for the new full source.
-Model files, pinned sources and the earlier validation records are unchanged.
-The retained-MTD/unbind lifetime issue remains unresolved.
+The full-driver rerun for this exact digest executes all **90 functions**,
+covering **1,430 of 1,434 source-mapped lines** and **706 of 718 branch
+edges**. These totals combine matching source/function hashes only; the older
+audit below retains its own earlier counts. The four unexecuted lines are the
+timing-lookup error returns discussed there. Other branch gaps include unused
+helper/capability combinations, parser-excluded instructions, fixture error
+pointer guards and the unregister-warning branch; they are not hidden as
+complete path coverage. The retained-MTD/unbind lifetime issue remains unresolved.
 
 The subsequent [trace-conformance checks](PROBE-TRACE-CONFORMANCE.md) run this
 same candidate through 1,788 additional probe cases. All 45 distinct observed
@@ -41,7 +45,19 @@ The complementary software BCH/driver checks also pass against this candidate;
 exact results and remaining boundaries are recorded in
 [VALIDATION.md](../VALIDATION.md).
 
+The [whole-request extension](REQUEST-TRACE-CONFORMANCE.md) adds 810 source
+executions reaching actual page/OOB/subpage, DMA, command and IRQ/recovery
+helpers, plus independent stored-byte checks and source-to-TLA observations.
+The [file-lifetime extension](FD-LIFETIME-CONFORMANCE.md) follows actual MTD
+open/close into NAND locks. Its close/sync witnesses strengthen the known
+unbind issue rather than identifying a separate OOB regression. The two-user
+lock and request/IRQ ordering models retain explicit kernel/hardware boundaries.
+
 ## Earlier full-driver audit
+
+The following is the earlier 21-patch snapshot's record. Statements about its
+then-current candidate and coverage are historical; the integration above
+supersedes them without changing the pinned posted reference.
 
 This audit checks the v10 draft's driver, not just the original v9 snapshot.
 The checked sunxi branch is `submit/sunxi-nand-fixes-v10` at

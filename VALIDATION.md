@@ -1288,3 +1288,86 @@ No new kernel defect was established. Details are in
 [OOB-PIPELINE-CONFORMANCE.md](docs/OOB-PIPELINE-CONFORMANCE.md).
 No board access or NAND write occurred; public additions contain no private
 paths, credentials, board identifiers or raw hardware captures.
+
+# Whole-request, file-lifetime and full v10 validation
+
+Validated on 2026-11-04 against the 23-patch v10 draft at
+`c95239dadd36c5d4c012c228ed4a95971c89b65a`, with driver SHA-256
+`f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
+The production kernel and pinned posted driver are unchanged.
+
+`run_suite.py` passes **61/61 jobs** in `results/suite-p4dxdl54/`. It copies
+the candidate once, records the executable inputs and verifies that none
+changed during the run. Every source runner, standard model group and dedicated
+trace/ordering runner completes successfully. The standard catalog contributes
+**875/875 expectations across 42 models**; the dedicated jobs add 278, for
+**1,153/1,153 matched TLC outcomes**. Required positive action coverage is
+complete. Expected known-bug and weakened-contract counterexamples remain
+expected failures of their named properties, not claims that those issues
+have been fixed.
+
+| Dedicated check | Source observations | TLC expectations |
+| --- | ---: | ---: |
+| Probe/publication | 1,788 executions, 45 projections | 9/9 |
+| DMA/IRQ recovery helpers | 264 executions, 156 projections | 98/98 |
+| Randomized OOB/ECC pipeline | 430 executions | 119/119 |
+| Whole requests and compound errors | 810 executions, 139 projections, 18 independently encoded stored images | 25/25 |
+| Actual MTD open/close lifetime | 16 schedules, 32 opens/closes, four close/sync witnesses | 8/8 |
+| Two-request IRQ/retirement interleavings | Bounded state exploration | 10/10 |
+| Two-user NAND locking/unbind | Bounded state exploration | 9/9 |
+
+The unchanged source bodies are tested under ASan/UBSan and a separate GCOV
+build. Whole-request and file-lifetime artifact bytes must be identical in
+both builds. The pre-existing provider-local UBSan exclusion remains documented
+in the boundary guide; it is not silently represented as unrestricted sanitizer
+coverage. Public MTD checks also pass 1,285,200 admission combinations, including
+the deliberately retained generic-core boundary witnesses.
+
+Combining only passed reports matching this driver and its function-body hashes
+executes **90/90 functions**, **1,430/1,434 source-mapped lines** and
+**706/718 branch edges**. No function is unextracted or uncalled. The four
+unexecuted lines are timing-lookup error returns already excluded by preceding
+admitted-range calculations. Remaining branch gaps include unsupported helper
+combinations, parser-excluded cases, fixture error-pointer guards and the
+unregister-warning branch. These are host-fixture coverage totals, not real
+kernel branch coverage or proof of every path.
+
+Key result directories are:
+
+- Source/request: `results/request-7lnhi8_0/`; TLC: `results/tlc-huf0e0_j/`.
+- Source/file lifetime: `results/fd-lifetime-45dxhdf2/`; TLC: `results/tlc-5i4wgsn1/`.
+- Source/probe: `results/lifecycle-h0opktwa/`; TLC: `results/tlc-nx7mceif/`.
+- Source/recovery: `results/lowlevel-_eh47eds/`; TLC: `results/tlc-ctoxxq_v/`.
+- OOB pipeline: `results/oob-pipeline-7xzc2a77/`; TLC: `results/tlc-v1jgelp6/`.
+
+Separate pinned-v9 runs also pass the new 810 request executions/25 TLC
+expectations (`results/request-sh4gxp80/`, `results/tlc-nvtj8c44/`) and
+16 file-lifetime schedules/eight expectations (`results/fd-lifetime-qddp2a4b/`,
+`results/tlc-lx_15qhl/`). Candidate-only expectations are not applied to v9.
+
+Development runs caught stale shared-fixture hook declarations and the new
+registered-chip field missing from a lifetime fixture. They also caught a
+double-applied 15-clock warm-up in the new independent request-vector generator;
+the complete stored-byte comparison failed even though data-only reads passed.
+Those validation defects were corrected, not converted to expected successes.
+The final full run has no compilation, sanitizer, parser, JVM, timeout or
+unexpected-invariant failures. Python compilation, whitespace checks and CI
+template YAML parsing pass. No hosted GitHub Actions run is claimed.
+
+An exported release archive also passes the 810 pinned-source request
+executions, the double-confirm checker control, all eight file-lifetime TLC
+expectations and the public MTD boundary runner. This packaging smoke test
+uses only files in the release plus the pinned checker jar. Its local evidence
+is retained under `results/release-smoke-Ly2GQs/`; it is not another full-suite
+run and contains only synthetic test images.
+
+No additional sunxi implementation defect is confirmed. Actual writable MTD
+close reaches `nand_sync()` and its chip/controller locks after cleanup in the
+retained-reference schedules, extending the existing lifetime finding. The
+entry-gating and last-reference alternatives remain models, not kernel fixes.
+Physical randomizer/BCH behavior, hidden stream reloads, SRAM extent, DMA/bus
+retirement, late device events, real SMP/RT and device-core/devres ordering
+remain explicit boundaries. No flash was erased, reformatted or written.
+Details and reproduction instructions are in
+[REQUEST-TRACE-CONFORMANCE.md](docs/REQUEST-TRACE-CONFORMANCE.md) and
+[FD-LIFETIME-CONFORMANCE.md](docs/FD-LIFETIME-CONFORMANCE.md).

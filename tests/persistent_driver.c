@@ -16,14 +16,19 @@ static void transform(u8 *b,unsigned len,u16 seed)
 static int transfer(struct nand_chip *n,unsigned col,void *dst,unsigned len)
 {
     assert(col+len<=B_PAGE+B_SPARE && row<B_PAGES && target<B_TARGETS);
-    if(flow_event(FP_READ)) return -ETIMEDOUT;
+    if(flow_event(FP_READ)) {
+        if(oob_transfer_observer) oob_transfer_observer(n,col,dst,len,-ETIMEDOUT);
+        return -ETIMEDOUT;
+    }
     if (len) {
         u8 *b=dst?dst:controller.regs+NFC_RAM0_BASE;
         assert(dst || len<=1024);
         memcpy(b,flash[target][row]+col,len); transform(b,len,transport_seed());
         advance_seed(len);
     }
-    column=col+len; return 0;
+    column=col+len;
+    if(oob_transfer_observer) oob_transfer_observer(n,col,dst,len,0);
+    return 0;
 }
 static int sunxi_nfc_select_chip(struct nand_chip *n,unsigned cs)
 {

@@ -129,3 +129,9 @@ ready for consumption: programming is serialized and finishes before launch.
 The driver has no PM callbacks to invent a suspend/resume protocol for. More
 bounded states cannot supply missing silicon guarantees. No new board access,
 NAND write/erase or captured private media is part of this extension.
+
+The subsequent [whole-request work](REQUEST-TRACE-CONFORMANCE.md) addresses
+the bounded caller-to-DMA/IRQ trace gap and adds compound faults/reuse. The
+[file-lifetime work](FD-LIFETIME-CONFORMANCE.md) connects real open/close and
+NAND locking, including close/sync after cleanup. These extend the software
+evidence; physical contracts and full kernel concurrency remain unresolved.

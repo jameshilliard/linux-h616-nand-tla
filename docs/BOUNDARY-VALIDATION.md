@@ -133,3 +133,61 @@ real MTD operations, SMP tasklet/IRQ races, hardware stop/late-event guarantees,
 actual DMA memory ordering, manufacturer discovery quirks, and captured NAND
 images validating silicon BCH/randomizer behavior. The host suite does not
 access a board or NAND device.
+
+## Independent generic MTD end-of-device OOB fix
+
+Kernel commit `2e91fab3abe62993be81f49f0daebecdf80b8168`, based on
+`mtd/fixes` at `1c1a342aceec79528b3ba51f376eca2be5928fe7`, adds a
+nonempty-OOB starting-offset check to `mtd_check_oob_ops()`. It does not
+change the sunxi submission. The Fixes tag names `d82c36821684`, which
+changed the data-range check from `>=` to `>` and admitted a zero-data-length
+request at the end of the device.
+
+`run_mtd_boundary.py` can extract the candidate MTD wrappers independently
+of the pinned sunxi/NAND sources:
+
+```sh
+python3 run_mtd_boundary.py
+python3 run_mtd_boundary.py --candidate-mtd-core /path/to/linux/drivers/mtd/mtdcore.c --expect-eof-rejection
+python3 run.py --case mtd-
+python3 run.py --case NandMtdBoundary
+```
+
+The host check covers 1,285,200 bounded admission combinations, including
+all three OOB modes, absent buffers, empty requests, last-page access and
+invalid offsets. The baseline has 4,165 precisely classified EOF
+underflows; the candidate has zero mismatches against the mathematical
+contract in that matrix. Source-extracted OOB ioctl helpers also exercise
+nested partitions and verify that rejected requests leave the following
+page untouched, return zero transferred bytes and never reach the driver.
+Data-only fallback on devices without OOB remains valid. ASan/UBSan and
+GCOV builds produce identical output, and every newly connected MTD helper
+is called. Running the baseline with `--expect-eof-rejection` fails at the
+specific EOF admission assertion, as required for the negative control.
+
+The `eof-fixed` TLA+ policy adds only this starting-page guard. It rejects
+the EOF OOB witness while retaining the separate data-addition-overflow
+counterexample. The `bounded` policy remains a specification alternative,
+not a claim that both arithmetic issues have been fixed in the kernel.
+The 20 MTD admission/result/counterexample configurations and seven mutation
+negative controls match expectations.
+
+The candidate `mtdcore.o` builds with `W=1` for x86-64, and strict checkpatch
+reports no issues. An initial ARM64 build attempt was blocked by existing
+in-tree generated headers; those files were preserved. No ARM64 build or
+hardware reproduction is claimed for this standalone fix.
+
+Review used Sashiko's general review, technical-pattern, callstack,
+false-positive, allocation, syscall and Fixes-tag guidance. No dedicated
+MTD/NAND prompt exists in the inspected set. Both public wrappers, OOB
+ioctl admission and cleanup, partition translation, NULL-buffer length
+normalization, no-OOB devices and the original boundary-changing commit
+were checked. The remaining data-addition overflow is a separate confirmed
+issue, not a regression introduced by this change.
+
+Local evidence: `results/mtd-boundary-eeh6r72i` (baseline),
+`results/mtd-boundary-u6e5jd91` (candidate),
+`results/mtd-boundary-ii1jurq_` (expected negative-control failure), and
+`results/tlc-56hxqw4o` (20 TLC expectations), and `results/tlc-ymk67y2m`
+(seven mutation controls). Candidate `mtdcore.c` SHA-256:
+`0b0416cc886e3c64799b1d75be73ac3b3ad48ce450745f0b325bc36e11745651`.

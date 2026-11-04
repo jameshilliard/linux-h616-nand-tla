@@ -22,6 +22,7 @@ int main(void)
         partitioned_master=pm; INIT_LIST_HEAD(&nfc.chips);
         INIT_LIST_HEAD(&sn.node); list_add_tail(&sn.node,&nfc.chips);
         sn.nand.resources=true;
+        sn.registered=true;
         master->owner=&owner; master->name="fixture-master"; master->_read_oob=retained_read;
         INIT_LIST_HEAD(&master->partitions);
         if (pm) { master->dev.registered=true; master->refcnt.n=1; module_refs++; }
@@ -64,6 +65,7 @@ int main(void)
             struct mtd_info *m=&sn[i].nand.mtd;
             INIT_LIST_HEAD(&sn[i].node); list_add_tail(&sn[i].node,&nfc.chips);
             INIT_LIST_HEAD(&m->partitions); sn[i].nand.resources=true;
+            sn[i].registered=true;
             m->owner=&owner; m->index=i; m->name="fixture-multi-chip";
             m->_read_oob=retained_read; m->dev.registered=true; m->refcnt.n=1;
             mtd_idr[i]=m; module_refs++;

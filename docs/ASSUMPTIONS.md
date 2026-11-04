@@ -218,6 +218,19 @@ updates, but MTD publication remains a fixture service and retained users are
 excluded from the cleanup matrix. This extension does not establish a general
 C-to-TLA refinement proof or solve resource lifetime during unbind.
 
+`NandRequestTrace` connects actual page/OOB callers to the DMA/recovery
+helpers for a bounded 2 KiB-page matrix. Independent raw vectors check stored
+bytes, but DMA payload, opaque parity, physical completion, successful reset
+and continuous randomizer phase remain fixture contracts. The separate
+`NandRequestOrdering` model explores weak retirement/late-event contracts;
+its negative results do not assert a physical silicon failure.
+
+`NandFdTrace` executes character-device open/close and NAND lock helpers,
+with retained host storage marking accesses after cleanup rather than
+performing a host UAF. `NandFdLocking` explores two users and the actual lock
+order, while its admission gates and last-reference policies are hypothetical.
+Neither provides a generic MTD lifetime fix or full sysfs/devres refinement.
+
 `NandRt` checks safety and eventual progress separately. Removing eventual IRQ
 thread scheduling must produce a termination counterexample even though the
 drain-before-reuse safety rule still holds. No bounded RT latency is claimed.

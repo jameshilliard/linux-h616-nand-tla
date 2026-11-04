@@ -6,8 +6,8 @@ static void writel(u32 v, void *p) { media_write_reg(offset(p),v); }
 static void memcpy_toio(void *p,const void *b,size_t n) { memcpy(p,b,n); }
 static void memcpy_fromio(void *b,const void *p,size_t n) { memcpy(b,p,n); }
 static unsigned wait_for_completion_timeout(struct completion *c,unsigned timeout)
-{ sunxi_nfc_interrupt(1,&nfc); return c->done; }
-static void disable_irq(int irq) { hw.irq_disabled=true; }
+{ if(recovery_wait) return recovery_wait(c); sunxi_nfc_interrupt(1,&nfc); return c->done; }
+static void disable_irq(int irq) { hw.irq_disabled=true; if(recovery_drain) recovery_drain(); }
 static const struct nand_controller_ops transport_ops={ .exec_op=sunxi_nfc_exec_op };
 void wire_reset(void *regs, bool h616)
 {

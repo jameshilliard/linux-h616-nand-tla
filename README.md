@@ -47,6 +47,11 @@ checks, including timeout races and explicit late-event/retirement assumptions.
 The [randomized OOB pipeline checker](docs/OOB-PIPELINE-CONFORMANCE.md) connects
 decoded metadata, batch ECC status, erased-page decisions, raw parity/tail
 reads and final bytes/accounting to an independent TLA+ stage model.
+The [whole-request traces](docs/REQUEST-TRACE-CONFORMANCE.md) connect actual
+page/OOB callers to DMA, interrupt recovery and persistent-media observations,
+including compound read failures and subsequent controller reuse. The
+[file-lifetime checks](docs/FD-LIFETIME-CONFORMANCE.md) follow actual MTD
+open/close into NAND locks and expose close/sync within the known unbind issue.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -82,6 +87,11 @@ python3 run_discovery_boundary.py
 python3 run_lifetime_boundary.py
 python3 run_provider_boundary.py
 python3 run_historical.py
+python3 run_mtd_boundary.py
+python3 run_ordering.py
+python3 run_request_refinement.py
+python3 run_fd_locking.py
+python3 run_fd_lifetime.py
 ```
 
 `--download` fetches the official TLA+ tools v1.8.0 prerelease asset and verifies
@@ -152,6 +162,11 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandProbeTrace` | Source-generated probe/unwind traces, independent membership transitions, actual fixture snapshots and checker mutation controls |
 | `NandRecoveryTrace` | Source-helper DMA/wait/abort/reuse traces, interrupt cleanup, mapping ownership and explicit retirement/event-causality assumptions; dedicated runner |
 | `NandOobPipeline` | Source-helper decoded-metadata/ECC/classification/raw-read observations, byte-exact PIO/DMA representations and error/statistics ordering; dedicated runner |
+| `NandMtdBoundary` | Public request normalization/admission, partition offsets, return lengths, ECC statistics and explicit EOF/arithmetic witnesses |
+| `NandRequestTrace` | Actual page/OOB/subpage caller observations, DMA ownership, compound errors, single confirm and request results; dedicated runner |
+| `NandRequestOrdering` | Two operations with fine-grained IRQ/timeout interleavings, physical retirement and old-event assumptions; dedicated runner |
+| `NandFdTrace` | Actual MTD open/close references, retained publication and close/sync after cleanup; dedicated runner |
+| `NandFdLocking` | Chip/controller lock order, two users, unbind and hypothetical lifetime policies including close/sync; dedicated runner |
 
 The driver harnesses now extract all 90 function bodies **unchanged** from the
 bundled submitted driver, verify its hash, then compile them with host fixtures.
@@ -178,10 +193,13 @@ hardware parameter effects remain explicit fixtures.
 `run_historical.py` requires seven adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The standard suite has 848 TLC configurations across 41 models, including positive checks,
+The standard suite has 875 TLC configurations across 42 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. The dedicated probe trace runner additionally checks captured
-C executions, with input-specific counts. See [the recorded validation](VALIDATION.md),
+C executions, with input-specific counts. Other dedicated trace and ordering
+runners have separate counts. For a fixed v10 candidate, `run_suite.py` provides
+one snapshot-based full rerun; see the [request guide](docs/REQUEST-TRACE-CONFORMANCE.md).
+See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),
 [the integration coverage map](docs/INTEGRATION-COVERAGE.md),
 [the six-area deep-validation map](docs/DEEP-VALIDATION.md),
@@ -237,7 +255,8 @@ reference files are inputs, not a second driver to edit.
 
 When changing the reference revision, replace it from the actual submitted
 series, update `source.json`, review the function-to-model mapping, and rerun all
-thirteen runners. Do not update a digest merely to make a mismatch disappear.
+applicable source, trace and model runners. Do not update a digest merely to
+make a mismatch disappear.
 Changes to hardware assumptions require independent documentation or
 measurements, not just a model that produces the desired result.
 

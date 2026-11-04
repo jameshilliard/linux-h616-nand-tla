@@ -41,7 +41,7 @@ def bodies(src, functions):
 
 
 def check(name, units, hashes, *, cc="gcc", args=(), expected="ALL CHECKS PASSED",
-          limits=(), flags=(), coverage=None, require_all_called=True):
+          limits=(), flags=(), coverage=None, require_all_called=True, artifacts=()):
     results = HERE / "results"
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix=name + "-", dir=results))
@@ -60,10 +60,13 @@ def check(name, units, hashes, *, cc="gcc", args=(), expected="ALL CHECKS PASSED
     run = subprocess.run(["./check", *args], cwd=out, text=True, capture_output=True, timeout=180)
     (out / "check.log").write_text(run.stdout + run.stderr)
     passed = run.returncode == 0 and expected in run.stdout and not run.stderr
+    observed = {n: (out / n).read_bytes() for n in artifacts} if passed else {}
     cov = None
     if passed and coverage:
         from source_coverage import build_and_collect
         cov = build_and_collect(out, command, *coverage)
+        if any((out / n).read_bytes() != value for n, value in observed.items()):
+            raise RuntimeError("sanitizer/coverage observations differ: " + name)
         if require_all_called and any(not v["calls"] for v in cov["functions"].values()):
             passed = False
     (out / "summary.json").write_text(json.dumps(dict(
@@ -72,6 +75,7 @@ def check(name, units, hashes, *, cc="gcc", args=(), expected="ALL CHECKS PASSED
         compiler_command=command,
         compiler_version=subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         limits=list(limits), coverage=cov,
+        artifacts_sha256={n: hashlib.sha256(value).hexdigest() for n, value in observed.items()},
         source_sha256={n: hashlib.sha256(s.encode()).hexdigest()
                        for n, s in coverage[0].items()} if coverage else {},
         driver_sha256=hashlib.sha256(coverage[0]["sunxi_nand.c"].encode()).hexdigest()

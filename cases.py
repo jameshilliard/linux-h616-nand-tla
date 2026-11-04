@@ -156,3 +156,6 @@ extend_probe(MODULES, add, mutation)
 
 from probe_trace_cases import extend_probe_trace
 extend_probe_trace(MODULES, add, mutation)
+
+from mtd_cases import extend_mtd
+extend_mtd(MODULES, add, mutation)
