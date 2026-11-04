@@ -31,6 +31,8 @@ def main():
                         help="sunxi_nand.c containing the split-address and clock-error fixes")
     parser.add_argument("--expect-count-fixed", action="store_true",
                         help="require exact large transfers and accesses within RAM0's 1 KiB bank")
+    parser.add_argument("--recovery-traces", action="store_true",
+                        help="record source-helper DMA/IRQ/abort/reuse boundaries for TLA checking")
     args = parser.parse_args()
     if args.expect_count_fixed and not args.candidate_source:
         parser.error("--expect-count-fixed requires --candidate-source")
@@ -87,12 +89,19 @@ def main():
     results = HERE / "results"
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="lowlevel-", dir=results))
-    fixture = (HERE / "tests/lowlevel.h").read_text().replace("/* @parser-header@ */", header)
+    fixture_inputs = {name: (HERE / "tests" / name).read_text()
+                      for name in ("lowlevel.h", "lowlevel.c")}
+    fixture = fixture_inputs["lowlevel.h"].replace("/* @parser-header@ */", header)
+    tests = fixture_inputs["lowlevel.c"]
+    if args.recovery_traces:
+        fixture_inputs["recovery_trace.c"] = (HERE / "tests/recovery_trace.c").read_text()
+        tests = tests.replace("/* @recovery-traces@ */", fixture_inputs["recovery_trace.c"])
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
                 f'#define FIXED_COUNT {int(args.expect_count_fixed)}\n' +
+                f'#define RECOVERY_TRACES {int(args.recovery_traces)}\n' +
                 '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +
                 "\n".join(generated) + '\n#line 1 "lowlevel.c"\n' +
-                (HERE / "tests/lowlevel.c").read_text())
+                tests)
     (out / "check.c").write_text(combined)
     command = [args.cc, "-std=gnu11", "-O0", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",
@@ -107,12 +116,19 @@ def main():
     run = subprocess.run(["./check"], cwd=out, text=True, capture_output=True, timeout=180)
     (out / "check.log").write_text(run.stdout + run.stderr)
     passed = run.returncode == 0 and "ALL LOWLEVEL CHECKS PASSED" in run.stdout and not run.stderr
+    traces = (out / "recovery-traces.jsonl").read_bytes() if passed and args.recovery_traces else None
     from source_coverage import build_and_collect
     coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
+    if traces is not None and (out / "recovery-traces.jsonl").read_bytes() != traces:
+        raise RuntimeError("sanitized and coverage builds produced different recovery traces")
     (out / "summary.json").write_text(json.dumps(dict(
         passed=passed, driver_sha256=hashlib.sha256(source.encode()).hexdigest(),
         candidate=bool(args.candidate_source), count_fix=args.expect_count_fixed, functions=hashes,
-        output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
+        output=run.stdout, diagnostics=run.stderr, coverage=coverage,
+        fixture_sha256={name: hashlib.sha256(text.encode()).hexdigest()
+                        for name, text in fixture_inputs.items()},
+        recovery_traces_sha256=hashlib.sha256(traces).hexdigest() if traces is not None else None,
+        recovery_trace_count=len(traces.splitlines()) if traces is not None else 0), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)
     return 0 if passed else 1

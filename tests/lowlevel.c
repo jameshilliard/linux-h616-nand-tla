@@ -21,6 +21,8 @@ static u32 readl(const void *p)
             store(caps.reg_spare_area,0);
             store(NFC_REG_TIMING_CTL,0); store(NFC_REG_TIMING_CFG,0);
         }
+        if(!hw.retain_stop_bus) hw.outstanding_bus=false;
+        RECOVERY_EVENT("reset-ok", 0);
     }
     if (off==NFC_REG_ST && hw.fifo_busy) return load(off)|NFC_CMD_FIFO_STATUS;
     return load(off);
@@ -32,7 +34,8 @@ static void writel(u32 value, void *p)
     hw.reg_writes[off/4]++;
     if (off==NFC_REG_ST) {
         /* Only the three event bits are W1C; FIFO/FSM/RB levels are RO. */
-        store(off,load(off)&~(value&7)); return;
+        store(off,load(off)&~(value&7));
+        RECOVERY_EVENT("ack", value&7); return;
     }
     if (off==NFC_REG_H6_MDMA_STA) {
         /* One W1C completion bit for each of up to 32 descriptors. */
@@ -45,6 +48,8 @@ static void writel(u32 value, void *p)
         if(hw.backend==2) value&=0x3ff;
     }
     store(off,value);
+    if(off==NFC_REG_INT) RECOVERY_EVENT("mask", value);
+    if(off==NFC_REG_CTL && value==NFC_RESET) RECOVERY_EVENT("reset-start", 0);
     if (off==NFC_REG_ECC_CTL && (value&caps.random_en_mask))
         stream_state=shift_n((value>>16)&0x7fff,15);
     if (off==NFC_REG_H6_MDMA_DLBA_REG) {
@@ -101,6 +106,7 @@ static void memcpy_fromio(void *dst,const void *src,size_t n)
 static unsigned wait_for_completion_timeout(struct completion *c,unsigned timeout)
 {
     hw.wait_calls++;
+    if(recovery_wait) return recovery_wait(c);
     if(hw.wait_mode==1) return 0;
     hw.irq_calls++;
     sunxi_nfc_interrupt(1,&nfc);
@@ -109,6 +115,8 @@ static unsigned wait_for_completion_timeout(struct completion *c,unsigned timeou
 static void disable_irq(int irq)
 {
     hw.disable++; hw.irq_disabled=true;
+    RECOVERY_EVENT("irq-off", 0);
+    if(recovery_drain) recovery_drain();
     /* mode 2: a handler already acknowledged CMD, DMA arrives while draining. */
     if(hw.wait_mode==2) {
         store(NFC_REG_ST,load(NFC_REG_ST)|NFC_DMA_INT_FLAG);
@@ -908,6 +916,7 @@ static void recovery_refinement(void)
     assert(!sunxi_nfc_wait_events(&nfc,NFC_CMD_INT_FLAG,false,1));
     printf("Recovery refinement: %u reselected contexts; %u failed-stop/unmap witnesses; one late-event contract witness\n",checks,failures);
 }
+/* @recovery-traces@ */
 int main(void)
 {
     dma_checks(); dma_init_checks(); dma_aperture_checks(); irq_checks(); raw_media_checks();
@@ -915,5 +924,8 @@ int main(void)
     selection_matrix();
     probe_context_interleaving();
     recovery_refinement();
+#if RECOVERY_TRACES
+    recovery_traces();
+#endif
     puts("ALL LOWLEVEL CHECKS PASSED"); return 0;
 }

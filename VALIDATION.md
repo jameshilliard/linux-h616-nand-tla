@@ -1154,3 +1154,63 @@ kernel defect was established by these checks. Details and reproduction steps
 are in [PROBE-TRACE-CONFORMANCE.md](docs/PROBE-TRACE-CONFORMANCE.md).
 No hardware access or NAND write occurred, and public additions contain no
 private paths, credentials, raw captures or device identifiers.
+
+# Source-to-model DMA recovery trace conformance
+
+Validated on 2026-11-04 against the pinned v9 driver and the same 23-patch
+sunxi v10 draft at `c95239dadd36c5d4c012c228ed4a95971c89b65a`. No kernel
+implementation, reference source or source manifest was changed by this work.
+
+`run_lowlevel.py --recovery-traces` executes the unchanged preparation,
+IRQ/wait, abort, cleanup and chip-selection helpers with boundary observers.
+Each source version passes 264 additional schedules under ASan/UBSan and
+separate GCOV execution: 168 normal-contract schedules and 96 deliberately
+weakened-contract schedules. Both builds produce identical trace bytes, as do
+the two driver revisions for this matrix. The shared trace SHA-256 is
+`4f87dc0d2c2e59c17d02007ef7089afd6b391ae60798dea8ab84f331710a6cee`.
+The final source runs are `results/lowlevel-xp3_ejex/` (v10) and
+`results/lowlevel-_6edpw38/` (v9); their summaries record distinct driver and
+function digests plus the exact fixture inputs. A non-tracing baseline rerun
+also passes in `results/lowlevel-g6bhb41o/`.
+
+The new `NandRecoveryTrace` checker accounts for all 264 inputs through 156
+distinct boundary projections. The complete run passes **98/98 expectations**
+in `results/tlc-oly56k92/`:
+
+- 78 trace-integrity wrappers check every projection's ordering, snapshots,
+  interrupt cleanup, mapping/direction accounting, context restoration and
+  expected safety outcome. Each wrapper contains at most two projections.
+- 12 conditional counterexamples reproduce their exact `MappingSafe` or
+  `FreshCompletion` violation: failed stop, outstanding bus accesses after
+  stop, old events after reuse and completion before memory retirement, on
+  each of the three backends.
+- Eight altered-trace controls fail their specific invariants for wrong
+  snapshots/direction/context, missing unmap/abort, an incorrect timeout result,
+  premature unmap and late restoration of the IRQ mask.
+
+All required `Advance` action coverage is reached. Trace completion is checked
+for each integrity wrapper; it is not a guarantee of hardware forward progress.
+All 53 existing abstract recovery configurations also pass again in
+`results/tlc-c96srjbe/`. These are targeted runs, not a new full-suite result.
+The dedicated trace configurations remain separate from the standard catalog.
+Python compilation, whitespace checks and parsing of the extended CI template
+pass. No hosted CI execution is claimed.
+
+An initial eight-projection wrapper exhausted TLC's 1 GiB heap and was correctly
+reported as a failure. The final runner uses two-projection wrappers, preserving
+all input multiplicities. `TLCCache` memoizes each immutable trace by index;
+its mathematical definition is the identity operator. A focused cached and
+uncached comparison produces the same 82 generated / 80 distinct states.
+The final complete run has no parser, JVM, timeout or unexpected-invariant
+failures. Neither a crash nor a different invariant counts as a successful
+negative test.
+
+The source fixtures still supply command launch, event delivery and physical
+retirement behavior. The new model checks the resulting helper protocol; it
+does not execute the whole page caller, prove DMA/bus quiescence, or establish
+that the weakened contracts describe real silicon. No new kernel defect is
+confirmed by this extension. The known retirement/event-causality, retained-MTD
+lifetime and randomizer behavior limits remain explicit in
+[RECOVERY-TRACE-CONFORMANCE.md](docs/RECOVERY-TRACE-CONFORMANCE.md).
+No board access or flash write occurred. Public additions contain no private
+paths, credentials, board identifiers or raw hardware captures.

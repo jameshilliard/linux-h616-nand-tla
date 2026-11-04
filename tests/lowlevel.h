@@ -131,6 +131,7 @@ static struct {
     bool map_fail, prep_fail, submit_fail, reset_fail, terminate_fail;
     bool reset_clears_context, reload_each_command;
     bool mapped, active, irq_disabled, fifo_busy, published, unsafe;
+    bool outstanding_bus, retain_stop_bus;
     bool mask_fail, alloc_fail, enforce_dma_mask;
     int channel_error, config_error;
     u64 dma_mask;
@@ -146,11 +147,21 @@ static u32 readl(const void *p);
 static void writel(u32 value, void *p);
 static void memcpy_toio(void *dst, const void *src, size_t n);
 static void memcpy_fromio(void *dst, const void *src, size_t n);
-static void complete(struct completion *c) { c->done = true; }
-static void reinit_completion(struct completion *c) { c->done = false; }
+/* Optional boundary observations; extracted kernel bodies are never edited. */
+static void (*recovery_observe)(const char *, int);
+static unsigned (*recovery_wait)(struct completion *);
+static void (*recovery_drain)(void);
+#define RECOVERY_EVENT(kind, value) do { \
+    if (recovery_observe) recovery_observe(kind, value); \
+} while (0)
+static void complete(struct completion *c)
+{ c->done = true; RECOVERY_EVENT("complete", 0); }
+static void reinit_completion(struct completion *c)
+{ c->done = false; RECOVERY_EVENT("reinit", 0); }
 static unsigned wait_for_completion_timeout(struct completion *, unsigned);
 static void disable_irq(int);
-static void enable_irq(int irq) { assert(hw.irq_disabled); hw.irq_disabled=false; hw.enable++; }
+static void enable_irq(int irq)
+{ assert(hw.irq_disabled); hw.irq_disabled=false; hw.enable++; RECOVERY_EVENT("irq-on", 0); }
 static void sg_init_one(struct scatterlist *sg, const void *buf, unsigned n) { sg->len=n; }
 static bool fits_dma_mask(dma_addr_t address, size_t size)
 {
@@ -164,11 +175,16 @@ static int dma_map_sg(void *dev, struct scatterlist *sg, int n, enum dma_data_di
     hw.map_direction=d;
     if (hw.map_fail || (hw.enforce_dma_mask && !fits_dma_mask(hw.map_address,sg->len))) return 0;
     hw.maps++; hw.mapped=true; sg->address=hw.map_address;
+    RECOVERY_EVENT("map", d);
     return 1;
 }
 #define sg_dma_address(sg) ((sg)->address)
 static void dma_unmap_sg(void *dev, struct scatterlist *sg, int n, enum dma_data_direction d)
-{ assert(hw.mapped); hw.unmap_direction=d; hw.unmaps++; hw.mapped=false; hw.unsafe |= hw.active; }
+{
+    assert(hw.mapped); hw.unmap_direction=d; hw.unmaps++; hw.mapped=false;
+    hw.unsafe |= hw.active || hw.outstanding_bus;
+    RECOVERY_EVENT("unmap", d);
+}
 static struct dma_async_tx_descriptor *dmaengine_prep_slave_sg(void *c, struct scatterlist *sg,
         int n, enum dma_transfer_direction d, int flags)
 { hw.prep_direction=d; hw.prep++; return hw.prep_fail ? NULL : &descriptor; }
@@ -176,7 +192,14 @@ static int dmaengine_submit(struct dma_async_tx_descriptor *d)
 { hw.submit++; return hw.submit_fail ? -EIO : 1; }
 static int dma_submit_error(int cookie) { return cookie < 0 ? cookie : 0; }
 static int dmaengine_terminate_all(void *c)
-{ hw.term++; if (hw.terminate_fail) return -EIO; hw.active=false; return 0; }
+{
+    hw.term++;
+    if (hw.terminate_fail) { RECOVERY_EVENT("terminate-error", -EIO); return -EIO; }
+    hw.active=false;
+    if (!hw.retain_stop_bus) hw.outstanding_bus=false;
+    RECOVERY_EVENT("terminate-ok", 0);
+    return 0;
+}
 static void dma_wmb(void) { hw.barrier=++hw.serial; }
 struct resource { u64 start; };
 struct dma_slave_config {
