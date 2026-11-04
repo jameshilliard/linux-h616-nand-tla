@@ -75,6 +75,17 @@ v10 reports instead of combining different source-line numbers.
   1872-byte H616 tail and 1928-byte legacy tail under synthetic geometries
   accepted by the real attach code. The unchanged v9 still reproduces
   the H616 count-loss counterexamples.
+- **48 independent raw-stream sequences:** actual read/write wrappers and
+  buffer helpers, two seeds, plain/scrambled data, partial command failure,
+  subsequent requests and zero-length cleanup. Three deliberately injected
+  command-reload alternatives pass round trips but fail stored-byte identity.
+- **52 DMA aperture cases:** exact/crossing 32-bit range endpoints in both
+  directions on all three backends, descriptor extent/alignment and explicit
+  mask setup. Two above-mask injections demonstrate the dependency on the DMA
+  API contract; they are not newly reachable driver defects.
+- **87 persistent length-register sequences:** wide-to-narrow PIO/DMA
+  transitions, zero metadata, all packed-word boundaries and nonzero logical
+  starts; adjacent-register sentinels and legacy no-MMIO behavior checked.
 
 Existing byte-identity, randomizer, erased-predicate, attach, lifecycle,
 core-composition and real-BCH tests also run against the candidate source.
@@ -151,3 +162,6 @@ The subsequent [refinement checks](REFINEMENT-VALIDATION.md) connect actual
 command and manufacturer callback bodies, exercise retained MTD users through
 lookup and I/O, and refine reset/register and byte/cache-line assumptions.
 They extend the source evidence without establishing the physical guarantees.
+The [stream/aperture/context extension](STREAM-APERTURE-CONTEXT.md) adds
+independent checks at the raw-command and request-reuse boundaries, and lists
+the remaining hardware, lifecycle, concurrency and refinement gaps by priority.

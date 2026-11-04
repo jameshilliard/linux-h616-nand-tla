@@ -147,3 +147,6 @@ extend_next(MODULES, add, mutation)
 
 from hardware_cases import extend_hardware
 extend_hardware(MODULES, add, mutation)
+
+from contract_cases import extend_contracts
+extend_contracts(MODULES, add, mutation)

@@ -26,6 +26,10 @@ Generation-specific A10/A23/H616 profiles distinguish advertised SRAM from
 RAM0 bounds, valid older requests from H616's ten-bit counter, and external,
 register and descriptor DMA. The updated candidate includes the count-limit
 fix; the pinned submission retains its reproducible counterexamples.
+The [stream, aperture and persistent-context checks](docs/STREAM-APERTURE-CONTEXT.md)
+add independent raw-byte randomizer oracles, DMA address-range constraints and
+packed user-data register reuse across PIO/DMA requests. They also expose how
+a matching randomizer error can pass a write/read round trip.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -122,6 +126,9 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandDetachPolicy` | Two users on the same/different chips, retained publication, partition references, partial probe and alternative lifetime policies |
 | `NandDmaBytes` | RX/TX payload publication, exact bounce copyback, neighboring cache-line bytes and mapping-generation reuse |
 | `NandRetryProtocol` | Hynix enter/write/apply and Micron SET FEATURES, accepted-but-failed commands, retry reads and failed default restoration |
+| `NandRandomizerStream` | Independent stored/read representations, phase across raw command boundaries, seed changes, zero-length requests and partial errors |
+| `NandDmaAperture` | 32-bit buffer/descriptor endpoints, mask/alignment/caller contracts, exact address encoding and balanced mapping cleanup |
+| `NandUserDataContext` | Persistent packed lengths across PIO/DMA requests, logical-step offsets, zero/unused slots, word boundaries and absent legacy registers |
 
 The driver harnesses now extract all 90 function bodies **unchanged** from the
 bundled submitted driver, verify its hash, then compile them with host fixtures.
@@ -148,7 +155,7 @@ hardware parameter effects remain explicit fixtures.
 `run_historical.py` requires seven adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The suite has 667 TLC configurations across 35 models, including positive checks,
+The suite has 765 TLC configurations across 38 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),

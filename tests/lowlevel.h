@@ -128,13 +128,13 @@ static struct {
     enum dma_data_direction map_direction, unmap_direction;
     enum dma_transfer_direction prep_direction;
     bool map_fail, prep_fail, submit_fail, reset_fail, terminate_fail;
-    bool reset_clears_context;
+    bool reset_clears_context, reload_each_command;
     bool mapped, active, irq_disabled, fifo_busy, published, unsafe;
-    bool mask_fail, alloc_fail;
+    bool mask_fail, alloc_fail, enforce_dma_mask;
     int channel_error, config_error;
     u64 dma_mask;
     int wait_mode, clock_set_error;
-    dma_addr_t map_address;
+    dma_addr_t map_address, allocation_address;
     long rounded_rate;
     unsigned long real_rate, requested_rate;
     unsigned clock_calls, soft_wait_ms;
@@ -151,11 +151,17 @@ static unsigned wait_for_completion_timeout(struct completion *, unsigned);
 static void disable_irq(int);
 static void enable_irq(int irq) { assert(hw.irq_disabled); hw.irq_disabled=false; hw.enable++; }
 static void sg_init_one(struct scatterlist *sg, const void *buf, unsigned n) { sg->len=n; }
+static bool fits_dma_mask(dma_addr_t address, size_t size)
+{
+    /* Nonzero size is a caller precondition, not an API recovery promise. */
+    assert(size);
+    return address<=hw.dma_mask && size-1<=hw.dma_mask-address;
+}
 static int dma_map_sg(void *dev, struct scatterlist *sg, int n, enum dma_data_direction d)
 {
     assert(!hw.mapped);
     hw.map_direction=d;
-    if (hw.map_fail) return 0;
+    if (hw.map_fail || (hw.enforce_dma_mask && !fits_dma_mask(hw.map_address,sg->len))) return 0;
     hw.maps++; hw.mapped=true; sg->address=hw.map_address;
     return 1;
 }
@@ -180,7 +186,13 @@ static struct dma_slave_config configured;
 static int dma_set_mask_and_coherent(void *dev,u64 mask)
 { hw.dma_mask=mask; return hw.mask_fail ? -EIO : 0; }
 static void *dmam_alloc_coherent(void *dev,size_t n,dma_addr_t *addr,int flags)
-{ assert(n==sizeof(desc)); *addr=0x12345000; return hw.alloc_fail ? NULL : &desc; }
+{
+    assert(n==sizeof(desc));
+    if(hw.alloc_fail || (hw.enforce_dma_mask &&
+       (!fits_dma_mask(hw.allocation_address,n) || hw.allocation_address%4))) return NULL;
+    *addr=hw.allocation_address;
+    return &desc;
+}
 static void *dma_request_chan(void *dev,const char *name)
 { assert(!strcmp(name,"rxtx")); return hw.channel_error ? (void *)(intptr_t)hw.channel_error : &descriptor; }
 static int dmaengine_slave_config(void *chan, const struct dma_slave_config *conf)

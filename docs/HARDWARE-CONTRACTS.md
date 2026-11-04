@@ -21,7 +21,7 @@ in sections 4.2.5.2 and 4.2.5.9.
 | Ready/busy edge remains latched until W1C; interrupt enable is separate | 5.2.6.2–3 | Register model, IRQ mask/status matrix |
 | MDMA status has 32 W1C descriptor-completion bits, unlike the three-event NDFC status | 5.2.6.29 | Low-level selective-clear check |
 | WAIT_FLAG selects readiness waiting | 5.2.6.10 | Register model and command/parser cases |
-| Descriptor length is 16 bits, eight-byte granular; zero skips the buffer | 5.2.3.4 | Length/alignment checks; zero-sized chains remain outside the model |
+| Descriptor length is 16 bits, eight-byte granular; zero skips the buffer | 5.2.3.4 | Length/alignment checks; aperture model exposes the positive-length caller precondition; zero-sized chains remain outside scope |
 | Descriptor and buffer addresses are word aligned | 5.2.3.4 | Alignment matrix |
 | User-data lengths are encoded per block and share a 128-byte bank | 5.2.6.21–22 | Batch/layout/register checks |
 | ECC counters and pattern IDs are block-indexed | 5.2.6.20, 25 | Snapshot/cache/batch checks |
@@ -162,6 +162,11 @@ this fix needs only the documented 1 KiB bank and command range. Randomizer
 continuity between successive normal commands remains an explicit hardware
 contract: tests ensure software does not reseed between chunks, but software
 LFSR vectors are not measurements of hidden silicon reload behavior.
+The [stream/aperture/context extension](STREAM-APERTURE-CONTEXT.md) now checks
+the alternative reload behavior explicitly: same-chunk write/read round trips
+can pass even when the independently expected stored stream differs. It also
+checks DMA range endpoints and length-register reuse without borrowing the
+H616 descriptor or packed-length format for older NFCs.
 No flash write, erase, reset or power-cycle was performed for this audit.
 
 Kernel-side findings were checked using Sashiko's general technical-pattern,

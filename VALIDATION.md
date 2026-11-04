@@ -855,3 +855,76 @@ hardware events, full kernel concurrency and physical ECC/randomizer behavior
 remain unresolved. The synthetic large-OOB geometry is not asserted to be a
 part tested on a board. No NAND write, erase, power cycle or board access was
 performed. Public changes contain no private paths or raw NAND captures.
+
+# Raw-stream, DMA-aperture and persistent-context extension
+
+Validated on 2026-11-04. The three added models and their source correspondence
+are described in [STREAM-APERTURE-CONTEXT.md](docs/STREAM-APERTURE-CONTEXT.md).
+The reference remains the posted v9. The candidate remains the unchanged v10
+driver at `ccdee2ee49862a1377d31f5c541ce9d5fab327df`, with SHA-256
+`7e2525a0097a156a7a4e952a073c03ca19872f1c417a42387f15d5b85081a50a`.
+
+## Formal results
+
+All **765 configurations across 38 models** matched their expectations:
+
+- 584 positive configurations passed invariants and bounded termination.
+- 85 deliberate mutations failed their named invariant.
+- 46 assumption checks reproduced their named consequence.
+- 50 source-contract configurations reproduced their named failure.
+- All **298 required positive-model actions** were reached.
+
+The extension contributes 98 configurations: 81 positive, ten mutations and
+seven assumption checks. No new source-contract failure is claimed. Positive
+instances generated 368,268 states and found 258,667 distinct states; the sums
+across all configurations were 388,722 and 274,518. The run took about 558
+seconds with the pinned TLC jar, one worker, seed 1 and fingerprint polynomial
+0. All 38 recorded model hashes match the final files. These remain bounded
+instances, not an unbounded proof. Local results: `results/tlc-4_vkhpzs/`.
+
+## Source execution
+
+| Check | Outcome |
+| --- | --- |
+| Independent raw-stream bytes | 48 candidate sequences across A10/A23/H616; 32 baseline sequences across A10/A23; timeouts preserve the completed prefix and cleanup before changed-seed/plain requests |
+| Hypothetical command-start reload | Three candidate/two baseline fixtures pass same-chunk round trips but differ from the independent physical image; explicitly a hardware-assumption witness |
+| DMA aperture | 52 mapping-endpoint/direction/allocation cases per driver version; two artificial above-mask truncation witnesses retained separately |
+| Persistent user-data length registers | 87 sequences per version plus legacy no-MMIO; packed-word boundaries, logical offsets, zero fields, stale unused slots and neighboring sentinels |
+| Connected transport | Baseline and candidate ordinary transport and count-boundary modes pass; baseline retains the known H616 tail-count discrepancy, candidate transfers the entire tail |
+| Candidate lifecycle | 1,011 cases and 65,973 assertions; existing core timing-recovery witness retained |
+| Candidate BCH/source composition | 600 correction/overcapacity cases, 120 independent parity vectors, 84 sunxi-tools images and 204 PIO/DMA round trips |
+| Candidate historical controls | Positive baseline and all seven named regression controls match their expectations |
+
+The source checks use ASan/UBSan without adding an exclusion. The fresh
+candidate page, low-level and lifecycle coverage union still executes all 90
+extracted driver functions, reaching 1,427/1,431 source-mapped lines and
+701/712 branch edges. The unchanged line/branch counts are expected: the new
+checks add stronger values, boundaries and persistent-state sequences, not
+previously unexecuted function bodies. Host-fixture coverage is not actual
+kernel concurrency coverage.
+
+Local result directories include `c-0daabmn9`, `lowlevel-jbningdv`,
+`lifecycle-1zp3yvoz`, `transport-d4mcn48u`, `transport-count-umns4f18`,
+`codec-cztdd94n` and `historical-kvup_k7c`. Baseline results include
+`c-41ff1a76`, `lowlevel-0ndxes49`, `transport-qqqax58c` and
+`transport-count-68ag51ai`, all under ignored `results/`.
+
+## Review and limits
+
+Source-contract review used cached Sashiko general technical-pattern,
+false-positive, callstack, MMIO/accessor and alignment guidance at
+`d048f8742f6740c38833adf02e87901412d771ca`; that set has no dedicated NAND
+prompt. The mask, allocation and positive-size caller contracts were checked
+against source initialization/callers and the DMA API. Arbitrary above-mask
+or zero-size injections were not reported as reachable kernel bugs. Packed
+length tests distinguish register-valid helper inputs from the allocator's
+actual layouts. This is not a Sashiko bot run or a new full kernel-series review.
+
+No new confirmed driver bug was established. The independent stream check
+demonstrates why round-trip success alone cannot establish media compatibility;
+it does not establish real silicon's command-reload behavior. Reset/bus
+retirement, late events, MTD-unbind lifetime, physical SRAM behavior, full
+kernel concurrency and C/model refinement remain outstanding. The prioritized
+follow-up table records the evidence each needs. No kernel patches, board
+state or NAND contents were changed. Public files exclude private paths,
+credentials, identifiers and captures.

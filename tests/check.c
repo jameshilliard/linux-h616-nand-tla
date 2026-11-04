@@ -118,6 +118,70 @@ static void geometry(void)
     printf("geometry/layout/batch/register checks: %u\n", tests);
 }
 
+static void check_length_image(const u8 *user,unsigned first,unsigned count)
+{
+    for(unsigned slot=0;slot<32;slot++) {
+        u32 word=readl(controller.regs+0x70+(slot/8)*4);
+        unsigned expected=slot<count ? user[first+slot]/4 : 0;
+        assert(((word>>((slot%8)*4))&15)==expected);
+    }
+    assert(readl(controller.regs+0x6c)==0x76543210);
+    assert(readl(controller.regs+0x80)==0x89abcdef);
+}
+
+static void length_sequence_checks(void)
+{
+    static const unsigned starts[]={0,1,7,8,15,16,31};
+    static const unsigned counts[]={1,7,8,9,16,17,31,32};
+    u8 wide[32], mixed[32];
+    unsigned runs=0;
+    struct caps c=caps(true);
+    struct nand_chip nand=chip(32,56,32*60);
+    memset(wide,4,sizeof(wide));
+    controller.caps=&c;
+    memset(controller.regs,0xff,sizeof(controller.regs));
+    writel(0x76543210,controller.regs+0x6c);
+    writel(0x89abcdef,controller.regs+0x80);
+    for(unsigned first=0;first<ARRAY_SIZE(starts);first++)
+    for(unsigned len=0;len<=32;len+=4) {
+        /* Preserve registers across all requests, including 32->1 slots,
+         * PIO/DMA changes, zero-length metadata and nonzero logical steps. */
+        nand.user_data_bytes=wide;
+        sunxi_nfc_set_user_data_len_dma(&nand,0,32);
+        check_length_image(wide,0,32);
+        sunxi_nfc_reset_user_data_len(&controller);
+        sunxi_nfc_set_user_data_len_pio(&controller,len);
+        u8 pio[]={len};
+        check_length_image(pio,0,1);
+        for(unsigned i=0;i<32;i++) mixed[i]=((i+len/4)%9)*4;
+        nand.user_data_bytes=mixed;
+        sunxi_nfc_set_user_data_len_dma(&nand,starts[first],1);
+        check_length_image(mixed,starts[first],1);
+        runs++;
+    }
+    for(unsigned n=0;n<ARRAY_SIZE(counts);n++)
+    for(unsigned phase=0;phase<3;phase++) {
+        nand.user_data_bytes=wide;
+        sunxi_nfc_set_user_data_len_dma(&nand,0,32);
+        for(unsigned i=0;i<32;i++) mixed[i]=((i+phase)%3)*4;
+        nand.user_data_bytes=mixed;
+        sunxi_nfc_set_user_data_len_dma(&nand,0,counts[n]);
+        check_length_image(mixed,0,counts[n]);
+        runs++;
+    }
+    /* A10/A23 have fixed metadata widths, not these length registers. */
+    c=caps(false);
+    u8 before[sizeof(controller.regs)];
+    memcpy(before,controller.regs,sizeof(before));
+    memset(mmio_writes,0,sizeof(mmio_writes));
+    sunxi_nfc_reset_user_data_len(&controller);
+    sunxi_nfc_set_user_data_len_pio(&controller,4);
+    sunxi_nfc_set_user_data_len_dma(&nand,0,16);
+    assert(!memcmp(before,controller.regs,sizeof(before)));
+    for(unsigned i=0;i<ARRAY_SIZE(mmio_writes);i++) assert(!mmio_writes[i]);
+    printf("persistent user-data lengths: %u PIO/DMA/word-boundary sequences; legacy no-MMIO check\n",runs);
+}
+
 /* Independent shift-register implementation, rather than the driver's formula. */
 static u16 bit_reference(u16 seed, unsigned count)
 {
@@ -492,6 +556,7 @@ static void unprotected_oob(void)
 int main(void)
 {
     geometry();
+    length_sequence_checks();
     randomizer();
     predicates();
     ecc_results();

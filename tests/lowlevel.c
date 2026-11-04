@@ -62,6 +62,9 @@ static void writel(u32 value, void *p)
     if(value&NFC_SEND_ADR) hw.address_cycles+=1+((value>>16)&7);
     bool fail=hw.commands==hw.fail_command;
     if (value&NFC_DATA_TRANS) {
+        /* Hypothetical alternative, not established silicon behavior. */
+        if(hw.reload_each_command && (load(NFC_REG_ECC_CTL)&caps.random_en_mask))
+            stream_state=shift_n((load(NFC_REG_ECC_CTL)>>16)&0x7fff,15);
         unsigned encoded=load(NFC_REG_CNT), n=encoded ? encoded : 1024;
         assert(hw.last_count_request && (hw.backend==2 || hw.last_count_request<=1024));
         hw.count_overruns+=hw.last_count_request>1024;
@@ -136,6 +139,10 @@ static void reset_fixture(unsigned backend)
     nfc.regs=registers; nfc.caps=&caps; nfc.use_mdma=backend!=0;
     nfc.mdma_desc=backend==2 ? &desc : NULL; nfc.mdma_desc_dma=0x12345000;
     hw.map_address=0x9abc0000;
+    hw.allocation_address=0x12345000;
+    /* The OF/platform device starts with a 32-bit mask. Descriptor MDMA
+     * explicitly sets it again in the extracted dma_init() implementation. */
+    hw.dma_mask=UINT32_MAX;
     chip.nand.controller=&nfc; chip.nand.mtd=(struct mtd_info){2048,2048*64,1024};
     chip.nand.page_shift=11; chip.nsels=2;
     chip.sels[0]=(struct sunxi_nand_chip_sel){0,0};
@@ -242,6 +249,66 @@ static void dma_init_checks(void)
     printf("source DMA initialization: %u mask/allocation/channel/defer/configuration cases\n",runs);
     puts("SOURCE CONTRACT WITNESS: external dmaengine_slave_config failure is ignored by dma_init");
 }
+static void dma_aperture_checks(void)
+{
+    static const dma_addr_t addresses[]={0,0xfffffc00,0xfffffff8,UINT64_C(0x100000000)};
+    static const unsigned lengths[]={8,1024};
+    unsigned runs=0, witnesses=0;
+    for(unsigned backend=0;backend<3;backend++)
+    for(unsigned direction=0;direction<2;direction++)
+    for(unsigned a=0;a<ARRAY_SIZE(addresses);a++)
+    for(unsigned l=0;l<ARRAY_SIZE(lengths);l++) {
+        reset_fixture(backend); hw.enforce_dma_mask=true;
+        hw.map_address=addresses[a];
+        struct scatterlist sg;
+        bool fits=addresses[a]+lengths[l]<=UINT64_C(0x100000000);
+        int ret=sunxi_nfc_dma_op_prepare(&nfc,media,lengths[l],1,direction,&sg);
+        assert(ret==(fits ? 0 : -ENOMEM));
+        if(fits) {
+            if(backend==2) {
+                assert(le32toh(desc.buf)==addresses[a]);
+                assert(le32toh(desc.next)==hw.allocation_address);
+                assert(load(NFC_REG_H6_MDMA_DLBA_REG)==hw.allocation_address);
+            } else if(backend==1) assert(load(NFC_REG_MDMA_ADDR)==addresses[a]);
+            else assert(sg.address==addresses[a]);
+            sunxi_nfc_dma_op_cleanup(&nfc,direction,&sg);
+        } else assert(!hw.writes && !hw.prep && !hw.submit && !hw.published);
+        assert(hw.maps==hw.unmaps && !hw.mapped);
+        runs++;
+    }
+    static const dma_addr_t allocations[]={0xfffffff0,0xfffffff4,UINT64_C(0x100000000),1};
+    for(unsigned a=0;a<ARRAY_SIZE(allocations);a++) {
+        reset_fixture(2); hw.enforce_dma_mask=true;
+        hw.dma_mask=UINT64_MAX; /* H616 must narrow even an inherited wide mask. */
+        hw.allocation_address=allocations[a];
+        nfc.use_mdma=false; nfc.mdma_desc=NULL;
+        struct resource r={.start=0x1c03000};
+        assert(!sunxi_nfc_dma_init(&nfc,&r) && hw.dma_mask==UINT32_MAX);
+        bool fits=a==0;
+        assert(nfc.use_mdma==fits && !!nfc.mdma_desc==fits);
+        if(fits) {
+            struct scatterlist sg;
+            assert(!sunxi_nfc_dma_op_prepare(&nfc,media,1024,1,DMA_FROM_DEVICE,&sg));
+            assert(load(NFC_REG_H6_MDMA_DLBA_REG)==0xfffffff0);
+            assert(le32toh(desc.next)==0xfffffff0);
+            sunxi_nfc_dma_op_cleanup(&nfc,DMA_FROM_DEVICE,&sg);
+        }
+        runs++;
+    }
+    /* Deliberately violate the mapping contract. These show why the mask is
+     * necessary, not that a conforming DMA API can return these addresses. */
+    for(unsigned backend=1;backend<3;backend++) {
+        reset_fixture(backend); hw.map_address=UINT64_C(0x100000008);
+        struct scatterlist sg;
+        assert(!sunxi_nfc_dma_op_prepare(&nfc,media,1024,1,DMA_TO_DEVICE,&sg));
+        u32 encoded=backend==2 ? le32toh(desc.buf) : load(NFC_REG_MDMA_ADDR);
+        assert(encoded==8 && encoded!=hw.map_address);
+        sunxi_nfc_dma_op_cleanup(&nfc,DMA_TO_DEVICE,&sg);
+        witnesses++;
+    }
+    printf("DMA aperture: %u boundary/mask/allocation cases; %u out-of-contract truncation witnesses\n",runs,witnesses);
+}
+
 static void irq_checks(void)
 {
     unsigned runs=0;
@@ -374,6 +441,92 @@ static void raw_media_checks(void)
     assert(!load(NFC_REG_ECC_CTL));
     printf("source raw SRAM/media: %u unique-byte two-page round trips, partial-program and failure sentinels\n",runs);
 }
+/* Independent bit-array oracle, not the MMIO fixture's shift_n() implementation
+ * and not the extracted driver's seed/step routines. The 15-bit warm-up and
+ * continuous raw-command stream remain explicit hardware-format assumptions. */
+static void encode_stream(u8 *dst,const u8 *src,unsigned len,unsigned page,bool random)
+{
+    const u16 seeds[]={0x2b75,0x0bd0};
+    bool bits[15];
+    assert(page<ARRAY_SIZE(seeds));
+    for(unsigned j=0;j<15;j++) bits[j]=!!(seeds[page]&BIT(j));
+    for(unsigned clock=0;clock<15+len*8;clock++) {
+        if(clock>=15 && !((clock-15)%8)) {
+            unsigned byte=(clock-15)/8;
+            u8 key=0;
+            for(unsigned j=0;j<8;j++) key|=(u8)bits[j]<<j;
+            dst[byte]=src[byte]^(random ? key : 0);
+        }
+        bool feedback=bits[0]!=bits[1];
+        for(unsigned j=0;j<14;j++) bits[j]=bits[j+1];
+        bits[14]=feedback;
+    }
+}
+
+static void randomizer_stream_checks(void)
+{
+    u8 input[2058], encoded[2058], output[2058];
+    unsigned runs=0, witnesses=0;
+    for(unsigned i=0;i<sizeof(input);i++) input[i]=(i*29+(i>>8)*53)&255;
+    for(unsigned backend=0;backend<3;backend++)
+    for(unsigned page=0;page<2;page++)
+    for(unsigned write=0;write<2;write++)
+    for(unsigned random=0;random<2;random++)
+    for(unsigned fail=0;fail<=2;fail+=2) {
+        reset_fixture(backend);
+        if(!FIXED_COUNT && backend==2) continue;
+        const unsigned len=2057;
+        chip.nand.options=random ? NAND_NEED_SCRAMBLING : 0;
+        hw.row=page; hw.fail_command=fail; hw.partial_bytes=17;
+        encode_stream(encoded,input,len,page,random);
+        if(!write) memcpy(media[page],encoded,len);
+        memset(output,0xa5,sizeof(output));
+        int ret=write ? sunxi_nfc_randomizer_write_buf(&chip.nand,input,len,false,page) :
+                        sunxi_nfc_randomizer_read_buf(&chip.nand,output,len,false,page);
+        assert(ret==(fail ? -ETIMEDOUT : 0));
+        assert(!(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
+        unsigned complete=fail ? (fail-1)*1024 : len;
+        unsigned stored=fail ? complete+17 : len;
+        assert(hw.commands==(fail ? fail : 3));
+        if(write) {
+            assert(!memcmp(media[page],encoded,stored));
+            for(unsigned i=stored;i<sizeof(media[page]);i++) assert(media[page][i]==0xff);
+        } else {
+            assert(!memcmp(output,input,complete));
+            for(unsigned i=complete;i<sizeof(output);i++) assert(output[i]==0xa5);
+        }
+        /* Without resetting the controller, switch seed/page, then plain I/O.
+         * Failed commands must not leave a phase or enable-bit dependency. */
+        hw.fail_command=0; hw.row=!page; hw.column=0;
+        chip.nand.options=NAND_NEED_SCRAMBLING;
+        encode_stream(encoded,input,len,!page,true);
+        assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,len,false,!page));
+        assert(!memcmp(media[!page],encoded,len));
+        assert(!(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
+        unsigned commands=hw.commands;
+        assert(!sunxi_nfc_randomizer_read_buf(&chip.nand,output,0,false,!page));
+        assert(hw.commands==commands && !(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
+        hw.column=4096; chip.nand.options=0;
+        assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,63,false,!page));
+        assert(!memcmp(media[!page]+4096,input,63));
+        assert(!hw.bank_overruns && !hw.count_overruns);
+        runs++;
+    }
+    for(unsigned backend=0;backend<3;backend++) {
+        if(!FIXED_COUNT && backend==2) continue;
+        reset_fixture(backend); hw.reload_each_command=true;
+        chip.nand.options=NAND_NEED_SCRAMBLING;
+        assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,2057,false,0));
+        encode_stream(encoded,input,2057,0,true);
+        assert(!memcmp(media[0],encoded,1024) && memcmp(media[0]+1024,encoded+1024,1033));
+        hw.column=0;
+        assert(!sunxi_nfc_randomizer_read_buf(&chip.nand,output,2057,false,0));
+        assert(!memcmp(input,output,2057));
+        witnesses++;
+    }
+    printf("Independent raw-stream oracle: %u mixed-operation/error cases; %u hypothetical command-reload round trips conceal incompatible stored bytes\n",runs,witnesses);
+}
+
 static void command_checks(void)
 {
     u8 addresses[16], input[4096], output[4096]; unsigned runs=0;
@@ -726,7 +879,8 @@ static void recovery_refinement(void)
 }
 int main(void)
 {
-    dma_checks(); dma_init_checks(); irq_checks(); raw_media_checks(); command_checks(); parser_checks(); timing_checks(); selection_checks();
+    dma_checks(); dma_init_checks(); dma_aperture_checks(); irq_checks(); raw_media_checks();
+    randomizer_stream_checks(); command_checks(); parser_checks(); timing_checks(); selection_checks();
     selection_matrix();
     recovery_refinement();
     puts("ALL LOWLEVEL CHECKS PASSED"); return 0;

@@ -166,6 +166,13 @@ is in [DEEP-VALIDATION.md](DEEP-VALIDATION.md); the subsequent boundary and
 historical-regression work is in [BOUNDARY-VALIDATION.md](BOUNDARY-VALIDATION.md).
 Command, manufacturer retry, lifetime-policy and byte/cache-line refinements
 are mapped in [REFINEMENT-VALIDATION.md](REFINEMENT-VALIDATION.md).
+Cross-command randomizer phase, DMA aperture contracts and persistent packed
+lengths are mapped in [STREAM-APERTURE-CONTEXT.md](STREAM-APERTURE-CONTEXT.md).
+Their counterexamples distinguish deliberately broken code from violations
+of nonzero-size, mapping-mask, coherent-allocation and hardware-reload
+assumptions. In particular, an injected above-mask DMA address is not evidence
+that the actual DMA API can return one; a successful randomized round trip is
+not proof of compatibility with an independently encoded flash image.
 All distinguish modeled from
 source-executed paths. Remaining end-to-end gaps include device-core probe/unbind,
 every combination of allocation failures, concurrent provider IRQ/tasklet
