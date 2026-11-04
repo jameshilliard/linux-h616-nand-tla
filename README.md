@@ -22,6 +22,10 @@ The [hardware-contract audit](docs/HARDWARE-CONTRACTS.md) ties register behavior
 to manuals, pinned vendor code and narrowly scoped prior board observations.
 It corrects the earlier SRAM/count conflation and records a large-OOB
 source/manual mismatch rather than treating that old fixture result as proof.
+Generation-specific A10/A23/H616 profiles distinguish advertised SRAM from
+RAM0 bounds, valid older requests from H616's ten-bit counter, and external,
+register and descriptor DMA. The updated candidate includes the count-limit
+fix; the pinned submission retains its reproducible counterexamples.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -90,7 +94,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandEcc` | Transfer-local status/counter caches; capture before raw rereads; pattern synthesis; vendor classification precedence; decoded-data preservation; correction/failure accounting |
 | `NandController` | Combined DMA/IRQ/timeout recovery, repeated failures, PIO read retry, program-confirm rules and operation reuse |
 | `NandDma` | External DMAengine, register MDMA and descriptor MDMA; mapping/unmapping, validation, descriptor publication and block encoding |
-| `NandCommand` | Split data/address offsets, SRAM versus ten-bit transfer-count bounds, write staging, read readiness, check-only and errors |
+| `NandCommand` | Split data/address offsets, driver SRAM limits versus hardware RAM0/count contracts, generation-specific requests, write staging, readiness, check-only and errors |
 | `NandRegisterProtocol` | FIFO acceptance versus FSM/DMA completion, W1C and automatic event clearing, readiness and interrupt masking |
 | `NandMedia` | Distinct page/column payloads, NAND bit programming, partial failures, protected-byte preservation and readback |
 | `NandCore` | Format admission, whole-page vendor classification, core error interpretation, read retries and counter wrapping |
@@ -144,7 +148,7 @@ hardware parameter effects remain explicit fixtures.
 `run_historical.py` requires seven adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The suite has 591 TLC configurations across 35 models, including positive checks,
+The suite has 667 TLC configurations across 35 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),

@@ -7,7 +7,7 @@
       "url": "https://linux-sunxi.org/images/2/24/H616_User_Manual_V1.0_cleaned.pdf",
       "mirror": "https://www.scs.stanford.edu/~zyedidia/docs/allwinner/h616.pdf",
       "sha256": "4ca95572826a1d98b687ae74c1bb2f62597b70f5aafa20d698c4ed6792b20e05",
-      "sections": ["5.2.3.4", "5.2.3.5", "5.2.6.1", "5.2.6.2", "5.2.6.3", "5.2.6.9", "5.2.6.10", "5.2.6.20", "5.2.6.21", "5.2.6.22", "5.2.6.24", "5.2.6.25", "5.2.6.29"]
+      "sections": ["5.2.1", "5.2.3.4", "5.2.3.5", "5.2.6.1", "5.2.6.2", "5.2.6.3", "5.2.6.9", "5.2.6.10", "5.2.6.13", "5.2.6.20", "5.2.6.21", "5.2.6.22", "5.2.6.24", "5.2.6.25", "5.2.6.29"]
     },
     {
       "id": "h6-v200-v1.1",
@@ -15,6 +15,49 @@
       "url": "https://linux-sunxi.org/images/4/46/Allwinner_H6_V200_User_Manual_V1.1.pdf",
       "sha256": "338f2b96dee05692f77a541076bcf2de3e7ce9f5d103db467643ca760fc7356c",
       "sections": ["4.2.5.2", "4.2.5.9"]
+    },
+    {
+      "id": "a10-v1.50",
+      "title": "Allwinner A10 User Manual, version 1.50, 2013-08-20",
+      "url": "https://raw.githubusercontent.com/allwinner-zh/documents/69a71a4321dadc2d1f99d7695161d7b2cd8540c4/A10/A10%20User%20manual%20V1.5%2020130820.pdf",
+      "sha256": "57ad21abf84caff16bf6810a5a01736ce4c2d4f43e611529408c1ccaca67c183",
+      "sections": ["14.1"],
+      "limit": "NFC overview only; two 256x32-bit banks and external DMA, no NFC register chapter"
+    }
+  ],
+  "older_vendor": [
+    {
+      "id": "a10-bsp-read",
+      "url": "https://raw.githubusercontent.com/allwinner-zh/linux-3.4-sunxi/6964d467510849e3e262518cb87bff7ef92e01f5/modules/nand/nand_sun4i/lib/src/nfc/nfc_r.c",
+      "sha256": "3a3f92abeddeed215386e4703905216fdfcd592e43386763898ce2c74f4595d7",
+      "functions": ["_read_in_page_mode", "_dma_config_start", "nfc_set_cmd_register", "_wait_cmd_finish"]
+    },
+    {
+      "id": "a10-bsp-registers",
+      "url": "https://raw.githubusercontent.com/allwinner-zh/linux-3.4-sunxi/6964d467510849e3e262518cb87bff7ef92e01f5/modules/nand/nand_sun4i/lib/src/include/nfc.h",
+      "sha256": "6b4f30548a02685592bf03909c56eebb9598539d3905e971fd23eec8d8ed37bd"
+    },
+    {
+      "id": "a23-bsp-read",
+      "url": "https://raw.githubusercontent.com/allwinner-zh/linux-3.4-sunxi/6964d467510849e3e262518cb87bff7ef92e01f5/modules/nand/nand_sun8iw3/lib/src/nfc/nfc_r.c",
+      "sha256": "37123b01ae37a81c5f0153c701368d8047e1c6d1b24c4bb45c0066a2050edf36",
+      "functions": ["_read_in_page_mode", "_dma_config_start", "_wait_dma_end", "nfc_set_cmd_register", "_wait_cmd_finish"]
+    },
+    {
+      "id": "a23-bsp-registers",
+      "url": "https://raw.githubusercontent.com/allwinner-zh/linux-3.4-sunxi/6964d467510849e3e262518cb87bff7ef92e01f5/modules/nand/nand_sun8iw3/lib/src/include/nfc.h",
+      "sha256": "647c8246530b54ca996d25fe7d5d944f74950ab60b52f5eb774fec7b8cf99aff"
+    }
+  ],
+  "evidence_gaps": [
+    {
+      "id": "a23-v1.0-unavailable",
+      "url": "https://dl.linux-sunxi.org/A23/A23%20User%20Manual%20V1.0%2020130830.pdf",
+      "status": "download timed out / HTTP 522 on 2026-11-04; no register-width claims based on this unavailable document"
+    },
+    {
+      "id": "h616-sram-capability",
+      "status": "Linux advertises 8192 bytes but H616 manual 5.2.1 describes two 256x32-bit banks; physical aliasing/extent not measured"
     }
   ],
   "vendor": {

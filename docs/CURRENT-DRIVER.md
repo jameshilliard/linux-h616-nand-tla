@@ -2,15 +2,16 @@
 
 This audit checks the v10 draft's driver, not just the original v9 snapshot.
 The checked sunxi branch is `submit/sunxi-nand-fixes-v10` at
-`91bf468161998d95266ea7df0dad5359e81e9508`, based on NAND `nand/next` at
+`ccdee2ee49862a1377d31f5c541ce9d5fab327df`, based on NAND `nand/next` at
 `30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85`. Its driver SHA-256 is:
 
 ```text
-16f1c5563953b58696f1e90404836fdb3f6ce62a196dbedf1354a0b3860b0b68
+7e2525a0097a156a7a4e952a073c03ca19872f1c417a42387f15d5b85081a50a
 ```
 
 The pinned files under `reference/` are unchanged. The draft contains the
-split-address and clock-error fixes in addition to the earlier series.
+split-address, clock-error and normal-command byte-count fixes in addition
+to the earlier series. The 21-patch draft is distinct from the posted v9.
 The page, low-level, lifecycle, codec, composed-request, discovery and
 lifetime runners accept `--candidate-source`; unrelated core, codec and
 historical inputs remain pinned. The separate core fixes are
@@ -65,6 +66,15 @@ v10 reports instead of combining different source-line numbers.
   with large pages and the legacy small-page configuration.
 - Additional checks cover contiguous small-page data/OOB, non-word OOB
   tails and invalid user-data encodings without register modification.
+- **144 direct-buffer round trips:** A10, A23 and H616 with independent
+  generation contracts, including short/exact/large transfers, scrambling
+  and page seeds. Every command and SRAM copy stays within 1024 bytes.
+  Eighteen first/second/third-command failures preserve error propagation
+  and the untouched suffix. The zero-length call issues no command.
+- **Four composed large-OOB cases:** read and write compare the complete
+  1872-byte H616 tail and 1928-byte legacy tail under synthetic geometries
+  accepted by the real attach code. The unchanged v9 still reproduces
+  the H616 count-loss counterexamples.
 
 Existing byte-identity, randomizer, erased-predicate, attach, lifecycle,
 core-composition and real-BCH tests also run against the candidate source.
@@ -96,11 +106,20 @@ sunxi clock-provider defect.
 
 ## Remaining gaps
 
-The subsequent [hardware audit](HARDWARE-CONTRACTS.md) reproduces finding 11
-against this exact candidate: direct H616 extra-OOB transfers above 1024 bytes
-conflict with the documented ten-bit counter. The earlier coverage counts do
-not establish correctness of the old wider-counter fixture. No fix for this
-new finding has been applied to the candidate by the validation repository.
+The [hardware audit](HARDWARE-CONTRACTS.md) reproduced finding 11 against the
+previous candidate (`91bf468161998d95266ea7df0dad5359e81e9508`). The current
+candidate includes `2fb2a7138fa1`, which caps normal commands independently of
+the advertised SRAM size. Explicit `--expect-count-fixed` runs require exact
+transfers, rather than accepting the baseline's counterexamples. Fresh coverage
+reports for this source digest still reach the counts given above; coverage
+alone does not establish that a hardware fixture is accurate.
+
+A10/A23 valid-request and register contracts are checked against the older
+BSP rather than borrowing H616's counter width or automatic event clearing.
+The A10 manual has no register chapter and the A23 manual was unavailable.
+H616's advertised 8 KiB SRAM capability conflicts with the manual's description
+of two 1 KiB banks; physical extent/aliasing remains unmeasured. The corrected
+driver tests use the stricter 1 KiB normal-command and RAM0-bank bounds.
 
 The four missed source lines are timing-lookup error returns. With the
 current positive tables and admitted timing ranges, the preceding maximum
@@ -123,6 +142,9 @@ Physical DMA stop, outstanding bus retirement, late command events, MMIO
 ordering, real clock-tree behavior, physical manufacturer-specific read retry and
 hardware BCH/randomizer behavior remain explicit boundaries. Software
 BCH and sunxi-tools fixtures are not captured hardware golden images.
+In particular, the large-tail randomizer tests check software seed handling
+under a continuous-stream contract; hidden silicon reload behavior between
+commands has not been measured.
 No board access, NAND writes or hardware validation was done for this audit.
 
 The subsequent [refinement checks](REFINEMENT-VALIDATION.md) connect actual

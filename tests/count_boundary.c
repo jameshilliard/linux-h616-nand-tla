@@ -4,8 +4,9 @@
 void count_boundary_tests(void)
 {
     unsigned runs=0;
+    for(unsigned h616=0;h616<2;h616++)
     for(unsigned write=0;write<2;write++) {
-        driver_reset(0,true); /* actual attach accepts 2 KiB + 2 KiB OOB */
+        driver_reset(0,h616); /* actual attach accepts 2 KiB + 2 KiB OOB */
         struct nand_chip *n=&persistent_chip;
         unsigned off=sunxi_get_oob_offset(n,&n->ecc,n->ecc.steps);
         unsigned tail=B_SPARE-off, physical=tail%1024 ? tail%1024 : 1024;
@@ -21,6 +22,14 @@ void count_boundary_tests(void)
         unsigned corrected=0,failed=0;
         int ret=driver_io(write,false,false,0,0,data,oob,true,&corrected,&failed);
         assert(!ret && !failed);
+        if(FIXED_COUNT || !h616) {
+            assert(!memcmp(flash[0][0],data,B_PAGE));
+            assert(!memcmp(flash[0][0]+B_PAGE+off,oob+off,tail));
+            printf("EXACT TRANSFER: %s page %s transfers full OOB tail %u\n",
+                   h616 ? "H616" : "legacy",write ? "write" : "read",tail);
+            driver_finish(); runs++;
+            continue;
+        }
         /* The tail starts correctly, but successful completion does not mean
          * that the count requested by the software was transferred. */
         assert(!memcmp(flash[0][0]+B_PAGE+off,oob+off,physical));
@@ -30,5 +39,5 @@ void count_boundary_tests(void)
                write ? "write" : "read",tail,physical);
         driver_finish(); runs++;
     }
-    printf("ALL CHECKS PASSED: %u actual-attach/page/extra-OOB/parser/MMIO count witnesses\n",runs);
+    printf("ALL CHECKS PASSED: %u actual-attach/page/extra-OOB/parser/MMIO count cases\n",runs);
 }

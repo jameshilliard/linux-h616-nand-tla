@@ -762,3 +762,96 @@ credentials, device identifiers and raw NAND captures. The CI template includes
 the new count mode; hosted CI remains inactive. Validated additions are now
 published to the repository as requested, without waiting for separate push
 instructions.
+
+# Generation-specific NFC contracts and count-limit fix
+
+Validated on 2026-11-04. This extension separates the A10, A23 and H616
+hardware profiles and tests the normal-command count fix added to the v10
+draft. It preserves the posted v9 source and its expected counterexamples.
+The current draft and full driver digest are recorded in
+[CURRENT-DRIVER.md](docs/CURRENT-DRIVER.md).
+
+## Evidence and model changes
+
+The [hardware contract table](docs/HARDWARE-CONTRACTS.md) distinguishes
+external DMA, address/count-register DMA and descriptor DMA; register offsets,
+ECC bitfields, user-data banks, page-block encodings and valid normal-command
+counts are generation-specific. The pinned A10 and A23 BSP headers and read
+paths were compared with source-extracted capabilities. The A10 manual only
+provides the NFC overview; the A23 manual could not be downloaded. These gaps
+are recorded rather than filled with H616 register semantics.
+
+`NandCommand` now separates the driver's advertised SRAM size from the
+hardware RAM0-bank bound and count encoding. Its positive cases constrain
+both to the documented/valid 1024-byte range. A permissive backing array is
+used only in old-source count witnesses, never as evidence of an 8 KiB bank.
+`NandRegisterProtocol` checks older profiles with and without command-start
+event clearing. Their source fixture does not rely on automatic clearing.
+
+## Formal results
+
+All **667 configurations across 35 models** matched their expected outcomes:
+
+- 503 positive configurations passed invariants and bounded termination.
+- 75 deliberate mutations failed their named invariant.
+- 39 assumption checks reproduced their named consequence.
+- 50 source-contract configurations reproduced their named failure.
+- All **278 required positive-model actions** were reached.
+
+Positive instances generated 366,442 states and found 256,922 distinct states.
+Across all configurations those sums were 386,750 and 272,627. The run took
+about 491 seconds with the pinned TLC jar, one worker, seed 1 and fingerprint
+polynomial 0. The recorded model hashes match the final model files. These
+are bounded checks, not an unbounded proof or an automatically verified
+refinement of the C driver. Local results are in `results/tlc-jdud70n7/`.
+
+## Source checks and builds
+
+| Check | Outcome |
+| --- | --- |
+| Candidate direct-buffer transfers | 144 round trips across A10/A23/H616; full payload, chunk count, final column, RAM0/count bounds and sentinels checked |
+| Later-command errors | 18 read/write cases across all three profiles and each of the first three commands; propagated timeout, randomizer cleanup and untouched suffix checked |
+| Pinned-source direct buffers | 120 positive round trips and twelve expected oversized-H616 witnesses retained |
+| Composed page/OOB boundary | All four candidate cases transfer the full tail; baseline H616 still moves 848 of 1872 bytes while legacy transfers all 1928 bytes |
+| Candidate page/ECC/layout tests | Passed, including 1,636 write faults, 456 read faults and 114 OOB transport cases |
+| Candidate lifecycle | 1,011 cases and 65,973 assertions passed; existing core timing witness retained |
+| Candidate real-software-BCH composition | 600 correction/overcapacity cases, 120 independent parity cases, 84 sunxi-tools images and 204 PIO/DMA round trips passed |
+| Connected transport, baseline and candidate | 30 profiles, 192 explicit requests, 1,158 adapter calls, retry/byte-copy cases and 36 command-fault/reuse cases passed |
+| Candidate discovery and lifetime boundaries | 483 discovery scenarios and 576 accepted/576 rejected attach profiles; 36 partition and four two-chip lifetime schedules retain the expected unbind witnesses |
+| Historical regression controls | Positive candidate passes; all seven deliberately reintroduced regressions fail their specific expected assertion |
+| Kernel object | ARM32 LLVM and ARM64 GCC `W=1` builds passed |
+| Patch checks | New count fix passes strict checkpatch; b4 local checks pass all 21 patches; no external prerequisites declared |
+
+ASan/UBSan runs passed; no sanitizer exclusion was added. Separate GCOV
+aggregation for the current full driver digest executes all 90 extracted
+driver functions, reaching 1,427/1,431 source-mapped lines and 701/712 branch
+edges. Existing uncovered paths and the distinction from real-kernel coverage
+remain documented in the current-driver audit.
+
+The new kernel patch is separate from the format extension, includes the
+H616-introduction Fixes tag and James's sign-off, and leaves the existing
+1 KiB controllers' chunking unchanged. It caps direct helpers as well as
+sharing the same limit with the parser. It changes neither DMA batch sizes
+nor ECC layout. All pre-existing patch contents and historical sent-series
+changelogs were checked for preservation.
+
+Review used Sashiko's cached technical-pattern, false-positive, callstack,
+I/O-accessor and alignment guidance at
+`d048f8742f6740c38833adf02e87901412d771ca`. No dedicated NAND prompt exists in
+that set. The count finding was checked through actual attach, page, extra-OOB
+and buffer callers, not solely against an arbitrary helper argument. These
+checks do not claim a Sashiko bot run or approval.
+
+## Remaining limits
+
+The physical extent/aliasing of H616's advertised SRAM aperture and hidden
+randomizer reload behavior between normal commands remain unmeasured. Older
+CNT bit width/readback and automatic-clearing behavior remain only partially
+documented. The tests therefore distinguish supported requests from register
+encoding and test alternative clearing contracts explicitly.
+
+The known MTD-user/unbind lifetime issue, physical DMA/bus retirement, late
+hardware events, full kernel concurrency and physical ECC/randomizer behavior
+remain unresolved. The synthetic large-OOB geometry is not asserted to be a
+part tested on a board. No NAND write, erase, power cycle or board access was
+performed. Public changes contain no private paths or raw NAND captures.

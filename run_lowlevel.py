@@ -29,7 +29,11 @@ def main():
     parser.add_argument("--cc", default="gcc")
     parser.add_argument("--candidate-source", type=Path,
                         help="sunxi_nand.c containing the split-address and clock-error fixes")
+    parser.add_argument("--expect-count-fixed", action="store_true",
+                        help="require exact large transfers and accesses within RAM0's 1 KiB bank")
     args = parser.parse_args()
+    if args.expect_count_fixed and not args.candidate_source:
+        parser.error("--expect-count-fixed requires --candidate-source")
     source = (HERE / "reference/sunxi_nand.c").read_text()
     pin = json.loads((HERE / "source.json").read_text())
     if hashlib.sha256(source.encode()).hexdigest() != pin["driver_sha256"]:
@@ -53,7 +57,10 @@ def main():
     # Keep each exercised capability expression tied to the submitted SoC data,
     # rather than reconstructing A10/A23/H616 values in the fixture.
     fields = ("has_mdma", "has_mdma_desc", "reg_spare_area", "random_en_mask",
-              "reg_io_data", "dma_maxburst", "sram_size", "timings", "max_ecc_steps")
+              "reg_io_data", "dma_maxburst", "sram_size", "timings", "max_ecc_steps",
+              "reg_ecc_err_cnt", "reg_user_data", "reg_user_data_len", "reg_pat_found",
+              "random_dir_mask", "ecc_mode_mask", "ecc_err_mask", "pat_found_mask",
+              "has_ecc_block_512")
     generated.append("static const struct sunxi_nfc_caps source_caps[] = {")
     for soc in ("a10", "a23", "h616"):
         match = re.search(r"^static const struct sunxi_nfc_caps sunxi_nfc_" + soc +
@@ -82,6 +89,7 @@ def main():
     out = Path(tempfile.mkdtemp(prefix="lowlevel-", dir=results))
     fixture = (HERE / "tests/lowlevel.h").read_text().replace("/* @parser-header@ */", header)
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
+                f'#define FIXED_COUNT {int(args.expect_count_fixed)}\n' +
                 '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +
                 "\n".join(generated) + '\n#line 1 "lowlevel.c"\n' +
                 (HERE / "tests/lowlevel.c").read_text())
@@ -103,7 +111,7 @@ def main():
     coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
     (out / "summary.json").write_text(json.dumps(dict(
         passed=passed, driver_sha256=hashlib.sha256(source.encode()).hexdigest(),
-        candidate=bool(args.candidate_source), functions=hashes,
+        candidate=bool(args.candidate_source), count_fix=args.expect_count_fixed, functions=hashes,
         output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)

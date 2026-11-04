@@ -17,6 +17,7 @@ Candidate results are not evidence that the baseline has been fixed.
 | 7, timing fallback error | `submit/rawnand-timing-recovery-v1` | Check controller and chip reset errors, preserve an earlier error, and skip chip RESET after controller fallback fails. |
 | 9, IRQ bank dispatch | `submit/sun6i-dma-irq-banks-v1` | Separate fixes for the physical-channel index and partial final bank, using the current per-controller bank width. |
 | 10, cyclic callback lifetime | `submit/sun4i-dma-callback-lifetime-v1` | Serialize IRQ handling with termination, retain terminated cyclic descriptors, and drain IRQ/tasklet execution before freeing them. |
+| 11, direct-buffer command count | `submit/sunxi-nand-fixes-v10` | Cap direct commands at 1024 bytes as well as SRAM capacity; share the limit with the parser. |
 
 These are local draft branches, not public prerequisite references. The
 NAND-core and provider branches apply independently of the sunxi OOB series.
@@ -34,14 +35,21 @@ authorship, Fixes tag and sign-off.
 With the appropriate branch checked out in a separate kernel repository:
 
 ```sh
-python3 run_lowlevel.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_lowlevel.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c --expect-count-fixed
 python3 run_c.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_codec.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_lifecycle.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_composed.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_discovery_boundary.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_lifetime_boundary.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_transport.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_transport.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c --count-boundary --expect-count-fixed
 ```
+
+For the earlier v10 draft before finding 11 was fixed, omit
+`--expect-count-fixed`: the old source must still reproduce the oversized
+H616 count witnesses. This explicit switch prevents silently inferring the
+expected outcome from whatever implementation happens to be loaded.
 
 For the combined core branch, use `run_core.py --candidate-dir` without
 `--fix`. For an individual core branch, select just its expected fix:

@@ -1,20 +1,22 @@
 ---------------------------- MODULE NandCommand ----------------------------
 \* SPDX-License-Identifier: GPL-2.0-or-later
-\* Parser uses 1024-byte limits, independently of the 8192-byte H616 SRAM.
-\* NDFC_CNT[9:0] counts bytes; zero encodes 1024, NOT an empty transfer.
+\* SRAM is the driver's advertised limit, RAM0 the independent hardware bank.
+\* Only the H616 profile asserts CNT[9:0] with zero encoding 1024. Older BSPs
+\* establish valid 1..1024 requests, not the raw register's width/readback.
 \* DataIdentity tracks transferred bytes. Bytes copied from an unfilled SRAM
 \* suffix cannot extend that valid prefix. The C fixture checks the stale bytes.
 \* Address helper returns a count, whereas the submitted loop compares it to
 \* j+start. Nonzero starts are an explicit source-contract witness.
 EXTENDS Integers, Sequences
-CONSTANTS Size, SRAM, Parser, Read, ReadyBusy, CheckOnly, FailChunk,
+CONSTANTS Size, SRAM, RAM0, CountEncoding, Parser, Read, ReadyBusy, CheckOnly, FailChunk,
           AddrStart, AddrCount, Mutation
 VARIABLE s
 vars == <<s>>
 Min(a,b) == IF a < b THEN a ELSE b
 Input == [i \in 1..Size |-> i]
 Limit == IF Parser \/ Mutation = "cap-count" THEN Min(1024, SRAM) ELSE SRAM
-HwCount(n) == IF n % 1024 = 0 THEN 1024 ELSE n % 1024
+HwCount(n) == IF CountEncoding = "bsp-request" THEN n
+             ELSE IF n % 1024 = 0 THEN 1024 ELSE n % 1024
 Init == s = [pc |-> "address", pos |-> 0, chunks |-> 0, n |-> 0,
     address |-> <<>>, data |-> <<>>, sram |-> <<>>, issued |-> 0,
     effects |-> 0, ready |-> FALSE, failed |-> FALSE, premature |-> FALSE,
@@ -23,7 +25,7 @@ Address ==
     /\ s.pc = "address"
     /\ LET count == IF AddrCount > AddrStart THEN Min(8, AddrCount - AddrStart) ELSE 0
        IN s' = [s EXCEPT !.address = [i \in 1..count |-> AddrStart + i],
-            !.pc = IF CheckOnly THEN "done" ELSE "prepare"]
+            !.pc = IF CheckOnly \/ Size = 0 THEN "done" ELSE "prepare"]
 Prepare ==
     /\ s.pc = "prepare" /\ s.pos < Size
     /\ s' = [s EXCEPT !.n = Min(Limit, Size - s.pos), !.chunks = @ + 1,
@@ -58,6 +60,8 @@ AddressIdentity == s.pc # "address" =>
     s.address = [i \in 1..AddrCount |-> AddrStart + i]
 DataIdentity == s.data = SubSeq(Input, 1, s.pos)
 Bounds == s.pos <= Size /\ s.n <= SRAM /\ (Parser => s.n <= 1024)
+RAM0Bounds == s.n <= RAM0 /\ Len(s.sram) <= RAM0
+KnownRequests == CountEncoding = "bsp-request" => s.n <= 1024
 ReadAfterReady == ~s.premature
 WriteBeforeIssue == ~s.unstaged
 CheckOnlyPure == CheckOnly => s.effects = 0 /\ s.issued = 0

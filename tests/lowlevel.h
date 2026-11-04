@@ -23,6 +23,7 @@ typedef int irqreturn_t;
 #define GENMASK(h,l) ((UINT32_MAX >> (31-(h))) & (UINT32_MAX << (l)))
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define min(a,b) ((a) < (b) ? (a) : (b))
+#define min3(a,b,c) min(min(a,b),c)
 #define min_t(t,a,b) min((t)(a),(t)(b))
 #define DIV_ROUND_UP(n,d) (((n)+(d)-1)/(d))
 #define IS_ALIGNED(n,a) (!((n) & ((a)-1)))
@@ -56,8 +57,10 @@ struct dma_async_tx_descriptor { int unused; };
 struct completion { bool done; };
 struct sunxi_nfc_timings { u8 setup_cycles; s32 tWB[4], tADL[4], tWHR[4], tRHW[4]; };
 struct sunxi_nfc_caps {
-    bool has_mdma, has_mdma_desc;
+    bool has_mdma, has_mdma_desc, has_ecc_block_512;
     unsigned reg_spare_area, random_en_mask;
+    unsigned reg_ecc_err_cnt, reg_user_data, reg_user_data_len, reg_pat_found;
+    unsigned random_dir_mask, ecc_mode_mask, ecc_err_mask, pat_found_mask;
     unsigned reg_io_data, dma_maxburst, max_ecc_steps;
     int sram_size;
     const struct sunxi_nfc_timings *timings;
@@ -119,6 +122,7 @@ static u8 registers[0x3000], media[2][20000];
 static struct {
     unsigned maps, unmaps, prep, submit, term, barrier, doorbell, serial;
     unsigned commands, reads, writes, row, column, fail_command, partial_bytes, address_cycles;
+    unsigned backend, bank_overruns, count_overruns, last_count_request;
     unsigned reg_writes[0x3000/4];
     unsigned disable, enable, wait_calls, irq_calls, poll_calls;
     enum dma_data_direction map_direction, unmap_direction;

@@ -13,6 +13,11 @@ The hardware audit adds a direct-buffer transfer-count mismatch affecting
 large extra-OOB tails. Earlier tests conflated SRAM capacity and transfer
 count; their above-1024-byte success results are superseded by the corrected
 [manual-based fixtures](HARDWARE-CONTRACTS.md).
+The updated v10 fixes that mismatch separately; pinned v9 still demonstrates
+it. H616 counter width, older-controller valid requests and physical RAM-bank
+bounds are distinct contracts. The A10 manual lacks an NFC register chapter
+and the A23 manual was unavailable, so older details use pinned BSP evidence
+or explicitly explored alternatives, not unsupported H616 extrapolation.
 The provider audit establishes that the injected configuration error is not
 reachable through the pinned sun4i/sun6i config callbacks, which always return
 zero. Other findings are not dismissed merely because they require failures.

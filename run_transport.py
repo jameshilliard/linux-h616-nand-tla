@@ -80,7 +80,8 @@ def units(candidate_source=None):
         '\n#line 1 "transport.c"\n' + (HERE / "tests/transport.c").read_text())
     driver = unit["driver.c"]
     driver = '#include "transport_api.h"\n' + driver
-    # The H616 SRAM window is 8 KiB at +0x400, independently of NDFC_CNT.
+    # Accommodate the driver's advertised 8 KiB aperture to observe baseline
+    # over-reads; the manual does not establish an 8 KiB RAM0 bank.
     driver = replace_once(driver, "u8 regs[0x1000];", "u8 regs[0x3000];")
     replacements = {
         "sunxi_nfc_select_chip": "if (select_error) return select_error; return wire_select(cs);",
@@ -100,7 +101,7 @@ def units(candidate_source=None):
         "    if(off==NFC_REG_CMD) { if (value >> 30) command(value); else wire_command(value); }")
     driver = replace_once(driver, "mmio_writes[off/4]++; memcpy(ptr,&value,4);",
         "u32 wire_old_status; memcpy(&wire_old_status, ptr, 4);\n"
-        "    if (off == 0x20) value &= 0x3ff;\n"
+        "    if (off == 0x20 && persistent_caps.reg_user_data_len) value &= 0x3ff;\n"
         "    mmio_writes[off/4]++; memcpy(ptr,&value,4);")
     driver = replace_once(driver, "static void writel(u32 value,void *ptr)\n{",
         "static void wire_command(u32 value);\nstatic void writel(u32 value,void *ptr)\n{")
@@ -146,10 +147,15 @@ if __name__ == "__main__":
     parser.add_argument("--candidate-source", type=Path)
     parser.add_argument("--count-boundary", action="store_true",
                         help="exercise admitted large-OOB geometry against NDFC_CNT[9:0]")
+    parser.add_argument("--expect-count-fixed", action="store_true",
+                        help="require complete large-OOB transfers rather than baseline counterexamples")
     args = parser.parse_args()
+    if args.expect_count_fixed and not (args.candidate_source and args.count_boundary):
+        parser.error("--expect-count-fixed requires --candidate-source and --count-boundary")
     unit, hashes, src = units(args.candidate_source)
     if args.count_boundary:
         unit = count_boundary_units(unit)
+        unit["driver.c"] = f"#define FIXED_COUNT {int(args.expect_count_fixed)}\n" + unit["driver.c"]
     names = {}
     for key in hashes:
         filename, name = key.split(":", 1)

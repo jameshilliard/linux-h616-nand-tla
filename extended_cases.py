@@ -16,7 +16,7 @@ def extend(modules, add, mutation):
             actions=["Map", "Validate", "Prepare", "Store", "Propagate", "Barrier",
                      "Submit", "Fetch", "Complete", "Unmap", "Cleanup"]),
         "NandCommand": dict(
-            invariants=["AddressCount", "AddressIdentity", "DataIdentity", "Bounds",
+            invariants=["AddressCount", "AddressIdentity", "DataIdentity", "Bounds", "RAM0Bounds", "KnownRequests",
                         "ReadAfterReady", "WriteBeforeIssue", "CheckOnlyPure", "StopOnError"],
             actions=["Address", "Prepare", "Stage", "Issue", "Ready", "Complete"]),
         "NandMedia": dict(
@@ -75,23 +75,42 @@ def extend(modules, add, mutation):
     mutation("NandDma", dict(dma, Length=65536), "no-validation", "ValidSubmission")
     mutation("NandDma", dict(dma, Backend="external", SubmitOK=False), "leak-ram", "CleanReturn")
 
-    cmd = dict(Size=2051, SRAM=1024, Parser=True, Read=True, ReadyBusy=True,
+    cmd = dict(Size=2051, SRAM=1024, RAM0=1024, CountEncoding="bsp-request",
+               Parser=True, Read=True, ReadyBusy=True,
                CheckOnly=False, FailChunk=0, AddrStart=0, AddrCount=5)
     for name, changes in (
         ("parser-read", {}), ("parser-write", dict(Read=False)),
-        ("parser-h616", dict(SRAM=8192)),
-        ("raw-h616-count-boundary", dict(SRAM=8192, Parser=False, Size=1024)),
+        ("parser-h616", dict(SRAM=8192, CountEncoding="ten-bit")),
+        ("raw-h616-count-boundary", dict(SRAM=8192, CountEncoding="ten-bit", Parser=False, Size=1024)),
         ("poll", dict(ReadyBusy=False, Size=63)), ("boundary64", dict(Size=64)),
         ("check-only", dict(CheckOnly=True)), ("second-chunk-error", dict(FailChunk=2))):
         add("NandCommand", "command-" + name, dict(cmd, **changes))
     for read in (False, True):
         for size in (1025, 2048, 8191, 8192, 8193):
-            raw = dict(cmd, SRAM=8192, Parser=False, Size=size, Read=read)
+            # A deliberately permissive backing aperture isolates the counter
+            # bug. It is not a claim that RAM0 physically contains 8192 bytes.
+            raw = dict(cmd, SRAM=8192, RAM0=8192, CountEncoding="ten-bit",
+                       Parser=False, Size=size, Read=read)
             add("NandCommand", f"command-source-h616-count-{read}-{size}", raw,
                 kind="source-contract", expected="DataIdentity")
-            # An algorithm candidate, not a change to the pinned kernel driver.
+            # Candidate algorithm; the pinned submission remains unchanged.
             add("NandCommand", f"command-candidate-cap-count-{read}-{size}",
-                dict(raw, Mutation="cap-count"))
+                dict(raw, RAM0=1024, Mutation="cap-count"))
+    for soc in ("a10", "a23", "h616"):
+        for read in (False, True):
+            for size in (0, 1, 512, 1023, 1024, 1025, 2048, 8193):
+                profile = dict(cmd, Parser=False, Read=read, Size=size,
+                               SRAM=8192 if soc == "h616" else 1024,
+                               CountEncoding="ten-bit" if soc == "h616" else "bsp-request")
+                add("NandCommand", f"command-profile-{soc}-{read}-{size}",
+                    dict(profile, Mutation="cap-count"))
+            for fail in (1, 2, 3):
+                add("NandCommand", f"command-profile-{soc}-{read}-error{fail}",
+                    dict(profile, Size=2500, FailChunk=fail, Mutation="cap-count"))
+    for read in (False, True):
+        add("NandCommand", f"command-source-h616-bank-{read}",
+            dict(cmd, SRAM=8192, Parser=False, Size=1025, Read=read, CountEncoding="ten-bit"),
+            kind="source-contract", expected="RAM0Bounds")
     mutation("NandCommand", cmd, "ignore-offset", "DataIdentity")
     mutation("NandCommand", cmd, "skip-ready", "ReadAfterReady")
     mutation("NandCommand", dict(cmd, Read=False), "skip-stage", "WriteBeforeIssue")

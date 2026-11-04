@@ -38,26 +38,34 @@ static void writel(u32 value, void *p)
         /* One W1C completion bit for each of up to 32 descriptors. */
         store(off,load(off)&~value); return;
     }
-    if (off==NFC_REG_CNT) value&=0x3ff;
+    if (off==NFC_REG_CNT) {
+        hw.last_count_request=value;
+        /* H616 5.2.6.9 specifies ten bits. For A10/A23, model only the
+         * valid 1..1024 requests used by their BSP, not undocumented readback. */
+        if(hw.backend==2) value&=0x3ff;
+    }
     store(off,value);
     if (off==NFC_REG_ECC_CTL && (value&caps.random_en_mask))
         stream_state=shift_n((value>>16)&0x7fff,15);
     if (off==NFC_REG_H6_MDMA_DLBA_REG) {
+        assert(hw.backend==2);
         hw.doorbell=hw.serial;
         assert(hw.barrier && hw.barrier<hw.doorbell);
         hw.published=true;
     }
     if (off!=NFC_REG_CMD) return;
-    /* This synchronous fixture latches the command immediately. Real hardware
-     * clears CMD/DMA events when its FSM starts it, not when FIFO is written.
-     * NandRegisterProtocol explores the asynchronous interval separately. */
-    store(NFC_REG_ST,load(NFC_REG_ST)&~(NFC_CMD_INT_FLAG|NFC_DMA_INT_FLAG));
+    /* H616 clears CMD/DMA at FSM start. Do not rely on that undocumented
+     * detail for A10/A23. NandRegisterProtocol explores either alternative. */
+    if(hw.backend==2)
+        store(NFC_REG_ST,load(NFC_REG_ST)&~(NFC_CMD_INT_FLAG|NFC_DMA_INT_FLAG));
     hw.commands++;
     if(value&NFC_SEND_ADR) hw.address_cycles+=1+((value>>16)&7);
     bool fail=hw.commands==hw.fail_command;
     if (value&NFC_DATA_TRANS) {
         unsigned encoded=load(NFC_REG_CNT), n=encoded ? encoded : 1024;
-        assert(n<=(unsigned)caps.sram_size && hw.column+n<=sizeof(media[0]));
+        assert(hw.last_count_request && (hw.backend==2 || hw.last_count_request<=1024));
+        hw.count_overruns+=hw.last_count_request>1024;
+        assert(n<=1024 && hw.column+n<=sizeof(media[0]));
         unsigned limit=fail ? min(n,hw.partial_bytes) : n;
         for(unsigned i=0;i<limit;i++) {
             u8 mask=(load(NFC_REG_ECC_CTL)&caps.random_en_mask) ? (u8)stream_state : 0;
@@ -73,12 +81,16 @@ static void memcpy_toio(void *dst,const void *src,size_t n)
 {
     assert((u8 *)dst>=registers+NFC_RAM0_BASE &&
            (u8 *)dst+n<=registers+NFC_RAM0_BASE+caps.sram_size);
+    /* Keep a larger backing allocation only to observe the old source's
+     * stale-copy/count witnesses. It is not evidence of an 8 KiB RAM bank. */
+    hw.bank_overruns+=(u8 *)dst+n>registers+NFC_RAM0_BASE+1024;
     memcpy(dst,src,n);
 }
 static void memcpy_fromio(void *dst,const void *src,size_t n)
 {
     assert((const u8 *)src>=registers+NFC_RAM0_BASE &&
            (const u8 *)src+n<=registers+NFC_RAM0_BASE+caps.sram_size);
+    hw.bank_overruns+=(const u8 *)src+n>registers+NFC_RAM0_BASE+1024;
     memcpy(dst,src,n);
 }
 static unsigned wait_for_completion_timeout(struct completion *c,unsigned timeout)
@@ -104,7 +116,23 @@ static void reset_fixture(unsigned backend)
     memset(registers,0,sizeof(registers)); memset(&desc,0xa5,sizeof(desc));
     memset(&chip,0,sizeof(chip)); memset(media,0xff,sizeof(media));
     assert(backend<ARRAY_SIZE(source_caps));
+    hw.backend=backend;
     caps=source_caps[backend];
+    /* Independent generation distinctions from the manuals/BSP. */
+    assert(caps.has_mdma==(backend==1) && caps.has_mdma_desc==(backend==2));
+    assert(caps.reg_io_data==(backend==0 ? 0x30 : 0x300));
+    assert(caps.reg_spare_area==(backend==2 ? 0x114 : 0xa0));
+    assert(caps.random_en_mask==BIT(backend==2 ? 5 : 9));
+    assert(caps.random_dir_mask==BIT(backend==2 ? 6 : 10));
+    assert(caps.reg_ecc_err_cnt==(backend==2 ? 0x50 : 0x40));
+    assert(caps.reg_user_data==(backend==2 ? 0x80 : 0x50));
+    assert(caps.reg_user_data_len==(backend==2 ? 0x70 : 0));
+    assert(caps.reg_pat_found==(backend==2 ? 0x3c : 0x38));
+    assert(caps.ecc_err_mask==(backend==2 ? UINT32_MAX : 0xffff));
+    assert(caps.pat_found_mask==(backend==2 ? UINT32_MAX : 0xffff0000));
+    assert(caps.ecc_mode_mask==(backend==2 ? 0xff00 : 0xf000));
+    assert(caps.max_ecc_steps==(backend==2 ? 32 : 16));
+    assert(caps.has_ecc_block_512==(backend!=2));
     nfc.regs=registers; nfc.caps=&caps; nfc.use_mdma=backend!=0;
     nfc.mdma_desc=backend==2 ? &desc : NULL; nfc.mdma_desc_dma=0x12345000;
     hw.map_address=0x9abc0000;
@@ -133,7 +161,8 @@ static void dma_checks(void)
             assert(hw.mapped && (load(NFC_REG_CTL)&NFC_RAM_METHOD));
             assert(load(NFC_REG_CTL)==((0x80008001|NFC_RAM_METHOD)&
                                      ~(backend ? NFC_DMA_TYPE_NORMAL : 0)));
-            assert(load(NFC_REG_CNT)==0); /* zero encodes 1024 bytes */
+            assert(hw.last_count_request==1024);
+            if(backend==2) assert(load(NFC_REG_CNT)==0); /* H616 zero encoding */
             assert(load(NFC_REG_SECTOR_NUM)==(backend==2 ? GENMASK(chunks-1,0) : chunks));
             if(backend==2) {
                 const u8 expected[]={12,0,0,0, (1024*chunks)&255,(1024*chunks)>>8,0,0,
@@ -260,18 +289,20 @@ static void raw_media_checks(void)
     static const unsigned sizes[]={0,1,63,64,1023,1024,1025,2048,8191,8192,8193,16385};
     u8 input[17000], output[17000];
     unsigned runs=0;
-    for(unsigned backend=0;backend<3;backend+=2)
+    for(unsigned backend=0;backend<3;backend++)
     for(unsigned scramble=0;scramble<2;scramble++)
     for(unsigned page=0;page<2;page++)
     for(unsigned l=0;l<ARRAY_SIZE(sizes);l++) {
         reset_fixture(backend); hw.row=page; unsigned len=sizes[l];
         /* The direct helper incorrectly uses SRAM capacity as the count limit
          * on H616. Exercise those sizes as source-contract witnesses below. */
-        if(backend==2 && len>1024) continue;
+        if(!FIXED_COUNT && backend==2 && len>1024) continue;
         for(unsigned i=0;i<sizeof(input);i++) input[i]=(i*13+(i>>8)*71+page*101)&255;
         memset(output,0xa5,sizeof(output));
         chip.nand.options=scramble ? NAND_NEED_SCRAMBLING : 0;
         assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,len,false,page));
+        assert(hw.commands==DIV_ROUND_UP(len,1024));
+        assert(hw.column==len && !hw.bank_overruns && !hw.count_overruns);
         assert(!(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
         u16 state=shift_n(sunxi_nfc_randomizer_page_seeds[page],15);
         for(unsigned i=0;i<len;i++) {
@@ -282,6 +313,8 @@ static void raw_media_checks(void)
         hw.column=0;
         assert(!sunxi_nfc_randomizer_read_buf(&chip.nand,output,len,false,page));
         assert(!memcmp(input,output,len) && output[len]==0xa5);
+        assert(hw.commands==2*DIV_ROUND_UP(len,1024));
+        assert(hw.column==len && !hw.bank_overruns && !hw.count_overruns);
         /* A repeated NAND program cannot resurrect a zero bit. */
         u8 before[17000]; memcpy(before,media[page],len);
         hw.column=0; memset(input,0x5a,len);
@@ -289,21 +322,25 @@ static void raw_media_checks(void)
         for(unsigned i=0;i<len;i++) assert((media[page][i]|before[i])==before[i]);
         runs++;
     }
+    for(unsigned backend=0;backend<3;backend++)
     for(unsigned write=0;write<2;write++)
     for(unsigned fail=1;fail<=3;fail++) {
-        reset_fixture(0); chip.nand.options=NAND_NEED_SCRAMBLING;
+        if(!FIXED_COUNT && backend==2) continue;
+        reset_fixture(backend); chip.nand.options=NAND_NEED_SCRAMBLING;
         hw.fail_command=fail; hw.partial_bytes=17;
         memset(output,0xa5,sizeof(output)); memset(input,0x33,sizeof(input));
         int ret=write ? sunxi_nfc_randomizer_write_buf(&chip.nand,input,2500,false,0) :
                         sunxi_nfc_randomizer_read_buf(&chip.nand,output,2500,false,0);
         assert(ret==-ETIMEDOUT && hw.commands==fail);
+        assert(!hw.bank_overruns && !hw.count_overruns);
         assert(!(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
         if(!write) for(unsigned i=(fail-1)*1024;i<sizeof(output);i++) assert(output[i]==0xa5);
+        if(write) for(unsigned i=(fail-1)*1024+17;i<sizeof(media[0]);i++) assert(media[0][i]==0xff);
     }
     for(unsigned write=0;write<2;write++)
     for(unsigned l=0;l<ARRAY_SIZE(sizes);l++) {
         unsigned len=sizes[l];
-        if(len<=1024) continue;
+        if(FIXED_COUNT || len<=1024) continue;
         reset_fixture(2);
         for(unsigned i=0;i<sizeof(input);i++) input[i]=(i*13+(i>>8)*71)&255;
         memset(output,0xa5,sizeof(output));
@@ -319,12 +356,15 @@ static void raw_media_checks(void)
             off+=chunk;
         }
         assert(hw.column==actual && actual<len);
+        assert(hw.bank_overruns && hw.count_overruns);
         assert(memcmp(write ? media[0] : output,input,len));
         if(write) assert(media[0][actual]==0xff);
         else assert(output[len]==0xa5);
     }
-    puts("SOURCE CONTRACT WITNESS: direct H616 transfers above 1024 bytes exceed NDFC_CNT[9:0]");
-    reset_fixture(2); assert(!sunxi_nfc_read_buf(&chip.nand,NULL,1025) && hw.column==1);
+    puts(FIXED_COUNT ? "FIXED: A10/A23/H616 direct transfers fit the 1 KiB RAM0/count limits" :
+         "SOURCE CONTRACT WITNESS: direct H616 transfers above 1024 exceed CNT and RAM0 bank bounds");
+    reset_fixture(2);
+    assert(!sunxi_nfc_read_buf(&chip.nand,NULL,1025) && hw.column==(FIXED_COUNT ? 1025 : 1));
     hw.fifo_busy=true;
     assert(sunxi_nfc_read_buf(&chip.nand,output,1)==-ETIMEDOUT);
     assert(sunxi_nfc_write_buf(&chip.nand,input,1)==-ETIMEDOUT);

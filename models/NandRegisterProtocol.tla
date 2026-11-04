@@ -5,7 +5,7 @@
 \* This is the register contract, not a replacement for NandIrq's split
 \* handler accesses or NandRecovery's bus-retirement/timeout assumptions.
 EXTENDS Integers, FiniteSets
-CONSTANTS Operations, DMA, WaitRB, Polling, Order, Mutation
+CONSTANTS Operations, DMA, WaitRB, Polling, Order, StartClears, Mutation
 VARIABLE s
 vars == <<s>>
 Required == IF DMA THEN {"cmd", "dma"} ELSE {"cmd"}
@@ -27,7 +27,7 @@ Latch ==
     /\ s.fifo # 0 /\ s.fsm = 0
     /\ s' = [s EXCEPT !.fsm = s.fifo, !.fifo = 0,
                      !.started = @ \cup {s.fifo},
-                     !.status = @ \ {"cmd", "dma"}]
+                     !.status = IF StartClears THEN @ \ {"cmd", "dma"} ELSE @]
 Arm ==
     /\ s.pc = "arm"
     /\ s' = [s EXCEPT !.masked = Polling, !.pc = "wait"]

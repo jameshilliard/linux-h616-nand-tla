@@ -26,6 +26,47 @@ in sections 4.2.5.2 and 4.2.5.9.
 | User-data lengths are encoded per block and share a 128-byte bank | 5.2.6.21–22 | Batch/layout/register checks |
 | ECC counters and pattern IDs are block-indexed | 5.2.6.20, 25 | Snapshot/cache/batch checks |
 
+## Older NFCs are separate profiles
+
+The source capability structs are extracted independently for A10, A23 and
+H616. They are not three names for one H616 register emulator. The
+[A10 manual](https://raw.githubusercontent.com/allwinner-zh/documents/69a71a4321dadc2d1f99d7695161d7b2cd8540c4/A10/A10%20User%20manual%20V1.5%2020130820.pdf)
+only contains an NFC overview (§14.1). It documents two 1 KiB banks and
+external DMA, but omits the register chapter. The A23 manual download was
+unavailable; the pinned Allwinner `nand_sun8iw3` BSP is used for its register
+and programming differences. No missing manual has been treated as read.
+
+| Contract/profile | A10 | A23 | H616 |
+| --- | --- | --- | --- |
+| Normal buffer command | Valid 1..1024-byte requests; raw CNT width/readback not established | Same valid-request contract, not borrowed H616 bit-width semantics | CNT[9:0]; zero encodes 1024 |
+| RAM0 used by normal commands | 1 KiB bank, with another bank at +0x800 | BSP banks start at +0x400/+0x800; tests stay within the 1 KiB RAM0 window | Manual §5.2.1 also describes two 1 KiB banks; Linux's 8192 capability is not physical proof |
+| Page DMA | External DMA provider | Internal address/count registers at +0xc0/+0xc4 | Descriptor-based internal DMA, list base +0x200 |
+| Page block selection | Count | Count | Bitmap; separate from the byte counter |
+| IO_DATA / SPARE_AREA offsets | +0x30 / +0xa0 | +0x300 / +0xa0 | +0x300 / +0x114 |
+| ECC counters / user-data base | +0x40 / +0x50 | +0x40 / +0x50 | +0x50 / +0x80 |
+| Protected user data | One 4-byte word per step | One 4-byte word per step | Packed per-step lengths; shared 128-byte bank |
+| ECC error fields / random enable | 16-bit error bitmap / ECC_CTL bit 9 | 16-bit error bitmap / ECC_CTL bit 9 | 32-bit error bitmap / ECC_CTL bit 5 |
+| Command-start event clearing | Test both alternatives; not established by available docs | Test both alternatives; not established by available docs | CMD/DMA auto-clear at FSM start is documented |
+
+Older offsets, the sector count, four ECC-counter words, fixed user-data
+words and DMA programming are cross-checked against the vendor's
+[`nand_sun4i`](https://github.com/allwinner-zh/linux-3.4-sunxi/tree/6964d467510849e3e262518cb87bff7ef92e01f5/modules/nand/nand_sun4i/lib/src)
+and
+[`nand_sun8iw3`](https://github.com/allwinner-zh/linux-3.4-sunxi/tree/6964d467510849e3e262518cb87bff7ef92e01f5/modules/nand/nand_sun8iw3/lib/src)
+headers, `_read_in_page_mode()`, `_check_ecc()` and DMA functions. Their
+normal-command senders write the requested count without the newer BSP's
+explicit `0x3ff` mask. That is evidence of usage, not proof of a wider counter.
+The low-level fixture keeps valid older requests as lengths and makes no
+assertion about raw CNT readback. The changed code issues at most 1024 bytes
+on every profile, so that unresolved encoding does not affect its test result.
+
+The fixture also checks extracted capability values against the separate
+register layouts; older pattern interpretation remains a Linux/BSP contract
+without a complete older register manual. Existing ECC/batch tests retain
+16-slot/fixed-word and 32-slot/packed-bank distinctions. Legacy 512-byte ECC
+blocks, H616 1024-byte blocks, and descriptor-only alignment/length rules are
+not conflated. A23 uses the register-DMA tests, not H616 descriptor rules.
+
 ## Vendor cross-check
 
 The pinned [vendor implementation](https://github.com/radxa/allwinner-bsp/blob/2045a3ca2a01f088c0314dc924bda59d154e363e/modules/nand/common1/phy-nand/rawnand/controller/ndfc_base.c)
@@ -50,6 +91,10 @@ transaction's ordering. Passing does not prove the external DMA provider's
 memory-drain contract. The deliberate failures cover relying only on automatic
 clearing, equating FIFO availability with completion, ignoring DMA completion,
 and assuming interrupt masking clears status.
+Eight additional older-profile configurations check polling/interrupt operation
+with and without automatic event clearing. A10's external-provider completion
+ordering remains in the separate provider/ownership models; it is not proved
+by a controller-only status model.
 
 This model specifies a caller/register protocol, **not a mechanically extracted
 copy of every Linux error path**. `NandIrq` retains the finer-grained handler
@@ -59,21 +104,31 @@ fixtures immediately latch commands; they cannot establish asynchronous timing.
 
 ## Corrected transfer-count assumption
 
-The earlier raw-H616 tests allowed an 8192-byte SRAM window to imply an
+The earlier raw-H616 tests allowed an advertised 8192-byte SRAM size to imply an
 8192-byte normal command. That assumption was wrong. Previous passing results
 for direct transfers above 1024 bytes are superseded, not silicon evidence.
 
-The corrected fixtures decode the counter independently of the unmodified
-driver. Ten TLC source-contract cases and twelve direct-buffer C cases expose
-the discrepancy; ten model-only capped-chunk candidates show one algorithmic
-way to preserve the transfer. No kernel fix is silently applied.
+The counter and RAM0 bounds are now independent of the driver's SRAM limit.
+Ten TLC source-contract cases and twelve direct-buffer C cases retain the
+count discrepancy, with permissive backing storage solely to isolate it.
+Two additional source-contract cases reject crossing the manual's 1 KiB
+bank boundary. Positive capped-chunk cases use the stricter 1 KiB bank.
+Sixty-six generation-specific cases cover zero/short/exact/beyond-limit
+transfers and errors in the first, second or third command.
 
 `python3 run_transport.py --count-boundary` reaches actual attach, page,
 extra-OOB, command-helper, parser and IRQ code using an admitted **synthetic**
 2 KiB+2 KiB geometry. Both read and write request an 1872-byte tail, transfer
-848 bytes in the manual-based fixture, and return success. This also reproduces
-against the v10 draft. No specific NAND part with that geometry is claimed.
+848 bytes in the manual-based fixture, and return success. This reproduced
+against the previous v10 draft. No specific NAND part with that geometry is claimed.
 See [finding 11](FINDINGS.md#11-h616-direct-buffer-io-confuses-sram-capacity-with-the-transfer-counter).
+
+The updated v10 includes a separate count-limit fix. Explicit
+`--expect-count-fixed` checks require full transfers and do not reinterpret
+counterexamples as success. Direct-helper tests now cover all three backends,
+plain/scrambled data, two page seeds, exact chunk counts, untouched sentinels,
+and later-chunk faults. Composed page tests compare the full H616 1872-byte tail
+and the legacy 1928-byte tail in both directions. The pinned v9 remains unchanged.
 
 ## Prior hardware observations, narrowly applied
 
@@ -102,6 +157,11 @@ coverage or the absence of late events. IRQ draining does not stop hardware.
 External DMA completion ordering, recovery after real controller timeouts,
 large-OOB silicon behavior, analog ECC characteristics and power-failure
 semantics still require provider documentation or targeted hardware tests.
+The physical extent/aliasing of H616's advertised 8 KiB aperture is unresolved;
+this fix needs only the documented 1 KiB bank and command range. Randomizer
+continuity between successive normal commands remains an explicit hardware
+contract: tests ensure software does not reseed between chunks, but software
+LFSR vectors are not measurements of hidden silicon reload behavior.
 No flash write, erase, reset or power-cycle was performed for this audit.
 
 Kernel-side findings were checked using Sashiko's general technical-pattern,

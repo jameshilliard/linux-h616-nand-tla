@@ -305,6 +305,17 @@ controlled direct-command probe would narrow that remaining question.
 Earlier raw-H616 positive checks copied the software count directly into the
 emulated hardware and missed this problem. They are explicitly superseded;
 the new negative expectations do not mean the driver is fixed. Ten TLC
-model-only capped-chunk candidates are separate from the unchanged source.
+model-only capped-chunk candidates were separate from the unchanged source.
 Hardware provenance and unresolved recovery contracts are in
 [HARDWARE-CONTRACTS.md](HARDWARE-CONTRACTS.md).
+
+**Candidate resolution (2026-11-04):** v10 commit `2fb2a7138fa1`
+(`mtd: rawnand: sunxi: limit buffer transfers to the command byte count`)
+uses the minimum of remaining bytes, the SRAM capability and 1024. The
+parser shares the named limit. This is a separate existing-format fix before
+the binding/format extension, with a Fixes tag for H616 support. Explicit
+positive candidate checks now transfer the complete tail and preserve
+chunk offsets/randomizer configuration; baseline expectations still reproduce
+the bug. The H616 manual's two 1 KiB banks are also distinguished from the
+driver's 8 KiB capability, rather than assuming that capability is silicon
+documentation. No new hardware result or actual affected NAND part is claimed.
