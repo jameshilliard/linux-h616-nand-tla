@@ -129,7 +129,7 @@ static struct {
     enum dma_data_direction map_direction, unmap_direction;
     enum dma_transfer_direction prep_direction;
     bool map_fail, prep_fail, submit_fail, reset_fail, terminate_fail;
-    bool reset_clears_context, reload_each_command;
+    bool reset_clears_context, reload_each_command, measured_h616;
     bool mapped, active, irq_disabled, fifo_busy, published, unsafe;
     bool outstanding_bus, retain_stop_bus;
     bool mask_fail, alloc_fail, enforce_dma_mask;

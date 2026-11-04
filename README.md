@@ -53,6 +53,13 @@ including compound read failures and subsequent controller reuse. The
 [file-lifetime checks](docs/FD-LIFETIME-CONFORMANCE.md) follow actual MTD
 open/close into NAND locks and expose close/sync within the known unbind issue.
 
+The [2026-11-04 real H616 measurements](docs/HARDWARE-MEASUREMENTS-20261104.md)
+add a restricted diagnostic module, sanitized captures and offline replay.
+They confirm count/SRAM/BCH contracts but disprove the earlier continuous
+normal-command randomizer assumption. The measured restart, direction and
+non-word-tail behavior now has its own TLA+ and actual-source checks. Older
+controller behavior and genuinely failed DMA/reset retirement remain unproved.
+
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
 implementation. This repository validates that pinned implementation, **not
@@ -68,8 +75,10 @@ branch gaps and hardware/lifetime limitations.
 ## Run
 
 Requirements: Python 3.10+, Java 17+ (the CI template uses 21), and GCC with its
-matching `gcov`, AddressSanitizer and UndefinedBehaviorSanitizer. No board, root
-privileges, or kernel build is needed. The tests do not access NAND devices.
+matching `gcov`, AddressSanitizer and UndefinedBehaviorSanitizer. The ordinary
+host runners need no board, root privileges or kernel build and do not access
+NAND. The optional tools under [hardware/](hardware/README.md) are separate,
+explicitly authorized board tests, including a destructive backup-block phase.
 
 ```sh
 python3 run.py --download
@@ -92,6 +101,7 @@ python3 run_ordering.py
 python3 run_request_refinement.py
 python3 run_fd_locking.py
 python3 run_fd_lifetime.py
+python3 run_hardware.py
 ```
 
 `--download` fetches the official TLA+ tools v1.8.0 prerelease asset and verifies

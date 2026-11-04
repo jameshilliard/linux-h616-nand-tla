@@ -4,6 +4,9 @@
 
 def extend_contracts(modules, add, mutation):
     modules.update({
+        "NandMeasuredStream": dict(
+            invariants=["MeasuredContract", "RoundTrip", "Bounds"],
+            actions=["Write", "Turnaround", "Read", "Finish"]),
         "NandRandomizerStream": dict(
             invariants=["PhysicalEncoding", "IndependentDecode", "CleanReturn",
                         "SuccessfulPrefix", "NoCommandsForZero", "NoReplayAfterError"],
@@ -16,6 +19,24 @@ def extend_contracts(modules, add, mutation):
             invariants=["ActiveLengths", "UnusedCleared", "BankBounds", "LegacyNoLengthMMIO"],
             actions=["Begin", "Clear", "Pio", "Program", "Consume", "Finish"]),
     })
+    for size in (4, 8, 12, 16):
+        for chunk in (4, 8, 16):
+            add("NandMeasuredStream", f"measured-block-stream-{size}-{chunk}",
+                dict(Size=size, WriteChunk=chunk, ReadChunk=chunk, PageMode=False))
+        add("NandMeasuredStream", f"measured-single-write-page-read-{size}",
+            dict(Size=size, WriteChunk=16, ReadChunk=4, PageMode=True))
+    for size, write, read, mode, name in (
+        (8, 4, 8, False, "changed-command-boundaries"),
+        (8, 4, 4, True, "page-mode-write-read-asymmetry"),
+        (6, 3, 3, False, "unrandomized-last-read-byte"),
+        (9, 4, 4, False, "unaligned-final-command"),
+    ):
+        add("NandMeasuredStream", "measured-witness-" + name,
+            dict(Size=size, WriteChunk=write, ReadChunk=read, PageMode=mode),
+            kind="hardware-contract", expected="RoundTrip")
+    base = dict(Size=9, WriteChunk=4, ReadChunk=3, PageMode=False)
+    for change in ("writer-continuous", "reader-continuous", "omit-read-tail"):
+        mutation("NandMeasuredStream", base, change, "MeasuredContract")
     def op(read=False, random=True, seed=1, size=9, chunk=4, fail=0):
         return dict(read=read, random=random, seed=seed, size=size, chunk=chunk, fail=fail)
     for read in (False, True):

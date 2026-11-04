@@ -57,7 +57,7 @@
     },
     {
       "id": "h616-sram-capability",
-      "status": "Linux advertises 8192 bytes but H616 manual 5.2.1 describes two 256x32-bit banks; physical aliasing/extent not measured"
+      "status": "Two independent 1 KiB banks measured on 2026-11-04; extent/aliasing beyond those banks, including Linux's advertised 8192 bytes, remains unmeasured"
     }
   ],
   "vendor": {
@@ -65,6 +65,14 @@
     "url": "https://github.com/radxa/allwinner-bsp/blob/2045a3ca2a01f088c0314dc924bda59d154e363e/modules/nand/common1/phy-nand/rawnand/controller/ndfc_base.c",
     "sha256": "20bc11c0222cf7237df2cea21c9cb6e6907435ae9e1b1d7f5deef37ab959dcec",
     "functions": ["_normal_cmd_io_send", "_normal_cmd_io_wait", "_batch_cmd_io_wait", "ndfc_wait_cmdfifo_free", "ndfc_wait_fsm_ready", "ndfc_wait_cmd_finish", "ndfc_wait_dma_end"]
+  },
+  "public_hardware_measurement": {
+    "date": "2026-11-04",
+    "report": "docs/HARDWARE-MEASUREMENTS-20261104.md",
+    "capture": "hardware/h616-capture-20261104.json",
+    "module": "hardware/nfc_probe.c",
+    "scope": "H616 2 KiB+128, BCH-32; integration kernel, not candidate v10 hardware validation",
+    "supersedes": "H616 continuous normal-command randomizer assumption; older NFC behavior is still unmeasured"
   },
   "prior_local_hardware_records": [
     {

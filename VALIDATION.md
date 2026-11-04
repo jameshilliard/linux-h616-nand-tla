@@ -1371,3 +1371,48 @@ remain explicit boundaries. No flash was erased, reformatted or written.
 Details and reproduction instructions are in
 [REQUEST-TRACE-CONFORMANCE.md](docs/REQUEST-TRACE-CONFORMANCE.md) and
 [FD-LIFETIME-CONFORMANCE.md](docs/FD-LIFETIME-CONFORMANCE.md).
+
+# Real H616 measurements and measured-stream validation
+
+On 2026-11-04 a restricted external diagnostic module exercised an H616 with
+Toshiba TC58NVG1S3H NAND (2048+128-byte pages, BCH-32/1024). The board ran the
+7.3.0-rc3 integration image, not the v10 submission. The module and sanitized
+capture are published under `hardware/`; original flash backups and connection
+details are not published.
+
+Read-only measurements covered 14 transfer-count encodings, both documented
+1 KiB SRAM banks, command-done W1C behavior, 216 randomized reads and 48
+read-tail/accessor combinations. Destructive tests used only the authorized
+backup SPL block: eight native-encoder images, twelve independently encoded
+error-injection images, and sixteen normal-command randomized write/read
+cases. Explicit PIO ECC reads complemented native callbacks. Original raw
+data and OOB were restored after both destructive runs; all four SPL copies
+were compared with their pre-test backups. The module was unloaded and a
+subsequent 32 MiB MTD read completed without new controller/ECC log errors.
+
+These measurements disprove the earlier assumption of a continuous H616
+normal-command randomizer stream. Writes restart at each command; reads
+restart in block mode but continue in page mode. A non-word-sized read leaves
+its final requested byte without randomizer XOR. Historical continuous-stream
+fixtures remain conditional tests, not silicon evidence. The tested native
+BCH page format matched independent encoding across every physical byte.
+No production driver change is inferred solely from the synthetic stream
+witnesses; other admitted formats still need a caller audit.
+
+The full suite passes **63/63 jobs** in `results/suite-odajhe78/` against the
+unchanged v10 driver SHA-256
+`f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
+Executable inputs stayed unchanged during that run. The catalog passes
+**898/898 expectations across 43 models**; dedicated jobs contribute 278,
+giving **1,176/1,176 matched TLC outcomes**. This includes the new 23-case
+`NandMeasuredStream` matrix and its expected incompatible-format witnesses.
+Offline capture replay passes 170 checks. The low-level source runner passes
+44 added v10 read/write cases using the measured H616 behavior, under its
+sanitizer and coverage builds.
+
+Reproduction and remaining hardware limits are recorded in
+[HARDWARE-MEASUREMENTS-20261104.md](docs/HARDWARE-MEASUREMENTS-20261104.md).
+In particular, this does not prove hung-DMA retirement, all IRQ/reset ordering,
+other ECC strengths or geometries, older controllers, or power-loss behavior.
+Native callback invocation does not prove DMA was used on every transfer.
+No kernel submission was changed by this measurement work.

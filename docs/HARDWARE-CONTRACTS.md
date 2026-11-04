@@ -6,6 +6,12 @@ is evidence of what the driver does, not an authority for what hardware does.
 The [evidence manifest](../hardware-evidence.json) records exact documents,
 hashes and vendor functions. PDFs and private capture files are not bundled.
 
+**New hardware evidence:** the [2026-11-04 measurements](HARDWARE-MEASUREMENTS-20261104.md)
+confirm the H616 counter/two 1 KiB banks and supersede the continuous-stream
+randomizer assumption. Normal commands restart streams, page-size reads and
+writes differ, and non-word read tails have an exception. Historical
+assumptions below must be read with that correction; older NFCs are unmeasured.
+
 ## Manual-backed register contracts
 
 Section numbers below refer to the
@@ -159,15 +165,17 @@ large-OOB silicon behavior, analog ECC characteristics and power-failure
 semantics still require provider documentation or targeted hardware tests.
 The physical extent/aliasing of H616's advertised 8 KiB aperture is unresolved;
 this fix needs only the documented 1 KiB bank and command range. Randomizer
-continuity between successive normal commands remains an explicit hardware
-contract: tests ensure software does not reseed between chunks, but software
-LFSR vectors are not measurements of hidden silicon reload behavior.
+continuity was an explicit assumption in this audit; later H616 measurements
+above disprove it for default block-size mode. Avoiding software reseeding
+does not prevent hardware reloads. Older-controller behavior is unmeasured.
 The [stream/aperture/context extension](STREAM-APERTURE-CONTEXT.md) now checks
 the alternative reload behavior explicitly: same-chunk write/read round trips
 can pass even when the independently expected stored stream differs. It also
 checks DMA range endpoints and length-register reuse without borrowing the
 H616 descriptor or packed-length format for older NFCs.
-No flash write, erase, reset or power-cycle was performed for this audit.
+No flash write, erase, reset or power-cycle was performed for this original
+audit. The separately recorded 2026-11-04 experiment did erase/program and
+restore one authorized backup block.
 
 Kernel-side findings were checked using Sashiko's general technical-pattern,
 false-positive, callstack, MMIO/accessor, alignment and locking guidance.

@@ -1,5 +1,12 @@
 # Cross-command streams, DMA apertures and persistent register context
 
+**Superseded assumption:** [real H616 tests](HARDWARE-MEASUREMENTS-20261104.md)
+now show command stream restarts, read/write asymmetry in page-size mode, and
+an unrandomized final byte for non-word-sized reads. The continuous profile
+and reload-only alternative below are historical conditional fixtures, not
+a complete H616 hardware model. `NandMeasuredStream`, capture replay and the
+measured low-level profile now supplement them.
+
 This extension checks three contracts that individual function coverage does
 not establish. It adds 98 bounded TLC configurations and matching source-body
 tests, preserving both the posted v9 reference and the separately identified

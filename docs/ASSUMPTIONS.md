@@ -2,6 +2,13 @@
 
 ## Results and their classification
 
+The [2026-11-04 hardware measurements](HARDWARE-MEASUREMENTS-20261104.md)
+disprove the continuous-normal-command randomizer assumption for H616's
+default mode. Measured restart/direction/non-word-tail semantics have separate
+model, capture-replay and actual-source tests. Older NFCs, failed-reset bus
+retirement and untested geometries remain assumptions; conditional software
+suite success must not be presented as silicon proof.
+
 The positive model configurations and host checks pass under their stated
 contracts. The tests also reproduce source-level observations:
 split address-cycle loss, a failed clock change cached as successful, ignored

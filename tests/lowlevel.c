@@ -69,8 +69,11 @@ static void writel(u32 value, void *p)
     if(value&NFC_SEND_ADR) hw.address_cycles+=1+((value>>16)&7);
     bool fail=hw.commands==hw.fail_command;
     if (value&NFC_DATA_TRANS) {
-        /* Hypothetical alternative, not established silicon behavior. */
-        if(hw.reload_each_command && (load(NFC_REG_ECC_CTL)&caps.random_en_mask))
+        /* The historical continuous fixture is conditional. The measured
+         * H616 mode restarts writes and block-size reads at every command. */
+        bool restart=hw.reload_each_command ||
+            (hw.measured_h616 && ((value&NFC_ACCESS_DIR) || !(load(NFC_REG_ECC_CTL)&BIT(7))));
+        if(restart && (load(NFC_REG_ECC_CTL)&caps.random_en_mask))
             stream_state=shift_n((load(NFC_REG_ECC_CTL)>>16)&0x7fff,15);
         unsigned encoded=load(NFC_REG_CNT), n=encoded ? encoded : 1024;
         assert(hw.last_count_request && (hw.backend==2 || hw.last_count_request<=1024));
@@ -79,6 +82,8 @@ static void writel(u32 value, void *p)
         unsigned limit=fail ? min(n,hw.partial_bytes) : n;
         for(unsigned i=0;i<limit;i++) {
             u8 mask=(load(NFC_REG_ECC_CTL)&caps.random_en_mask) ? (u8)stream_state : 0;
+            if(hw.measured_h616 && !(value&NFC_ACCESS_DIR) && n%4 && i==n-1)
+                mask=0;
             if(value&NFC_ACCESS_DIR) media[hw.row][hw.column+i]&=registers[NFC_RAM0_BASE+i]^mask;
             else registers[NFC_RAM0_BASE+i]=media[hw.row][hw.column+i]^mask;
             stream_state=shift_n(stream_state,8);
@@ -534,7 +539,35 @@ static void randomizer_stream_checks(void)
         assert(!memcmp(input,output,2057));
         witnesses++;
     }
-    printf("Independent raw-stream oracle: %u mixed-operation/error cases; %u hypothetical command-reload round trips conceal incompatible stored bytes\n",runs,witnesses);
+    printf("Conditional continuous-stream oracle: %u mixed-operation/error cases; %u reload-only alternatives conceal incompatible stored bytes (not H616 silicon validation)\n",runs,witnesses);
+}
+
+static void measured_h616_checks(void)
+{
+    const unsigned sizes[]={1,2,3,4,63,64,1023,1024,1025,2056,2057};
+    u8 input[2057], expected[2057], output[2057];
+    unsigned checks=0;
+    for(unsigned i=0;i<sizeof(input);i++) input[i]=(i*37+(i>>8)*17)&255;
+    for(unsigned page=0;page<2;page++)
+    for(unsigned write=0;write<2;write++)
+    for(unsigned j=0;j<ARRAY_SIZE(sizes);j++) {
+        unsigned len=sizes[j];
+        if(!FIXED_COUNT && len>1024) continue;
+        reset_fixture(2); hw.measured_h616=true; hw.row=page;
+        chip.nand.options=NAND_NEED_SCRAMBLING;
+        for(unsigned off=0;off<len;off+=1024) {
+            unsigned n=min(1024,len-off);
+            encode_stream(expected+off,input+off,n,page,true);
+            if(!write && n%4) expected[off+n-1]=input[off+n-1];
+        }
+        if(!write) memcpy(media[page],input,len);
+        int ret=write ? sunxi_nfc_randomizer_write_buf(&chip.nand,input,len,false,page) :
+                        sunxi_nfc_randomizer_read_buf(&chip.nand,output,len,false,page);
+        assert(!ret && !memcmp(write ? media[page] : output,expected,len));
+        assert(!(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
+        checks++;
+    }
+    printf("Measured H616 normal-command profile: %u exact-source read/write cases (restart and non-word read tail)\n",checks);
 }
 
 static void command_checks(void)
@@ -920,7 +953,7 @@ static void recovery_refinement(void)
 int main(void)
 {
     dma_checks(); dma_init_checks(); dma_aperture_checks(); irq_checks(); raw_media_checks();
-    randomizer_stream_checks(); command_checks(); parser_checks(); timing_checks(); selection_checks();
+    randomizer_stream_checks(); measured_h616_checks(); command_checks(); parser_checks(); timing_checks(); selection_checks();
     selection_matrix();
     probe_context_interleaving();
     recovery_refinement();

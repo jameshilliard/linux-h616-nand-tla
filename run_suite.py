@@ -25,6 +25,8 @@ def inputs():
     paths=set(HERE.glob("*.py")) | {HERE/"source.json"}
     for directory in ("tests","models","reference"):
         paths.update(p for p in (HERE/directory).rglob("*") if p.is_file())
+    paths.update(p for p in (HERE/"hardware").glob("*")
+                 if p.suffix in (".py", ".json", ".c", ".h"))
     return {str(p.relative_to(HERE)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(paths)}
 
@@ -48,7 +50,8 @@ def main():
     source=args.candidate_source.read_bytes()
     candidate=out/"candidate-sunxi_nand.c"; candidate.write_bytes(source)
     shared=["--candidate-source",str(candidate)]
-    jobs=[("c","run_c.py",shared),
+    jobs=[("hardware-capture","run_hardware.py",[]),
+          ("c","run_c.py",shared),
           ("lowlevel","run_lowlevel.py",shared+["--expect-count-fixed"]),
           ("lifecycle","run_lifecycle.py",shared+["--expect-available-children","--expect-deferred-publication"]),
           ("codec","run_codec.py",shared),

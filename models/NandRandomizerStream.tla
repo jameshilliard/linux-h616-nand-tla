@@ -3,7 +3,9 @@
 \* Exact byte positions, symbolic keys. Bit-level LFSR is checked separately
 \* in source fixtures. Each operation has an independent reference image;
 \* matching writer/reader mistakes cannot manufacture a compatible format.
-\* ReloadAtCommand is an unknown hardware alternative, not a silicon claim.
+\* Historical continuous-stream contract, NOT the measured H616 default.
+\* See NandMeasuredStream for H616 command restart/direction/tail behavior.
+\* Older-controller reload behavior remains unmeasured.
 EXTENDS Integers, Sequences
 CONSTANTS Operations, ReloadAtCommand, Mutation
 VARIABLE s
