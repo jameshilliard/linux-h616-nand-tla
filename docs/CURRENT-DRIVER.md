@@ -1,5 +1,30 @@
 # Current sunxi driver verification
 
+## Current integration (2026-11-04)
+
+`submit/sunxi-nand-fixes-v10` now ends at
+`c95239dadd36c5d4c012c228ed4a95971c89b65a` on the same NAND base. The
+23-patch series includes availability filtering and scan-before-publication
+as patches 20 and 21, before the binding and randomized-OOB changes.
+The current driver SHA-256 is:
+
+```text
+f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6
+```
+
+Fresh lifecycle checks pass 1,209 cases and 81,560 assertions with both fix
+expectations enabled, under ASan/UBSan and a separate GCOV run. ARM32 LLVM
+and ARM64 GCC `W=1` object builds pass. The [probe audit](PROBE-VISIBILITY.md)
+records the corrected admission/publication behavior and partial-error unwind.
+The generic NAND-core and DMA-provider fixes remain on separate branches.
+
+The full-driver coverage totals below belong to the earlier source digest,
+not this integration. They have not been recomputed for the new full source.
+Model files, pinned sources and the earlier validation records are unchanged.
+The retained-MTD/unbind lifetime issue remains unresolved.
+
+## Earlier full-driver audit
+
 This audit checks the v10 draft's driver, not just the original v9 snapshot.
 The checked sunxi branch is `submit/sunxi-nand-fixes-v10` at
 `ccdee2ee49862a1377d31f5c541ce9d5fab327df`, based on NAND `nand/next` at
@@ -159,11 +184,12 @@ The confirmed open-MTD-reference/unbind lifetime issue remains unresolved.
 Neither a registration reference nor a model assumption drains retained
 users before sunxi cleanup releases hardware resources. Multi-chip probe
 unwind also needs to be covered by any eventual lifetime fix.
-Two independent probe defects are also unresolved in this candidate:
+Two independent probe defects were unresolved in this pre-fix snapshot:
 unavailable DT children are scanned, and per-child publication allows the
 next scan to race with normal I/O. They occur before the OOB changes too.
-The [probe audit](PROBE-VISIBILITY.md) distinguishes model-only fix directions
-from the unchanged kernel implementation and from the separate unbind issue.
+They are corrected by the integrated candidate described above. The
+[probe audit](PROBE-VISIBILITY.md) distinguishes baseline witnesses, model
+policies and implemented fixes from the separate unbind issue.
 
 Physical DMA stop, outstanding bus retirement, late command events, MMIO
 ordering, real clock-tree behavior, physical manufacturer-specific read retry and

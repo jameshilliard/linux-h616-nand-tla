@@ -32,10 +32,12 @@ packed user-data register reuse across PIO/DMA requests. They also expose how
 a matching randomizer error can pass a write/read round trip.
 The [probe-visibility checks](docs/PROBE-VISIBILITY.md) exercise DT child
 availability and scanning a second chip while the first MTD is already usable.
-They reproduce two independent probe-path defects in both source versions;
-standalone filtering and deferred-publication fixes are now checked separately
-and together against the pre-series NAND base. The source fixtures also test
-partial registration cleanup and require deliberate regressions to fail.
+They reproduce two independent probe-path defects in the original snapshots.
+Filtering and deferred-publication fixes are checked separately and together
+against the pre-series NAND base, and are now carried as patches 20 and 21
+of the 23-patch sunxi v10 draft. The source fixtures also test partial
+registration cleanup and require deliberate regressions to fail. Fixes outside
+the sunxi NAND driver retain separate submission branches.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver

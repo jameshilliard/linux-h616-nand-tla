@@ -7,8 +7,8 @@ also protects MTD operations.
 
 ## Source versions
 
-Both findings reproduce in the unchanged posted v9 driver and the current v10
-draft at `ccdee2ee49862a1377d31f5c541ce9d5fab327df`. The latter's driver SHA-256
+Both findings reproduce in the unchanged posted v9 driver and the pre-fix v10
+snapshot at `ccdee2ee49862a1377d31f5c541ce9d5fab327df`. The latter's driver SHA-256
 is `7e2525a0097a156a7a4e952a073c03ca19872f1c417a42387f15d5b85081a50a`.
 The pre-series base, `30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85`, also uses the
 same child iteration and per-child scan/register ordering. Neither finding
@@ -55,7 +55,8 @@ That must happen before chip-select allocation and scan. The existing scoped
 reference handling should be retained. `run_lifecycle.py` has an explicit
 `--expect-available-children` switch for checking such a candidate; baseline
 expectations deliberately continue to reproduce the existing defect. No
-kernel implementation of that fix is included in this validation update.
+kernel implementation was included in the initial model extension; candidate
+and integrated-series validation are recorded below.
 
 ## A published MTD can race with the next scan
 
@@ -112,7 +113,7 @@ single-child/no-user controls pass. Twenty-nine positive instances scan all
 children before publishing any, with scan/registration failure positions
 varied. All eight nonterminal action types are required to be reached.
 
-Deferred publication is a **model-only fix direction**. A kernel implementation
+The model alone checks a deferred-publication policy. A kernel implementation
 must distinguish successfully scanned but unregistered chips from registered
 ones during cleanup. Partial registration failures still need careful unwind;
 this model deliberately does not free resources to hide or solve the separate
@@ -151,7 +152,7 @@ No board access, kernel edit or NAND-content change was performed.
 
 ## Independent candidate fixes (2026-11-04)
 
-The model-only directions above now have two independent kernel candidates,
+The model-only directions above were first implemented as independent candidates,
 each based directly on `30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85` rather
 than on the OOB series:
 
@@ -163,7 +164,9 @@ than on the OOB series:
 Both carry a Fixes tag for the original sunxi driver addition. They are local
 drafts, not claimed to be merged or posted. Neither requires the other fix or
 the OOB series. Their actual diffs apply in either order and produce the same
-tree. The OOB-series branch and pinned reference files remain unchanged.
+tree. The OOB-series branch was unchanged during this initial validation;
+the subsequent integration is recorded below. Pinned reference files remain
+unchanged.
 
 `run_probe_fixes.py` resolves the supplied Git refs, extracts their actual
 driver sources, applies the diffs in separate temporary indexes, and runs
@@ -171,9 +174,9 @@ the lifecycle suite against the base, each fix and their combination:
 
 ```sh
 python3 run_probe_fixes.py --kernel-dir ../linux \
-  --base-ref mtd/nand/next \
-  --available-ref submit/sunxi-nand-disabled-children-v1 \
-  --publication-ref submit/sunxi-nand-probe-publication-v1
+  --base-ref 30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85 \
+  --available-ref c8a746138a9d6f40b5a62183265168b87f054379 \
+  --publication-ref f962731e99f6585a5b8fe54f0ef639d1f83b4316
 ```
 
 The expanded fixture checks zero to three children and injects a failure at
@@ -199,3 +202,27 @@ They do not emulate physical NAND detection, execute kernel threads, or solve
 the separate MTD-unbind/retained-reference problem. Failure-path cleanup checks
 use no retained user; the live-user schedule ends its I/O before removal.
 No hardware access or NAND write was performed for these candidates.
+
+## Integrated sunxi v10 candidate (2026-11-04)
+
+Both fixes are now part of `submit/sunxi-nand-fixes-v10`, at
+`c95239dadd36c5d4c012c228ed4a95971c89b65a`. Availability filtering is patch 20
+(`f79cdf7e993b`), followed by deferred publication as patch 21 (`fa01a63067b1`).
+The binding and randomized-OOB extension follow as patches 22 and 23.
+The former standalone sunxi submission branches are archived; independent
+submission branches are reserved for NAND-core and DMA-provider fixes.
+
+The integrated driver SHA-256 is
+`f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
+Its fresh lifecycle run passes 1,209 cases and 81,560 assertions under
+ASan/UBSan, plus a separate GCOV execution. All 28 availability cases and
+173 publication/unwind cases pass, and identification no longer overlaps the
+published user's controller-lock ownership in the fixture. ARM32 LLVM and
+ARM64 GCC `W=1` object builds pass.
+
+The earlier 21 patch IDs, messages and author identities remain unchanged,
+as do the two fixes' IDs and messages after integration. Three-way composition
+of the original fixes onto the previous series tip produces the same final
+tree. Historical cover-letter notes match the saved draft and sent v9.
+This packaging change does not resolve the retained-MTD/unbind issue or
+extend the model's hardware guarantees.

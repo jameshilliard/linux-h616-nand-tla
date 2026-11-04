@@ -1062,3 +1062,40 @@ These are source-fixture and bounded-model results, not full-kernel concurrency
 or silicon tests. The existing retained-MTD/unbind lifetime problem is outside
 the fixes. No board access or NAND write occurred. Public validation additions
 contain no private paths, credentials, device identifiers or raw captures.
+
+# Probe fixes folded into sunxi v10
+
+Validated on 2026-11-04 after incorporating findings 12 and 13 into
+`submit/sunxi-nand-fixes-v10`, now at
+`c95239dadd36c5d4c012c228ed4a95971c89b65a` on the unchanged NAND base
+`30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85`. The draft has 23 patches:
+availability filtering (`f79cdf7e993b`) and deferred publication
+(`fa01a63067b1`) are patches 20 and 21, before the binding and format changes.
+The standalone sunxi submission branches are archived; NAND-core and
+DMA-provider fixes retain their independent branches.
+
+The exact integrated driver SHA-256 is
+`f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
+A fresh lifecycle run with both positive fix expectations passes 1,209 cases
+and 81,560 assertions, including all 28 availability and 173 probe-unwind
+cases, under ASan/UBSan and separate GCOV execution. Its local results are
+`results/lifecycle-gpwetnbd/`. ARM32 LLVM and ARM64 GCC object builds pass at
+`W=1` without warnings. No full-driver coverage total is inferred by mixing
+this digest with older source reports.
+
+The preservation audit checks all 21 original patch IDs, commit messages and
+author identities, plus both added fixes, against their saved originals.
+Three-way application of the original fixes onto the old final tree matches
+the integrated tree exactly. The old cover-letter revision notes are preserved
+verbatim and match the sent v9 history. Each patch has exactly one author
+sign-off, while Assisted-by remains only in the cover letter. b4 local checks,
+dependency checks and recipient discovery pass; export produces 24 messages
+(cover plus 23 patches), with no external prerequisites. No mail was sent.
+
+Review used the general Sashiko technical-pattern, false-positive and callstack
+guidance plus OF, cleanup, locking and I/O-accessor prompts at
+`d048f8742f6740c38833adf02e87901412d771ca`. This is prompt-based manual review,
+not a Sashiko bot run. The retained-MTD/unbind lifetime finding remains outside
+these fixes. The model files, pinned references and source manifest are
+unchanged; the earlier TLC results remain the latest model runs. No board
+access or NAND write occurred.

@@ -18,6 +18,8 @@ Candidate results are not evidence that the baseline has been fixed.
 | 9, IRQ bank dispatch | `submit/sun6i-dma-irq-banks-v1` | Separate fixes for the physical-channel index and partial final bank, using the current per-controller bank width. |
 | 10, cyclic callback lifetime | `submit/sun4i-dma-callback-lifetime-v1` | Serialize IRQ handling with termination, retain terminated cyclic descriptors, and drain IRQ/tasklet execution before freeing them. |
 | 11, direct-buffer command count | `submit/sunxi-nand-fixes-v10` | Cap direct commands at 1024 bytes as well as SRAM capacity; share the limit with the parser. |
+| 12, unavailable NAND children | Same sunxi branch, patch 20 | Filter unavailable children before claiming chip selects or scanning. |
+| 13, scan versus published I/O | Same sunxi branch, patch 21 | Finish all scans before registering MTDs; track registration separately for cleanup. |
 
 These are local draft branches, not public prerequisite references. The
 NAND-core and provider branches apply independently of the sunxi OOB series.
@@ -38,7 +40,7 @@ With the appropriate branch checked out in a separate kernel repository:
 python3 run_lowlevel.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c --expect-count-fixed
 python3 run_c.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_codec.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
-python3 run_lifecycle.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_lifecycle.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c --expect-available-children --expect-deferred-publication
 python3 run_composed.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_discovery_boundary.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
 python3 run_lifetime_boundary.py --candidate-source ../linux/drivers/mtd/nand/raw/sunxi_nand.c
@@ -50,6 +52,8 @@ For the earlier v10 draft before finding 11 was fixed, omit
 `--expect-count-fixed`: the old source must still reproduce the oversized
 H616 count witnesses. This explicit switch prevents silently inferring the
 expected outcome from whatever implementation happens to be loaded.
+Similarly, omit the lifecycle expectation switches for snapshots predating
+the corresponding probe fixes; their baseline witnesses must still reproduce.
 
 For the combined core branch, use `run_core.py --candidate-dir` without
 `--fix`. For an individual core branch, select just its expected fix:
@@ -133,13 +137,17 @@ Hardware/provider contracts in [FINDINGS.md](FINDINGS.md) remain explicit.
 The candidate source checks and bounded models do not replace hardware tests
 or establish that all possible concurrent interleavings have been checked.
 
-## Independent sunxi probe fixes
+## sunxi probe fixes
 
-Findings 12 and 13 now have standalone candidates on the pre-series NAND base:
-availability filtering and deferring MTD publication until all NAND scans
-finish. They do not depend on one another or on the OOB series.
+Findings 12 and 13 are carried in `submit/sunxi-nand-fixes-v10` as patches
+20 and 21, before the binding and randomized-OOB patches. They were first
+validated independently on the pre-series NAND base, and their former
+standalone submission branches are archived. The fixes remain separate
+commits within the sunxi series; only fixes outside the sunxi NAND driver
+retain independent submission branches.
 [PROBE-VISIBILITY.md](PROBE-VISIBILITY.md#independent-candidate-fixes-2026-11-04)
-records their commits, source checks and remaining boundaries.
+records the original candidates, the integrated revision, source checks and
+remaining boundaries.
 
 `run_probe_fixes.py` checks both real diffs in both application orders, tests
 the base, each independent fix and their combination, and requires four

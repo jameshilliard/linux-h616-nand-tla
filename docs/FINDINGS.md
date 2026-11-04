@@ -331,9 +331,9 @@ previously registered first child.
 
 The lifecycle harness executes the real initialization and scan bodies with
 seven status variants, either child position and presence/absence: 28 cases
-produce 16 unavailable-child scan witnesses in both posted v9 and current
-v10. The OF availability and physical-presence services remain explicit
-fixtures. `NandChildAdmission` independently checks a model-only filtered
+produce 16 unavailable-child scan witnesses in both posted v9 and the
+pre-fix v10 snapshot. The OF availability and physical-presence services
+remain explicit fixtures. `NandChildAdmission` independently checks a model-only filtered
 policy and requires the current-ordering instances to fail
 `OnlyAvailableScanned`.
 
@@ -347,6 +347,10 @@ source-extracted checks now confirm that unavailable children neither reach
 detection nor claim chip selects. The separate publication-race witness remains
 when this fix is tested alone. See the candidate section in
 [PROBE-VISIBILITY.md](PROBE-VISIBILITY.md).
+
+**Series integration (2026-11-04):** the same fix is now patch 20 of sunxi
+v10 (`f79cdf7e993b`), with its standalone submission branch archived.
+The combined series passes the positive lifecycle checks for both probe fixes.
 
 ## 13. Per-child publication allows live I/O to overlap the next NAND scan
 
@@ -383,3 +387,8 @@ cover partial scanning, partial registration and cleanup, while an actual
 core-lock acquisition at publication no longer overlaps identification.
 The availability bug remains when this fix is tested alone. These checks do
 not resolve retained MTD users during removal or constitute hardware testing.
+
+**Series integration (2026-11-04):** the same fix is now patch 21 of sunxi
+v10 (`fa01a63067b1`), following the availability fix and preceding the binding
+and randomized-OOB patches. Its standalone submission branch is archived.
+Only fixes outside the sunxi NAND driver retain independent submission branches.
