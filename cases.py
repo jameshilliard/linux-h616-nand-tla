@@ -153,3 +153,6 @@ extend_contracts(MODULES, add, mutation)
 
 from probe_cases import extend_probe
 extend_probe(MODULES, add, mutation)
+
+from probe_trace_cases import extend_probe_trace
+extend_probe_trace(MODULES, add, mutation)

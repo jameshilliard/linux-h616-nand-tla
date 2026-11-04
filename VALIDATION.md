@@ -1099,3 +1099,58 @@ not a Sashiko bot run. The retained-MTD/unbind lifetime finding remains outside
 these fixes. The model files, pinned references and source manifest are
 unchanged; the earlier TLC results remain the latest model runs. No board
 access or NAND write occurred.
+
+# Source-to-model probe trace conformance
+
+Validated on 2026-11-04 against the unchanged pinned v9 driver and integrated
+v10 driver SHA-256
+`f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
+No kernel commit, pinned reference or source manifest changed in this extension.
+
+`run_lifecycle.py --probe-traces` records scan, list, MTD publication and
+cleanup observations from its actual extracted source execution. Each event
+contains post-call list/publication snapshots. The trace runner verifies their
+digest, all 57 input profiles, every fault index observed on each uninjected
+path, and the occurrence of every observation kind for the candidate.
+Sanitized and separate GCOV executions produce identical trace bytes.
+
+| Source | Additional C probe cases | Distinct boundary projections | TLC result |
+| --- | ---: | ---: | --- |
+| Pinned v9 | 2,755 | 87 | The selected successful two-child trace reproduces `AllScannedBeforePublish`; other baseline traces are retained, not claimed to conform |
+| Integrated v10 | 1,788 | 45 | Every projection passes all lifecycle protocol and snapshot invariants, including eventual trace completion |
+
+The candidate's two positive batches and seven named negative controls pass
+all nine expectations. Negative controls omit unregister/unlink, duplicate
+insertion, alter a snapshot, access a disabled child, publish early or report
+incomplete success. Each must violate its intended invariant. The baseline
+witness passes its one expected-counterexample check. Source runs are
+`results/lifecycle-wa5vjstx/` and `results/lifecycle-78v967xq/`; corresponding
+TLC results are `results/tlc-naf7j6k3/` and `results/tlc-wxobwzkl/`.
+
+The standard suite additionally includes five handwritten checker examples
+and seven mutation controls, all 12 passing in `results/tlc-er9l4ye2/`.
+These are protocol-checker unit tests, not the source-generated input records.
+The existing publication and admission reruns pass 37 and 34 expectations
+in `results/tlc-9_tfbbfa/` and `results/tlc-nnm94c4s/`. The independent probe-fix
+runner also passes its four source configurations and four controls in
+`results/probe-fixes-zvkzkrz5/`, preserving the ordinary non-tracing C checks.
+Python compilation and whitespace checks pass. The standard inventory is now
+848 configurations across 41 models; the previously recorded 836-configuration
+run remains the latest full-suite run, not a new claim about all 848.
+
+An initial unbatched constant containing every raw trace exceeded the TLC
+process's 1 GiB heap and was correctly reported as a failure. The final runner
+projects only observed protocol fields, deduplicates identical projections
+with multiplicity retained, and checks at most 32 per wrapper. All 1,788
+candidate executions are accounted for. No timeout, JVM error or parser error
+is accepted as an invariant counterexample.
+
+This is bounded trace conformance, not a whole-program refinement proof. The
+observer does not alter any kernel function body, but MTD/OF/allocator services
+remain host fixtures. It excludes retained users during cleanup, compound
+faults, dynamic overlays and actual concurrent kernel execution. It neither
+proves hardware quiescence nor fixes the retained-MTD/unbind problem. No new
+kernel defect was established by these checks. Details and reproduction steps
+are in [PROBE-TRACE-CONFORMANCE.md](docs/PROBE-TRACE-CONFORMANCE.md).
+No hardware access or NAND write occurred, and public additions contain no
+private paths, credentials, raw captures or device identifiers.

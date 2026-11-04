@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Availability and publication ordering; candidate policies are model-only."""
+"""Availability and publication ordering; source-backed candidate checks are separate."""
 
 
 def extend_probe(modules, add, mutation):

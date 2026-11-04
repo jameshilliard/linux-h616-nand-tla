@@ -23,6 +23,12 @@ not this integration. They have not been recomputed for the new full source.
 Model files, pinned sources and the earlier validation records are unchanged.
 The retained-MTD/unbind lifetime issue remains unresolved.
 
+The subsequent [trace-conformance checks](PROBE-TRACE-CONFORMANCE.md) run this
+same candidate through 1,788 additional probe cases. All 45 distinct observed
+boundary projections satisfy the separate TLA+ lifecycle protocol, including
+actual list/publication snapshot comparisons. These results do not replace
+the earlier whole-driver coverage counts or extend the hardware guarantees.
+
 ## Earlier full-driver audit
 
 This audit checks the v10 draft's driver, not just the original v9 snapshot.

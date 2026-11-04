@@ -195,3 +195,9 @@ bus retirement, reset/late-event behavior, manufacturer chip-state semantics
 and silicon-generated BCH/randomizer images. Candidate detach/quarantine
 policies are not implemented. The known MTD-unbind issue remains unresolved.
 Recorded test results and exact limits are in [VALIDATION.md](../VALIDATION.md).
+
+The subsequent [probe trace extension](PROBE-TRACE-CONFORMANCE.md) adds a
+direct connection for lifecycle boundaries: actual C observations are fed
+to `NandProbeTrace`, which independently computes membership and compares
+post-call snapshots. This is bounded trace conformance, not whole-request
+or arbitrary-program refinement.

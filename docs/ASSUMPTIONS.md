@@ -23,8 +23,10 @@ reachable through the pinned sun4i/sun6i config callbacks, which always return
 zero. Other findings are not dismissed merely because they require failures.
 The probe audit adds unavailable DT-child scanning and live first-chip I/O
 racing with the next child's identification. Both reproduce in the pinned
-source and current candidate; [PROBE-VISIBILITY.md](PROBE-VISIBILITY.md) records
-the source paths and explicit fixture boundaries.
+source and pre-fix candidate. The integrated v10 now fixes both;
+[PROBE-VISIBILITY.md](PROBE-VISIBILITY.md) records the source paths and fixture
+boundaries, and [probe trace conformance](PROBE-TRACE-CONFORMANCE.md) checks
+observations from the fixed driver's probe and unwind against TLA+.
 
 Deliberately broken variants demonstrate that the named checks can fail. They
 are regression sensitivity tests, not claims that those broken variants are in
@@ -69,8 +71,8 @@ an automatic kernel fix.
   operations concurrently on one controller. This is **not** a guarantee for
   probe: `nand_scan_ident()` does not acquire that mutex. The separate
   `NandProbePublication` model and source tests reproduce scan/I/O interference
-  after the first child is published, and check deferred publication as a
-  model-only alternative.
+  after the first child is published. Deferred publication is now implemented
+  in the v10 candidate, with separate source and trace-conformance checks.
 - The previous hardware command must be quiescent before another begins.
   `NandController` has negative tests for a PIO timeout with a still-active
   command and an old command event arriving after reuse. PIO has no explicit
@@ -185,7 +187,8 @@ that the actual DMA API can return one; a successful randomized round trip is
 not proof of compatibility with an independently encoded flash image.
 DT availability and scan/publication concurrency are mapped separately in
 [PROBE-VISIBILITY.md](PROBE-VISIBILITY.md). Its positive admission and deferred
-publication policies are not implemented kernel fixes. OF node references,
+publication policies have matching v10 candidate fixes; they are not claims
+that the pinned reference is fixed. OF node references,
 dynamic overlays and complete registration/unbind concurrency remain outside
 those bounded models.
 All distinguish modeled from
@@ -196,6 +199,15 @@ physical reset/clock/pinctrl, complete NAND discovery and optional BBT formats,
 firmware/device-tree parsing, and real hardware memory ordering. The driver
 supplies no PM callbacks whose suspend/resume protocol could be validated here.
 No new hardware testing was performed by these validation runs.
+
+`NandProbeTrace` checks only the recorded scan/list/MTD boundary projections,
+not an arbitrary C execution or all concurrent kernel schedules. ASan/UBSan
+and GCOV must produce identical traces; all input profiles and single-fault
+indices are accounted for. Duplicate projections are checked once with their
+multiplicity recorded. Snapshot equality is independent of the model's set
+updates, but MTD publication remains a fixture service and retained users are
+excluded from the cleanup matrix. This extension does not establish a general
+C-to-TLA refinement proof or solve resource lifetime during unbind.
 
 `NandRt` checks safety and eventual progress separately. Removing eventual IRQ
 thread scheduling must produce a termination counterexample even though the

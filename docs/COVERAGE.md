@@ -7,6 +7,8 @@ checks are mapped in [INTEGRATION-COVERAGE.md](INTEGRATION-COVERAGE.md) and
 [DEEP-VALIDATION.md](DEEP-VALIDATION.md).
 The [refinement map](REFINEMENT-VALIDATION.md) adds connected command transport,
 actual manufacturer retry callbacks, MTD lookup/release and byte ownership.
+The [probe trace map](PROBE-TRACE-CONFORMANCE.md) additionally connects
+observed scan/list/registration/unwind events to a separate TLA+ protocol.
 The table distinguishes modeled behavior from directly executed driver bodies.
 It does not imply full kernel line/branch coverage.
 
@@ -75,7 +77,8 @@ It does not imply full kernel line/branch coverage.
 ## Finite state spaces
 
 `cases.py`, `extended_cases.py`, `integration_cases.py`, `validation_cases.py`,
-`boundary_cases.py` and `next_cases.py`
+`boundary_cases.py`, `next_cases.py`, `hardware_cases.py`, `contract_cases.py`,
+`probe_cases.py` and `probe_trace_cases.py`
 are the executable lists of bounds and assumptions. Layouts include
 legacy 16-step pages, H616 2/32-step packed-prefix pages, a 32-step geometry
 exceeding one user-data bank, uneven lengths, nonzero subpage starts, and a

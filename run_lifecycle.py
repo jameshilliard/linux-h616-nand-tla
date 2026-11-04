@@ -36,6 +36,8 @@ def main():
                         help="expect candidate to skip unavailable NAND children")
     parser.add_argument("--expect-deferred-publication", action="store_true",
                         help="expect candidate to scan all chips before MTD registration")
+    parser.add_argument("--probe-traces", action="store_true",
+                        help="record extra source-executed probe/unwind traces for TLC")
     args = parser.parse_args()
     if args.expect_available_children and not args.candidate_source:
         parser.error("--expect-available-children requires --candidate-source")
@@ -66,11 +68,15 @@ def main():
     out = Path(tempfile.mkdtemp(prefix="lifecycle-", dir=results))
     fixture = (HERE / "tests/lifecycle.h").read_text()
     fixture = fixture.replace("/* @prototypes@ */", "\n".join(prototypes))
+    tests = (HERE / "tests/lifecycle.c").read_text()
+    if args.probe_traces:
+        tests = ('#define main lifecycle_main\n' + tests + '\n#undef main\n' +
+                 (HERE / "tests/probe_trace.c").read_text())
     (out / "check.c").write_text(f'#define FIXED_TIMING {int(bool(args.candidate_nand_base))}\n' +
         f'#define FILTERED_CHILDREN {int(args.expect_available_children)}\n' +
         f'#define DEFERRED_PUBLICATION {int(args.expect_deferred_publication)}\n' +
         fixture + "\n" + "\n".join(bodies) +
-        '\n#line 1 "lifecycle-tests.c"\n' + (HERE / "tests/lifecycle.c").read_text())
+        '\n#line 1 "lifecycle-tests.c"\n' + tests)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",
                "-fno-strict-aliasing", "-fno-strict-overflow", "-funsigned-char",
@@ -85,14 +91,22 @@ def main():
     run = subprocess.run(["./check"], cwd=out, text=True, capture_output=True, timeout=180)
     (out / "check.log").write_text(run.stdout + run.stderr)
     passed = run.returncode == 0 and "ALL LIFECYCLE CHECKS PASSED" in run.stdout and not run.stderr
+    if args.probe_traces:
+        passed = passed and "ALL PROBE TRACE CHECKS PASSED" in run.stdout
+    trace_bytes = (out / "probe-traces.jsonl").read_bytes() if passed and args.probe_traces else None
     coverage = build_and_collect(out, command, sources, FUNCTIONS) if passed else None
+    if trace_bytes is not None:
+        assert trace_bytes == (out / "probe-traces.jsonl").read_bytes(), "sanitizer/GCOV traces differ"
     if coverage:
         assert all(v["calls"] for v in coverage["functions"].values()), "unexecuted lifecycle function"
     (out / "summary.json").write_text(json.dumps(dict(passed=passed,
         driver_sha256=hashlib.sha256(sources["sunxi_nand.c"].encode()).hexdigest(), functions=hashes,
+        fixture_sha256=hashlib.sha256((out / "check.c").read_bytes()).hexdigest(),
         candidate=bool(args.candidate_nand_base or args.candidate_source),
         filtered_children=args.expect_available_children,
         deferred_publication=args.expect_deferred_publication,
+        probe_traces_sha256=hashlib.sha256(trace_bytes).hexdigest() if trace_bytes is not None else None,
+        probe_trace_count=len(trace_bytes.splitlines()) if trace_bytes is not None else 0,
         source_sha256={n: hashlib.sha256(s.encode()).hexdigest() for n, s in sources.items()},
         output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
     print(run.stdout + run.stderr)

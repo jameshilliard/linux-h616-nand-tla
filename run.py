@@ -38,7 +38,7 @@ def render(value):
     raise TypeError(value)
 
 
-def main():
+def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jar", type=Path, default=Path(os.environ.get(
         "TLA2TOOLS_JAR", HERE / ".tools" / "tla2tools.jar")))
@@ -47,8 +47,8 @@ def main():
     parser.add_argument("--case", default="", help="substring filter")
     parser.add_argument("--timeout", type=int, default=180, help="seconds per case")
     parser.add_argument("--list", action="store_true")
-    args = parser.parse_args()
-    selected = [c for c in CASES if args.case in c["name"]]
+    args = parser.parse_args(argv)
+    selected = [c for c in cases if args.case in c["name"]]
     if not selected:
         parser.error("no matching cases")
     if args.list:
@@ -79,10 +79,10 @@ def main():
     # is working. Record the bytes actually checked, not the files at exit.
     model_inputs = {p.name: p.read_bytes() for p in (HERE / "models").glob("*.tla")}
     summary = []
-    reached = {m: set() for m in MODULES}
+    reached = {m: set() for m in modules}
     for case in selected:
         module = case["module"]
-        spec = MODULES[module]
+        spec = modules[module]
         case_dir = out / case["name"]
         case_dir.mkdir()
         (case_dir / (module + ".tla")).write_bytes(model_inputs[module + ".tla"])
@@ -146,11 +146,11 @@ def main():
             error = log.find("Error:")
             print(log[error:error + 3500] if error >= 0 else log[-3500:], flush=True)
     coverage = {}
-    for module, spec in MODULES.items():
-        positive = {c["name"] for c in CASES if c["module"] == module and c["kind"] == "positive"}
+    for module, spec in modules.items():
+        positive = {c["name"] for c in cases if c["module"] == module and c["kind"] == "positive"}
         selected_names = {c["name"] for c in selected}
         missing = sorted(set(spec["actions"]) - reached[module])
-        coverage[module] = dict(enforced=positive <= selected_names,
+        coverage[module] = dict(enforced=bool(positive) and positive <= selected_names,
                                 reached=sorted(reached[module]), missing=missing)
     passed = all(r["matched"] for r in summary)
     coverage_ok = all(not c["enforced"] or not c["missing"] for c in coverage.values())
@@ -158,6 +158,8 @@ def main():
                   results=summary, coverage=coverage, passed=passed and coverage_ok,
                   model_sha256={name: hashlib.sha256(data).hexdigest()
                                 for name, data in model_inputs.items()})
+    if metadata is not None:
+        report["input_metadata"] = metadata
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     for module, cov in coverage.items():
         if cov["enforced"] and cov["missing"]:

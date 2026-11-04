@@ -53,11 +53,13 @@ enum { NAND_ECC_ENGINE_TYPE_INVALID, NAND_ECC_ENGINE_TYPE_NONE,
 enum { NAND_ECC_ALGO_HAMMING, NAND_ECC_ALGO_BCH };
 typedef int (*io_fn)(void);
 struct list_head { struct list_head *next, *prev; };
+static void probe_trace_list(const char *, struct list_head *);
 static void INIT_LIST_HEAD(struct list_head *h) { h->next=h->prev=h; }
 static bool list_empty(struct list_head *h) { return h->next == h; }
 static void list_add_tail(struct list_head *n, struct list_head *h)
-{ n->prev=h->prev; n->next=h; h->prev->next=n; h->prev=n; }
-static void list_del(struct list_head *n) { n->prev->next=n->next; n->next->prev=n->prev; }
+{ n->prev=h->prev; n->next=h; h->prev->next=n; h->prev=n; probe_trace_list("link",n); }
+static void list_del(struct list_head *n)
+{ n->prev->next=n->next; n->next->prev=n->prev; probe_trace_list("unlink",n); }
 #define list_first_entry(h,t,m) container_of((h)->next,t,m)
 #define list_for_each_entry(p,h,m) \
     for (p=container_of((h)->next,typeof(*(p)),m); &(p)->m!=(h); \
@@ -161,6 +163,44 @@ static unsigned options, engine, mode, writesize, oobsize, req_step, req_strengt
 static struct { void *p; bool managed,live; } allocations[256];
 static const char *event_names[256];
 #define CHECK(e) do { assertions++; if (!(e)) { fprintf(stderr,"FAIL %s:%d: %s (event %u / fail %u)\n",__FILE__,__LINE__,#e,events,fail_at); exit(1); } } while (0)
+/* Observers run only in the explicit trace matrix. No extracted kernel body
+ * is edited. Snapshot membership is read from the actual fixture list and
+ * MTD registration state, independently of the TLA transition function. */
+static FILE *probe_trace_file;
+static struct device_node *probe_trace_nodes;
+static struct nand_chip *probe_trace_chips[3];
+static struct sunxi_nfc *probe_trace_nfc;
+static unsigned probe_trace_count, probe_trace_events;
+static unsigned probe_trace_id(struct nand_chip *c)
+{
+    for (unsigned i=0;i<probe_trace_count;i++)
+        if (c->flash_node==&probe_trace_nodes[i]) return i+1;
+    CHECK(!"unknown chip in probe trace"); return 0;
+}
+static void probe_trace_event(const char *kind, struct nand_chip *c)
+{
+    if (!probe_trace_file) return;
+    unsigned id=c?probe_trace_id(c):0;
+    if (c) { probe_trace_chips[id-1]=c; probe_trace_nfc=to_sunxi_nfc(c->controller); }
+    fprintf(probe_trace_file,"%s{\"kind\":\"%s\",\"chip\":%u,\"listed\":[",
+            probe_trace_events++?",":"",kind,id);
+    unsigned count=0;
+    if (probe_trace_nfc) {
+        struct sunxi_nand_chip *s;
+        list_for_each_entry(s,&probe_trace_nfc->chips,node)
+            fprintf(probe_trace_file,"%s%u",count++?",":"",probe_trace_id(&s->nand));
+    }
+    fprintf(probe_trace_file,"],\"published\":["); count=0;
+    for (unsigned i=0;i<probe_trace_count;i++)
+        if (probe_trace_chips[i] && probe_trace_chips[i]->fixture_registered)
+            fprintf(probe_trace_file,"%s%u",count++?",":"",i+1);
+    fprintf(probe_trace_file,"]}");
+}
+static void probe_trace_list(const char *kind, struct list_head *node)
+{
+    if (probe_trace_file)
+        probe_trace_event(kind,&container_of(node,struct sunxi_nand_chip,node)->nand);
+}
 static bool fail(const char *name) { events++; CHECK(events<256); event_names[events]=name; return events == fail_at; }
 static void *allocate(size_t n, bool managed)
 {
@@ -332,17 +372,20 @@ static const struct nand_controller_ops sunxi_nand_controller_ops={
     .attach_chip=sunxi_nand_attach_chip,.detach_chip=sunxi_nand_detach_chip,.setup_interface=setup_interface};
 static int nand_scan(struct nand_chip *c,unsigned n)
 {
+    probe_trace_event("scan-start",c);
     int ret=nand_scan_with_ids(c,n,NULL);
     if (!ret) scanned++;
+    probe_trace_event(ret?"scan-error":"scan-ok",c);
     return ret;
 }
 static int mtd_device_register(struct mtd_info *m,const void *p,int n)
 {
     register_calls++;
     if (DEFERRED_PUBLICATION) CHECK(scanned==expected_scans);
-    if (fail("register")) return -EIO;
+    if (fail("register")) { probe_trace_event("register-error",mtd_to_nand(m)); return -EIO; }
     CHECK(!mtd_to_nand(m)->fixture_registered);
     mtd_to_nand(m)->fixture_registered=true; registered++;
+    probe_trace_event("register-ok",mtd_to_nand(m));
     /* Model a user acquiring the first visible MTD after registration. This
      * executes the real NAND-core chip/controller lock acquisition bodies. */
     if (hold_first_user && !held_user) {
@@ -356,6 +399,7 @@ static int mtd_device_unregister(struct mtd_info *m)
     CHECK(mtd_to_nand(m)->fixture_registered && registered);
     mtd_to_nand(m)->fixture_registered=false;
     registered--; unregister_calls++;
+    probe_trace_event("unregister",mtd_to_nand(m));
     return 0;
 }
 static struct resource resource;
