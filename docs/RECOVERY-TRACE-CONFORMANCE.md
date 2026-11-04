@@ -137,3 +137,12 @@ The traces expose the consequences of weakening those guarantees; they do not
 establish that the weak variants describe real hardware. The retained-MTD/unbind
 problem and randomizer phase/reload questions also remain separate. No hardware
 access, flash write or kernel implementation change is needed for these checks.
+
+Subsequent [real-H616 experiments](HARDWARE-EXTENDED-20261104.md) exercised the
+completed-transfer timeout recheck and retained DMA memory across active reset.
+The first subsequent read was sometimes incorrect even though reset cleared and
+the retained buffer stayed quiet. This is not a proof of a particular internal
+reset failure, but it rules out claiming data-path recovery solely from those
+observations. `NandResetObservation` records that evidence boundary separately;
+the source-level recovery traces above remain conditional on their hardware
+assumptions.

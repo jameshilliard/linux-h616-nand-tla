@@ -18,6 +18,13 @@ and ARM64 GCC `W=1` object builds pass. The [probe audit](PROBE-VISIBILITY.md)
 records the corrected admission/publication behavior and partial-error unwind.
 The generic NAND-core and DMA-provider fixes remain on separate branches.
 
+The [extended real-hardware run](HARDWARE-EXTENDED-20261104.md) now exercises
+these exact driver bodies through a test-only bridge and actual MTD callers.
+Ordinary PIO/MDMA, randomizer, ECC and load matrices passed. Deliberately aborting
+active DMA exposed an unresolved first-subsequent-read anomaly, including cases
+without failed-ECC accounting. It is recorded separately from normal operation
+and does not yet establish a kernel fix. All scratch data was restored.
+
 The full-driver rerun for this exact digest executes all **90 functions**,
 covering **1,430 of 1,434 source-mapped lines** and **706 of 718 branch
 edges**. These totals combine matching source/function hashes only; the older

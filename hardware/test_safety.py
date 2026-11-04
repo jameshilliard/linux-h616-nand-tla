@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Host-only tests of backup preflight; never opens a device or runs SSH."""
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -66,6 +67,23 @@ class BackupSafety(unittest.TestCase):
                                 cwd=root, text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('validation assertions are required', result.stderr)
+
+    def test_bridge_install_remove(self):
+        root = Path(__file__).resolve().parent.parent
+        source = self.directory / 'drivers/mtd/nand/raw/sunxi_nand.c'
+        source.parent.mkdir(parents=True)
+        original = (root / 'reference/sunxi_nand.c').read_bytes()
+        source.write_bytes(original)
+        command = [sys.executable, str(root / 'hardware/install_bridge.py'),
+                   str(self.directory), '--expected-source-sha256', hashlib.sha256(original).hexdigest()]
+        subprocess.run(command, check=True, capture_output=True)
+        instrumented = source.read_bytes()
+        self.assertNotEqual(instrumented, original)
+        repeated = subprocess.run(command, capture_output=True)
+        self.assertNotEqual(repeated.returncode, 0)
+        self.assertEqual(source.read_bytes(), instrumented)
+        subprocess.run(command + ['--remove'], check=True, capture_output=True)
+        self.assertEqual(source.read_bytes(), original)
 
 
 if __name__ == '__main__':

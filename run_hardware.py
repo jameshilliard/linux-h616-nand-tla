@@ -9,6 +9,7 @@ import unittest
 from hardware.run_probe import RAW, SEEDS, measured_stream, page_image
 from hardware.test_safety import BackupSafety
 from codec_oracle import scramble
+from hardware.replay_extended import replay
 
 HERE = Path(__file__).resolve().parent
 
@@ -74,6 +75,7 @@ def main():
     result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(BackupSafety))
     if not result.wasSuccessful():
         raise SystemExit(1)
+    replay(HERE / 'hardware/h616-extended-20261104.json')
     print('No board access. Passing replay does not validate unmeasured hardware contracts.')
 
 

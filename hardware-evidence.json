@@ -74,6 +74,18 @@
     "scope": "H616 2 KiB+128, BCH-32; integration kernel, not candidate v10 hardware validation",
     "supersedes": "H616 continuous normal-command randomizer assumption; older NFC behavior is still unmeasured"
   },
+  "extended_hardware_measurement": {
+    "date": "2026-11-04",
+    "report": "docs/HARDWARE-EXTENDED-20261104.md",
+    "capture": "hardware/h616-extended-20261104.json",
+    "capture_sha256": "03000e53c9b36740632ecfecacbc5a90d17ed8dfab13625d713935caa086aa0a",
+    "driver_sha256": "f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6",
+    "native_bridge_sha256": "72240b4317680e4948d9b78b2c098b33cfc10faf53d884b5c4767e27b6f3771e",
+    "scope": "v10 driver bodies with diagnostic bridge/counters, H616 2 KiB+128, RAM-only fault tests with UBI unattached",
+    "finding": "Reset-bit clearance and a quiet retained buffer did not guarantee correct first subsequent PIO/MDMA data; cause unresolved",
+    "vendor_reset_url": "https://github.com/radxa/allwinner-bsp/blob/2045a3ca2a01f088c0314dc924bda59d154e363e/modules/nand/common1/phy-nand/rawnand/controller/ndfc_v1px.c",
+    "vendor_reset_sha256": "b9bbd7368de9d61968290a0e661dfaeb5f21c0e1831a5f5ebb4fc0b3ef04d3ad"
+  },
   "prior_local_hardware_records": [
     {
       "id": "h616-column-probe-2026-09-14",

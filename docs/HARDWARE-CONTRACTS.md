@@ -12,6 +12,13 @@ randomizer assumption. Normal commands restart streams, page-size reads and
 writes differ, and non-word read tails have an exception. Historical
 assumptions below must be read with that correction; older NFCs are unmeasured.
 
+The [extended v10 capture](HARDWARE-EXTENDED-20261104.md) adds native PIO/MDMA,
+all on-chip BCH modes as isolated codewords, metadata reuse, public callers,
+randomizer toggles and real timeout-status rechecks. It also finds that the
+first read after an active abort can be incorrect despite reset-bit clearance
+and quiet retained DMA memory. The models must not equate those observations
+with fully restored data-path state; the cause remains unresolved.
+
 ## Manual-backed register contracts
 
 Section numbers below refer to the

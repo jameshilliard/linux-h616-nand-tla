@@ -60,6 +60,14 @@ normal-command randomizer assumption. The measured restart, read/write asymmetry
 non-word-tail behavior now has its own TLA+ and actual-source checks. Older
 controller behavior and genuinely failed DMA/reset retirement remain unproved.
 
+The [extended v10 hardware tests](docs/HARDWARE-EXTENDED-20261104.md) exercise
+explicit PIO/MDMA paths, all 64 seeds used by this chip, all 15 documented BCH
+strengths as isolated codewords, MTD callers, stale metadata, memory load and
+interrupt-timeout rechecks. All four SPL backups were restored and verified.
+The captures also retain an **unresolved first-read-after-active-reset anomaly**;
+quiet DMA memory does not establish that the next read is correct. Two further
+models check randomizer enable transitions and those recovery evidence limits.
+
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
 implementation. This repository validates that pinned implementation, **not
@@ -166,6 +174,8 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandRetryProtocol` | Hynix enter/write/apply and Micron SET FEATURES, accepted-but-failed commands, retry reads and failed default restoration |
 | `NandRandomizerStream` | Conditional continuous-stream representations, seed changes, zero-length requests and partial errors; not the measured H616 contract |
 | `NandMeasuredStream` | Observed H616 normal-command restart, page-mode read/write asymmetry, non-word read tails and format-compatibility witnesses |
+| `NandMeasuredToggle` | Observed keystream phase across randomizer disable/re-enable, separated for read/write and block/page modes |
+| `NandResetObservation` | Retained-buffer lifetime and the distinction between reset/quiet observations and correct first subsequent data |
 | `NandDmaAperture` | 32-bit buffer/descriptor endpoints, mask/alignment/caller contracts, exact address encoding and balanced mapping cleanup |
 | `NandUserDataContext` | Persistent packed lengths across PIO/DMA requests, logical-step offsets, zero/unused slots, word boundaries and absent legacy registers |
 | `NandChildAdmission` | Available DT children, chip-select claims, absent devices, registration errors and probe rollback |
