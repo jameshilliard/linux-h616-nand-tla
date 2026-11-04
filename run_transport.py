@@ -80,6 +80,8 @@ def units(candidate_source=None):
         '\n#line 1 "transport.c"\n' + (HERE / "tests/transport.c").read_text())
     driver = unit["driver.c"]
     driver = '#include "transport_api.h"\n' + driver
+    # The H616 SRAM window is 8 KiB at +0x400, independently of NDFC_CNT.
+    driver = replace_once(driver, "u8 regs[0x1000];", "u8 regs[0x3000];")
     replacements = {
         "sunxi_nfc_select_chip": "if (select_error) return select_error; return wire_select(cs);",
         "nand_read_page_op": "if ((int)page == fail_page) return -EIO; return wire_read(n->cur_cs, page, col, dst, len);",
@@ -94,10 +96,11 @@ def units(candidate_source=None):
         old = fixture_body(driver, name)
         driver = driver.replace(old, old[:old.index("{")] + "{ " + body + " }", 1)
     driver = replace_once(driver, "if(off==NFC_REG_CMD) command(value);",
-        "if (off == 0x04) { u32 v; memcpy(&v,ptr,4); v = wire_old_status & ~value; memcpy(ptr,&v,4); }\n"
+        "if (off == 0x04) { u32 v = wire_old_status & ~(value & 7); memcpy(ptr,&v,4); }\n"
         "    if(off==NFC_REG_CMD) { if (value >> 30) command(value); else wire_command(value); }")
     driver = replace_once(driver, "mmio_writes[off/4]++; memcpy(ptr,&value,4);",
         "u32 wire_old_status; memcpy(&wire_old_status, ptr, 4);\n"
+        "    if (off == 0x20) value &= 0x3ff;\n"
         "    mmio_writes[off/4]++; memcpy(ptr,&value,4);")
     driver = replace_once(driver, "static void writel(u32 value,void *ptr)\n{",
         "static void wire_command(u32 value);\nstatic void writel(u32 value,void *ptr)\n{")
@@ -123,18 +126,39 @@ def units(candidate_source=None):
     return unit, hashes, src
 
 
+def count_boundary_units(unit):
+    """Admitted synthetic large-OOB geometry; not a claimed physical NAND part."""
+    unit["driver.c"] = replace_once(unit["driver.c"], "B_SPARE=256", "B_SPARE=2048")
+    unit["transport.c"] = replace_once(unit["transport.c"], ".oobsize=256", ".oobsize=2048")
+    unit["driver.c"] += '\n#line 1 "count_boundary.c"\n' + (
+        HERE / "tests/count_boundary.c").read_text()
+    # Keep the normal 2 KiB+256 request/retry matrices separate. The new matrix
+    # reaches actual attach, PIO page/OOB, command, parser and IRQ bodies.
+    unit["check.c"] = replace_once(unit["check.c"],
+        "int main(void) { composed_main(); core_retry_tests(); core_copy_tests(); wire_tests(); return 0; }",
+        "extern void count_boundary_tests(void);\n"
+        "int main(void) { count_boundary_tests(); return 0; }")
+    return unit
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-source", type=Path)
+    parser.add_argument("--count-boundary", action="store_true",
+                        help="exercise admitted large-OOB geometry against NDFC_CNT[9:0]")
     args = parser.parse_args()
     unit, hashes, src = units(args.candidate_source)
+    if args.count_boundary:
+        unit = count_boundary_units(unit)
     names = {}
     for key in hashes:
         filename, name = key.split(":", 1)
         names.setdefault(filename, []).append(name)
-    check("transport", unit, hashes, coverage=(src, names), require_all_called=False,
+    check("transport-count" if args.count_boundary else "transport", unit, hashes,
+          coverage=(src, names), require_all_called=False,
           limits=["Value adapters, not kernel structure ABI/locking execution",
                   "Actual NAND command helpers, dispatch, parser and sunxi exec_op/IRQ bodies",
                   "Persistent emulated media; opaque ECC parity and DMA transfers remain fixtures",
                   "SDR exec_op only; legacy callbacks, cache reads and physical timing excluded",
-                  "Manufacturer parameter commit/retention are explicit emulator contracts"])
+                  "Manufacturer parameter commit/retention are explicit emulator contracts",
+                  "Large-OOB count witness uses an admitted synthetic geometry, not a physical NAND part"])

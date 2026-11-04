@@ -692,3 +692,73 @@ manufacturer parameter semantics, real kernel concurrency and hardware
 BCH/randomizer validation remain open. No board/NAND operation, kernel
 change, mailing-list submission or public push was performed. The CI template
 now includes the thirteenth suite; hosted CI was not run.
+
+# Manual-backed register and counter validation
+
+Validated on 2026-11-03. This record supersedes the earlier direct-H616
+above-1024-byte transfer results: those fixtures incorrectly equated SRAM
+capacity with the normal-command transfer-count limit. The historical records
+above are retained to make that correction explicit.
+
+## TLC
+
+All **591 configurations across 35 models** matched their expectations with
+the pinned TLC jar:
+
+- 429 positive configurations passed invariants and termination.
+- 75 mutations failed the specified invariant.
+- 39 assumption tests reproduced their specified consequence.
+- 48 source-contract configurations reproduced their specified failure.
+- All **278 required positive-model actions** were reached.
+
+Positive configurations generated 365,135 states and found 255,881 distinct
+states. Across all configurations the sums were 385,437 and 271,580. The run
+took about 441 seconds, with one worker, seed 1 and fingerprint polynomial 0.
+These are sums over bounded instances, not an unbounded proof.
+
+The added register model has 16 positive profiles and four mutations. Twenty
+additional count-boundary configurations separate ten source-contract failures
+from ten model-only capped-chunk candidates. No kernel patch is implied by a
+positive algorithm candidate.
+
+## Source and hardware evidence
+
+All twelve C runners passed again, including their existing sanitizer and
+separate GCOV checks where provided. No sanitizer exclusion was added. The
+additional transport count mode passed its expected-witness checks on both
+the unchanged v9 reference and the exact v10 driver digest recorded in
+[CURRENT-DRIVER.md](docs/CURRENT-DRIVER.md). The low-level and ordinary transport
+suites also passed on both driver versions.
+
+| Directed check | Result |
+| --- | --- |
+| Raw buffers with correct ten-bit counter | 72 admitted round-trip cases; twelve oversized direct-call witnesses |
+| Full page-to-extra-OOB-to-MMIO composition | Read and write both request 1872 tail bytes, move 848 in the hardware fixture, return success |
+| NDFC status versus MDMA descriptor status | Three-event W1C preserves read-only state; descriptor-status bits 0 and 31 clear independently |
+| FIFO availability versus FSM busy | Actual FIFO helper can succeed while FSM busy remains asserted; no completion guarantee inferred |
+| Normal parser splitting | Existing multi-command, read/write, readiness and error checks remain passing |
+| Historical controls | Positive baseline plus all seven expected regression failures pass |
+
+The large-OOB geometry is synthetic but accepted by actual attach code. It
+establishes a reachable driver caller path under that geometry, not a known
+affected physical NAND model. No new board operation was performed.
+
+Both manual-file hashes and all three archived hardware-record hashes were
+verified locally. The vendor controller file was fetched again from its pinned
+public commit and matched the bundled SHA-256. The
+[hardware evidence map](docs/HARDWARE-CONTRACTS.md) distinguishes documentation,
+vendor usage, earlier observations and unverified hardware guarantees. Reset
+retirement, late hardware events, physical large-tail behavior and full kernel
+concurrency remain unresolved; the model does not manufacture those guarantees.
+
+Cached Sashiko technical-pattern, false-positive, callstack, MMIO/accessor,
+alignment and locking guidance was checked. No dedicated NAND prompt was
+available. The count finding was traced through callers and admission rather
+than reported solely from a hypothetical out-of-contract helper argument.
+This was a model/test audit, not a new kernel-series build or Sashiko approval.
+
+Public changes preserve the pinned reference source and exclude private paths,
+credentials, device identifiers and raw NAND captures. The CI template includes
+the new count mode; hosted CI remains inactive. Validated additions are now
+published to the repository as requested, without waiting for separate push
+instructions.

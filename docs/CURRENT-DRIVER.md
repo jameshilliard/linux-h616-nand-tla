@@ -96,6 +96,12 @@ sunxi clock-provider defect.
 
 ## Remaining gaps
 
+The subsequent [hardware audit](HARDWARE-CONTRACTS.md) reproduces finding 11
+against this exact candidate: direct H616 extra-OOB transfers above 1024 bytes
+conflict with the documented ten-bit counter. The earlier coverage counts do
+not establish correctness of the old wider-counter fixture. No fix for this
+new finding has been applied to the candidate by the validation repository.
+
 The four missed source lines are timing-lookup error returns. With the
 current positive tables and admitted timing ranges, the preceding maximum
 calculation already guarantees an encoding exists. The lookup's rejection

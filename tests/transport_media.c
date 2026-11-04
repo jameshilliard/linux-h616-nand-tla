@@ -44,6 +44,9 @@ static void wire_opcode(unsigned op)
 }
 static void wire_command(u32 cmd)
 {
+    /* Immediate latch in this fixture. NandRegisterProtocol covers queuing. */
+    u32 latched=readl(controller.regs+0x04)&~(BIT(1)|BIT(2));
+    memcpy(controller.regs+0x04,&latched,4);
     wire_count++;
     bool fail=wire_fail && wire_count==wire_fail;
     if(fail && !wire_accepted) return;
@@ -65,7 +68,8 @@ static void wire_command(u32 cmd)
     /* The second read command precedes DATA_IN. PAGEPROG follows DATA_OUT. */
     if((cmd&BIT(24)) && !write) wire_opcode(readl(controller.regs+0x28)&255);
     if(cmd&BIT(21)) {
-        unsigned n=readl(controller.regs+0x20),limit=fail?min(n,wire_accepted):n;
+        unsigned encoded=readl(controller.regs+0x20)&0x3ff;
+        unsigned n=encoded ? encoded : 1024,limit=fail?min(n,wire_accepted):n;
         u8 *sram=controller.regs+0x400;
         if(wire_mode==0x70 && !write) { assert(n==1); sram[0]=0x40; }
         else if(wire_mode==0x36 && write) {

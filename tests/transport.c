@@ -12,7 +12,7 @@ static const struct nand_controller_ops transport_ops={ .exec_op=sunxi_nfc_exec_
 void wire_reset(void *regs, bool h616)
 {
     memset(&nfc,0,sizeof(nfc)); memset(&chip,0,sizeof(chip)); memset(&hw,0,sizeof(hw));
-    caps.sram_size=h616?2048:1024; caps.reg_spare_area=h616?0x114:0xa0;
+    caps.sram_size=h616?8192:1024; caps.reg_spare_area=h616?0x114:0xa0;
     nfc.regs=regs; nfc.caps=&caps; nfc.ops=&transport_ops;
     chip.nand.controller=&nfc; chip.nand.base.ntargets=2;
     chip.nand.mtd=(struct mtd_info){.writesize=2048,.oobsize=256,.erasesize=131072};

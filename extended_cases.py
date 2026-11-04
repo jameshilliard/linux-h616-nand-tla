@@ -79,10 +79,19 @@ def extend(modules, add, mutation):
                CheckOnly=False, FailChunk=0, AddrStart=0, AddrCount=5)
     for name, changes in (
         ("parser-read", {}), ("parser-write", dict(Read=False)),
-        ("parser-h616", dict(SRAM=8192)), ("raw-h616", dict(SRAM=8192, Parser=False, Size=8193)),
+        ("parser-h616", dict(SRAM=8192)),
+        ("raw-h616-count-boundary", dict(SRAM=8192, Parser=False, Size=1024)),
         ("poll", dict(ReadyBusy=False, Size=63)), ("boundary64", dict(Size=64)),
         ("check-only", dict(CheckOnly=True)), ("second-chunk-error", dict(FailChunk=2))):
         add("NandCommand", "command-" + name, dict(cmd, **changes))
+    for read in (False, True):
+        for size in (1025, 2048, 8191, 8192, 8193):
+            raw = dict(cmd, SRAM=8192, Parser=False, Size=size, Read=read)
+            add("NandCommand", f"command-source-h616-count-{read}-{size}", raw,
+                kind="source-contract", expected="DataIdentity")
+            # An algorithm candidate, not a change to the pinned kernel driver.
+            add("NandCommand", f"command-candidate-cap-count-{read}-{size}",
+                dict(raw, Mutation="cap-count"))
     mutation("NandCommand", cmd, "ignore-offset", "DataIdentity")
     mutation("NandCommand", cmd, "skip-ready", "ReadAfterReady")
     mutation("NandCommand", dict(cmd, Read=False), "skip-stage", "WriteBeforeIssue")

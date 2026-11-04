@@ -9,6 +9,10 @@ external DMA configuration failure, read-retry OOB misplacement, and ignored
 BBT scan/read transport errors, ignored timing-recovery failures, open-reference
 cleanup, upper DMA IRQ-bank dispatch and stale cyclic callbacks. Their actual-source
 reproducers and reachability limits are in [FINDINGS.md](FINDINGS.md).
+The hardware audit adds a direct-buffer transfer-count mismatch affecting
+large extra-OOB tails. Earlier tests conflated SRAM capacity and transfer
+count; their above-1024-byte success results are superseded by the corrected
+[manual-based fixtures](HARDWARE-CONTRACTS.md).
 The provider audit establishes that the injected configuration error is not
 reachable through the pinned sun4i/sun6i config callbacks, which always return
 zero. Other findings are not dismissed merely because they require failures.

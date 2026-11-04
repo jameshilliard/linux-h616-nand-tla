@@ -144,3 +144,6 @@ extend_boundaries(MODULES, add, mutation)
 
 from next_cases import extend_next
 extend_next(MODULES, add, mutation)
+
+from hardware_cases import extend_hardware
+extend_hardware(MODULES, add, mutation)

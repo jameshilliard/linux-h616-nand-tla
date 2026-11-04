@@ -18,6 +18,10 @@ removal and provider IRQ/tasklet paths, and detect historical bug patterns.
 The [refinement checks](docs/REFINEMENT-VALIDATION.md) connect requests to real
 command helpers and `exec_op()`, execute Hynix/Micron retry callbacks, and
 separate reset/stop, MTD lifetime and byte/cache-line ownership contracts.
+The [hardware-contract audit](docs/HARDWARE-CONTRACTS.md) ties register behavior
+to manuals, pinned vendor code and narrowly scoped prior board observations.
+It corrects the earlier SRAM/count conflation and records a large-OOB
+source/manual mismatch rather than treating that old fixture result as proof.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -47,6 +51,7 @@ python3 run_providers.py
 python3 run_codec.py
 python3 run_composed.py
 python3 run_transport.py
+python3 run_transport.py --count-boundary
 python3 run_discovery_boundary.py
 python3 run_lifetime_boundary.py
 python3 run_provider_boundary.py
@@ -85,7 +90,8 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandEcc` | Transfer-local status/counter caches; capture before raw rereads; pattern synthesis; vendor classification precedence; decoded-data preservation; correction/failure accounting |
 | `NandController` | Combined DMA/IRQ/timeout recovery, repeated failures, PIO read retry, program-confirm rules and operation reuse |
 | `NandDma` | External DMAengine, register MDMA and descriptor MDMA; mapping/unmapping, validation, descriptor publication and block encoding |
-| `NandCommand` | Split data/address offsets, SRAM bounds, write staging, read readiness, check-only and errors |
+| `NandCommand` | Split data/address offsets, SRAM versus ten-bit transfer-count bounds, write staging, read readiness, check-only and errors |
+| `NandRegisterProtocol` | FIFO acceptance versus FSM/DMA completion, W1C and automatic event clearing, readiness and interrupt masking |
 | `NandMedia` | Distinct page/column payloads, NAND bit programming, partial failures, protected-byte preservation and readback |
 | `NandCore` | Format admission, whole-page vendor classification, core error interpretation, read retries and counter wrapping |
 | `NandLifecycle` | Two chips sharing a controller; chip context, users/IRQ draining and resource lifetime |
@@ -138,7 +144,7 @@ hardware parameter effects remain explicit fixtures.
 `run_historical.py` requires seven adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The suite has 551 TLC configurations across 34 models, including positive checks,
+The suite has 591 TLC configurations across 35 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),

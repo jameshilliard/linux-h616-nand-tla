@@ -1,7 +1,7 @@
 # Source-level findings and reachability
 
 The baseline tests preserve the submitted driver and matching core. They reproduce
-ten source-level observations with explicit reachability limits; they do not silently apply fixes or
+eleven source-level observations with explicit reachability limits; they do not silently apply fixes or
 establish that the OOB series introduced them. None has been observed on
 hardware by this suite.
 
@@ -269,3 +269,42 @@ This is a provider finding discovered while extending the validation, not a
 NAND data-path failure or evidence that the OOB patches need cyclic support.
 No production fix is applied and later provider revisions were not assumed
 to have the same behavior.
+
+## 11. H616 direct-buffer I/O confuses SRAM capacity with the transfer counter
+
+Locations: `sunxi_nfc_read_buf()`, `sunxi_nfc_write_buf()`, their randomizer
+wrappers, and `sunxi_nfc_hw_ecc_{read,write}_extra_oob()`.
+
+Both H6 and H616 manuals define `NDFC_CNT[9:0]`: zero encodes 1024 bytes.
+The pinned vendor normal-command sender explicitly masks its length to
+`0x3ff`. The Linux buffer helpers instead chunk by `caps->sram_size`, which
+is 8192 on H616, write the full chunk length to CNT and advance the software
+offset by that length. SRAM capacity does not extend the counter field.
+The normal operation parser's 1024-byte split does not protect direct callers.
+
+The revised low-level fixture reproduces false success for direct reads and
+writes of 1025, 2048, 8191, 8192, 8193 and 16385 bytes. The latter also exercises
+several software chunks. An 8192-byte command transfers only 1024 bytes under
+the documented encoding; a 1025-byte command transfers one. On reads, the
+remaining software copy includes stale SRAM. On writes, data is omitted.
+
+The stronger `run_transport.py --count-boundary` test uses actual attach and
+full PIO page callbacks, including the extra-OOB helpers and command transport.
+An admitted synthetic 2 KiB page with 2 KiB OOB, BCH32/1024 and 32 user bytes
+per step leaves a tail of `2048 - 2 * (56 + 32) = 1872` bytes. The page
+callback reports success while the fixture transfers `1872 & 0x3ff = 848`
+tail bytes. Both directions reproduce it in unchanged posted v9 and candidate
+v10. The attached board's 2 KiB+128 geometry does not have this tail.
+
+This is a confirmed **source/manual contract mismatch with a demonstrated
+driver caller path**, not a silicon reproduction or identification of a
+physical affected NAND part. Admission under a synthetic geometry alone is
+not evidence of real-world incidence. A real large-tail configuration or a
+controlled direct-command probe would narrow that remaining question.
+
+Earlier raw-H616 positive checks copied the software count directly into the
+emulated hardware and missed this problem. They are explicitly superseded;
+the new negative expectations do not mean the driver is fixed. Ten TLC
+model-only capped-chunk candidates are separate from the unchanged source.
+Hardware provenance and unresolved recovery contracts are in
+[HARDWARE-CONTRACTS.md](HARDWARE-CONTRACTS.md).

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "manuals": [
+    {
+      "id": "h616-v1.0",
+      "title": "Allwinner H616 User Manual, revision 1.0",
+      "url": "https://linux-sunxi.org/images/2/24/H616_User_Manual_V1.0_cleaned.pdf",
+      "mirror": "https://www.scs.stanford.edu/~zyedidia/docs/allwinner/h616.pdf",
+      "sha256": "4ca95572826a1d98b687ae74c1bb2f62597b70f5aafa20d698c4ed6792b20e05",
+      "sections": ["5.2.3.4", "5.2.3.5", "5.2.6.1", "5.2.6.2", "5.2.6.3", "5.2.6.9", "5.2.6.10", "5.2.6.20", "5.2.6.21", "5.2.6.22", "5.2.6.24", "5.2.6.25", "5.2.6.29"]
+    },
+    {
+      "id": "h6-v200-v1.1",
+      "title": "Allwinner H6 V200 User Manual, revision 1.1",
+      "url": "https://linux-sunxi.org/images/4/46/Allwinner_H6_V200_User_Manual_V1.1.pdf",
+      "sha256": "338f2b96dee05692f77a541076bcf2de3e7ce9f5d103db467643ca760fc7356c",
+      "sections": ["4.2.5.2", "4.2.5.9"]
+    }
+  ],
+  "vendor": {
+    "manifest": "reference/compat/source.json",
+    "url": "https://github.com/radxa/allwinner-bsp/blob/2045a3ca2a01f088c0314dc924bda59d154e363e/modules/nand/common1/phy-nand/rawnand/controller/ndfc_base.c",
+    "sha256": "20bc11c0222cf7237df2cea21c9cb6e6907435ae9e1b1d7f5deef37ab959dcec",
+    "functions": ["_normal_cmd_io_send", "_normal_cmd_io_wait", "_batch_cmd_io_wait", "ndfc_wait_cmdfifo_free", "ndfc_wait_fsm_ready", "ndfc_wait_cmd_finish", "ndfc_wait_dma_end"]
+  },
+  "prior_local_hardware_records": [
+    {
+      "id": "h616-column-probe-2026-09-14",
+      "report_sha256": "624966edb95a5bdd3bdc4def5cbaf0b08c63fdd6a5d98e285ca8a493ed4cd643",
+      "analysis_sha256": "d5ad577797dc6887c8d534f544edfd4385a67c4edd671f7943363039936720bd",
+      "status": "locally archived; sanitized findings only, raw capture not published",
+      "limit": "2 KiB+128 geometry; read-sequencer column prefixes only"
+    },
+    {
+      "id": "h616-irq-delay-2026-09-12",
+      "report_sha256": "4adf8cfffd76195ab9973cecc3bd8a286179142270701aa096ab2b3d29a2ea18",
+      "status": "locally archived; sanitized findings only, raw capture not published",
+      "limit": "delayed handler after hardware completion; not a hung-DMA test"
+    },
+    {
+      "id": "nand-v9-smoke-2026-10-17",
+      "report_sha256": "5047c566fb80b78a06f3fc4d49f64cfa96c2e658051837a1a3e9a49525de5c49",
+      "status": "locally archived; sanitized findings only, raw capture not published",
+      "limit": "read-only v9 test; not candidate v10 or large-OOB validation"
+    }
+  ]
+}

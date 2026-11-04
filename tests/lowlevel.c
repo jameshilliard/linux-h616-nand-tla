@@ -30,9 +30,15 @@ static void writel(u32 value, void *p)
     unsigned off=regoff(p);
     hw.writes++; hw.serial++;
     hw.reg_writes[off/4]++;
-    if (off==NFC_REG_ST || off==NFC_REG_H6_MDMA_STA) {
+    if (off==NFC_REG_ST) {
+        /* Only the three event bits are W1C; FIFO/FSM/RB levels are RO. */
+        store(off,load(off)&~(value&7)); return;
+    }
+    if (off==NFC_REG_H6_MDMA_STA) {
+        /* One W1C completion bit for each of up to 32 descriptors. */
         store(off,load(off)&~value); return;
     }
+    if (off==NFC_REG_CNT) value&=0x3ff;
     store(off,value);
     if (off==NFC_REG_ECC_CTL && (value&caps.random_en_mask))
         stream_state=shift_n((value>>16)&0x7fff,15);
@@ -42,11 +48,15 @@ static void writel(u32 value, void *p)
         hw.published=true;
     }
     if (off!=NFC_REG_CMD) return;
+    /* This synchronous fixture latches the command immediately. Real hardware
+     * clears CMD/DMA events when its FSM starts it, not when FIFO is written.
+     * NandRegisterProtocol explores the asynchronous interval separately. */
+    store(NFC_REG_ST,load(NFC_REG_ST)&~(NFC_CMD_INT_FLAG|NFC_DMA_INT_FLAG));
     hw.commands++;
     if(value&NFC_SEND_ADR) hw.address_cycles+=1+((value>>16)&7);
     bool fail=hw.commands==hw.fail_command;
     if (value&NFC_DATA_TRANS) {
-        unsigned n=load(NFC_REG_CNT);
+        unsigned encoded=load(NFC_REG_CNT), n=encoded ? encoded : 1024;
         assert(n<=(unsigned)caps.sram_size && hw.column+n<=sizeof(media[0]));
         unsigned limit=fail ? min(n,hw.partial_bytes) : n;
         for(unsigned i=0;i<limit;i++) {
@@ -123,7 +133,7 @@ static void dma_checks(void)
             assert(hw.mapped && (load(NFC_REG_CTL)&NFC_RAM_METHOD));
             assert(load(NFC_REG_CTL)==((0x80008001|NFC_RAM_METHOD)&
                                      ~(backend ? NFC_DMA_TYPE_NORMAL : 0)));
-            assert(load(NFC_REG_CNT)==1024);
+            assert(load(NFC_REG_CNT)==0); /* zero encodes 1024 bytes */
             assert(load(NFC_REG_SECTOR_NUM)==(backend==2 ? GENMASK(chunks-1,0) : chunks));
             if(backend==2) {
                 const u8 expected[]={12,0,0,0, (1024*chunks)&255,(1024*chunks)>>8,0,0,
@@ -235,11 +245,19 @@ static void irq_checks(void)
     assert(sunxi_nfc_wait_events(&nfc,BIT(3),false,0)==-EINVAL && !hw.writes);
     hw.fifo_busy=true; assert(sunxi_nfc_wait_cmd_fifo_empty(&nfc)==-ETIMEDOUT);
     hw.fifo_busy=false; assert(!sunxi_nfc_wait_cmd_fifo_empty(&nfc));
+    store(NFC_REG_ST,BIT(4)|BIT(8)|7);
+    writel(UINT32_MAX,nfc.regs+NFC_REG_ST);
+    assert(load(NFC_REG_ST)==(BIT(4)|BIT(8)));
+    /* A free one-word command FIFO is not proof that the command FSM is idle. */
+    assert(!sunxi_nfc_wait_cmd_fifo_empty(&nfc) && (load(NFC_REG_ST)&BIT(4)));
+    store(NFC_REG_H6_MDMA_STA,UINT32_MAX);
+    writel(BIT(0)|BIT(31),nfc.regs+NFC_REG_H6_MDMA_STA);
+    assert(load(NFC_REG_H6_MDMA_STA)==(UINT32_MAX&~(BIT(0)|BIT(31))));
     printf("IRQ/poll: %u status/mask/timeout cases, W1C preservation and drained partial completion\n",runs);
 }
 static void raw_media_checks(void)
 {
-    static const unsigned sizes[]={0,1,63,64,1023,1024,1025,8191,8192,8193,16385};
+    static const unsigned sizes[]={0,1,63,64,1023,1024,1025,2048,8191,8192,8193,16385};
     u8 input[17000], output[17000];
     unsigned runs=0;
     for(unsigned backend=0;backend<3;backend+=2)
@@ -247,6 +265,9 @@ static void raw_media_checks(void)
     for(unsigned page=0;page<2;page++)
     for(unsigned l=0;l<ARRAY_SIZE(sizes);l++) {
         reset_fixture(backend); hw.row=page; unsigned len=sizes[l];
+        /* The direct helper incorrectly uses SRAM capacity as the count limit
+         * on H616. Exercise those sizes as source-contract witnesses below. */
+        if(backend==2 && len>1024) continue;
         for(unsigned i=0;i<sizeof(input);i++) input[i]=(i*13+(i>>8)*71+page*101)&255;
         memset(output,0xa5,sizeof(output));
         chip.nand.options=scramble ? NAND_NEED_SCRAMBLING : 0;
@@ -279,7 +300,31 @@ static void raw_media_checks(void)
         assert(!(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
         if(!write) for(unsigned i=(fail-1)*1024;i<sizeof(output);i++) assert(output[i]==0xa5);
     }
-    reset_fixture(2); assert(!sunxi_nfc_read_buf(&chip.nand,NULL,1025));
+    for(unsigned write=0;write<2;write++)
+    for(unsigned l=0;l<ARRAY_SIZE(sizes);l++) {
+        unsigned len=sizes[l];
+        if(len<=1024) continue;
+        reset_fixture(2);
+        for(unsigned i=0;i<sizeof(input);i++) input[i]=(i*13+(i>>8)*71)&255;
+        memset(output,0xa5,sizeof(output));
+        memset(registers+NFC_RAM0_BASE,0xa5,caps.sram_size);
+        if(!write) memcpy(media[0],input,len);
+        int ret=write ? sunxi_nfc_write_buf(&chip.nand,input,len) :
+                        sunxi_nfc_read_buf(&chip.nand,output,len);
+        assert(!ret); /* The source reports success despite incomplete I/O. */
+        unsigned actual=0;
+        for(unsigned off=0;off<len;) {
+            unsigned chunk=min(len-off,(unsigned)caps.sram_size);
+            actual+=chunk%1024 ? chunk%1024 : 1024;
+            off+=chunk;
+        }
+        assert(hw.column==actual && actual<len);
+        assert(memcmp(write ? media[0] : output,input,len));
+        if(write) assert(media[0][actual]==0xff);
+        else assert(output[len]==0xa5);
+    }
+    puts("SOURCE CONTRACT WITNESS: direct H616 transfers above 1024 bytes exceed NDFC_CNT[9:0]");
+    reset_fixture(2); assert(!sunxi_nfc_read_buf(&chip.nand,NULL,1025) && hw.column==1);
     hw.fifo_busy=true;
     assert(sunxi_nfc_read_buf(&chip.nand,output,1)==-ETIMEDOUT);
     assert(sunxi_nfc_write_buf(&chip.nand,input,1)==-ETIMEDOUT);
