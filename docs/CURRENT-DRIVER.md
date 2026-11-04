@@ -114,7 +114,12 @@ users before sunxi cleanup releases hardware resources. Multi-chip probe
 unwind also needs to be covered by any eventual lifetime fix.
 
 Physical DMA stop, outstanding bus retirement, late command events, MMIO
-ordering, real clock-tree behavior, manufacturer-specific read retry and
+ordering, real clock-tree behavior, physical manufacturer-specific read retry and
 hardware BCH/randomizer behavior remain explicit boundaries. Software
 BCH and sunxi-tools fixtures are not captured hardware golden images.
 No board access, NAND writes or hardware validation was done for this audit.
+
+The subsequent [refinement checks](REFINEMENT-VALIDATION.md) connect actual
+command and manufacturer callback bodies, exercise retained MTD users through
+lookup and I/O, and refine reset/register and byte/cache-line assumptions.
+They extend the source evidence without establishing the physical guarantees.

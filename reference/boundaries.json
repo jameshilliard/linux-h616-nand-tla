@@ -1,6 +1,9 @@
 {
   "kernel_commit": "ec81fd2e368401c75b35c78571eebc1e61bacf27",
   "files": {
+    "nand_hynix.c": "6618cbc87dd277cd5464b8d9af68e8717b94783b2c34f61ea421ae6b7fc11f77",
+    "nand_micron.c": "b4a243cabfb17590f45cfae3c0d0a02a0e2816c0329bf4350530590ebb277ceb",
+    "internals.h": "e9c8a0357a3bf1e3e5f7248fe80c2fc983ca26c26fedc2d5fd88060a42dd2c5f",
     "nand_onfi.c": "52b6085f91413e1945dcca5d6b70ff09a041ec4d5295562c1c2a2ede6446bb09",
     "onfi.h": "1201c84c320777aea88e03a236d2a4506389e4faabafa648c897bb234b3f9c1e",
     "virt-dma.c": "471a96dc86b8d79f65780874687f64f8deeccb93e98f616c67e57a6b206512f0",

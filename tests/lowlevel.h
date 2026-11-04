@@ -124,6 +124,7 @@ static struct {
     enum dma_data_direction map_direction, unmap_direction;
     enum dma_transfer_direction prep_direction;
     bool map_fail, prep_fail, submit_fail, reset_fail, terminate_fail;
+    bool reset_clears_context;
     bool mapped, active, irq_disabled, fifo_busy, published, unsafe;
     bool mask_fail, alloc_fail;
     int channel_error, config_error;

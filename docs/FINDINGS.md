@@ -214,6 +214,15 @@ between reference lifetime and immediate resource teardown, **not a measured
 use-after-free on hardware or a full concurrent sysfs test**. The OOB series
 does not introduce the cleanup sequence.
 
+The [refinement tests](REFINEMENT-VALIDATION.md) extend this witness to actual
+`mtd_read_oob_std()` dispatch and `get_mtd_device()` lookup. In the 12 retained
+partition cases, a later I/O reaches the cleaned resource and a further open
+can succeed while the old reference keeps the MTD published. Four two-chip
+schedules add four later-I/O witnesses. Actual `mtd_release()` removes the
+IDR entry when the final reference is dropped; subsequent lookups then fail.
+`NandDetachPolicy` checks alternative entry-gating/resource-lifetime policies,
+including partial probe publication. Those policies are not implemented fixes.
+
 ## 9. The pinned sun6i DMA IRQ dispatch mishandles upper banks
 
 Location: `sun6i_dma_interrupt()` in the pinned

@@ -597,3 +597,98 @@ posted bus accesses, late controller events, clock-provider failure and
 rounding behavior, and actual hardware ECC/randomizer behavior remain
 explicit assumptions or validation gaps. No board or NAND operation was
 performed, and no public repository push was made for this extension.
+
+# Command, retry, lifetime and byte-ownership refinement record
+
+Validated on 2026-11-03. The six selected follow-up areas are documented in
+[REFINEMENT-VALIDATION.md](docs/REFINEMENT-VALIDATION.md). The original v9
+snapshot and the current v10 driver retain their recorded hashes. No kernel
+implementation was changed in this extension.
+
+## Full TLC run
+
+All **551 configurations across 34 models** matched their expectations:
+
+- 403 positive configurations passed invariants and bounded termination.
+- 71 deliberate mutations failed their specifically named invariant.
+- 39 assumption tests reproduced their named safety/liveness failure.
+- 38 source-contract cases reproduced the expected failure. These are test
+  configurations, not 38 distinct bugs or fixes.
+- All **268 required positive-model actions** were reached.
+
+The four new models contribute 105 configurations:
+
+| Model | Positive | Mutation | Assumption | Source-contract |
+| --- | ---: | ---: | ---: | ---: |
+| `NandRecoveryRegisters` | 24 | 1 | 2 | 4 |
+| `NandDetachPolicy` | 16 | 2 | 0 | 9 |
+| `NandDmaBytes` | 8 | 3 | 1 | 1 |
+| `NandRetryProtocol` | 30 | 2 | 0 | 2 |
+
+Positive cases generated 362,764 states and found 254,620 distinct states.
+Across all configurations, the sums were 382,878 and 270,177 respectively.
+These are sums over separate finite instances, not an unbounded proof. The
+full run took approximately 412 seconds with the pinned TLC jar, one worker,
+seed 1 and fingerprint polynomial 0. Its recorded model hashes were compared
+with the final model files; none differed. Results are retained locally in
+`results/tlc-0rnccbqb/`.
+
+## Source execution
+
+All twelve pinned-source C/codec/historical runners passed again, including
+the new transport runner. The current v10 driver also passed the page,
+low-level, lifecycle, composed, discovery, lifetime, transport and historical
+checks. The core/vendor inputs remain pinned independently of that driver.
+
+| Added check | Result |
+| --- | --- |
+| Real command stack under composed requests | Existing 30 profiles, 192 explicit requests and 1,158 adapter calls pass through real command/RAW helpers, parser, dispatch and sunxi operations |
+| Command faults and reuse | 36 failed-command/successful-next-read cases, plus successful raw write/read, OOB column, check-only and ready/busy variants |
+| Manufacturer callbacks under core retry | 42 configurations; expected setup/restore errors and returned data lengths; 20 retained staged-state and 14 retained active-state observations under the explicit chip-state contract |
+| Standalone manufacturer commands | 14 setup failures, ten partial staged states and 18 failed-restoration checks; subsequent explicit restore verified |
+| Core byte copies | 2,688 reads and 128 writes; alignment decisions, full payload and every caller-buffer guard checked |
+| Reset/selection refinement | Twelve successful context-restoration cases, twelve failed-stop/unmap witnesses and one conditional late-event witness |
+| MTD release, lookup and I/O | 36 partition schedules plus four two-chip schedules; 16 later-I/O and twelve later-open witnesses; final release removes the lookup entry |
+| Historical regression sensitivity | Positive baseline passes; seven mutations each fail their specific assertion, on both v9 and v10 |
+
+The three new historical controls cover strength rounding, the 512-byte ECC
+block bit and NULL descriptor preparation. Original upstream fix commits were
+checked in Git; these are semantic adaptations, not exact historical builds.
+
+Separate unsanitized GCOV runs report:
+
+| Suite | Extracted / executed bodies | Lines hit / compiled | Branch edges hit / compiled |
+| --- | ---: | ---: | ---: |
+| Connected transport, v9 | 149 / 120 | 1,610 / 2,414 | 670 / 1,295 |
+| Connected transport, v10 | 149 / 120 | 1,614 / 2,421 | 672 / 1,299 |
+| MTD lifetime, either driver | 13 / 13 | 119 / 137 | 48 / 72 |
+
+Uncalled bodies remain in the connected report; it does not claim exhaustive
+source coverage. The complementary v10 driver suites still execute all 90
+driver functions, with 1,427/1,431 lines and 701/712 branch edges reached.
+These overlapping reports must not be added together as disjoint coverage.
+
+ASan/UBSan runs passed. The unchanged adjacent provider runner retains its
+previously documented function-local null-member-address exclusion; no new
+sanitizer exclusion was added. The manufacturer/internal-dispatch reference
+files were compared byte-for-byte with their pinned Git objects, independently
+of manifest checks. Public files were scanned for local paths/private data.
+
+## Interpretation and review limits
+
+The MTD results strengthen the existing unbind/resource-lifetime finding.
+Gate/drain and deferred-release policies pass the bounded model but have not
+been implemented in the kernel. Retry-state retention and failed-stop/late
+event behavior remain conditional on explicit hardware contracts; they are
+not newly demonstrated successful-read corruption or board failures.
+
+Cached Sashiko general/core, technical-pattern, false-positive, callstack,
+locking, I/O-accessor, allocation and alignment guidance was checked. The
+public prompt refresh failed, so comparison with its latest revision is not
+claimed. No dedicated NAND prompt was present in the inspected set.
+
+The known MTD unbind issue, physical DMA/cache and bus-stop guarantees,
+manufacturer parameter semantics, real kernel concurrency and hardware
+BCH/randomizer validation remain open. No board/NAND operation, kernel
+change, mailing-list submission or public push was performed. The CI template
+now includes the thirteenth suite; hosted CI was not run.

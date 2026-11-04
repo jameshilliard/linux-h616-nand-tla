@@ -17,6 +17,13 @@ int driver_attach_check(unsigned page, unsigned spare, unsigned step,
     vendor_property=vendor; device_config.ecc.user_conf.flags=0;
     int ret=sunxi_nand_attach_chip(&n);
     if (!ret && n.ecc.size<=page) {
+        unsigned expected_strength=step==512 && page>512?strength*2:strength;
+        unsigned mode=0;
+        while(mode<c.nstrengths && c.ecc_strengths[mode]<expected_strength) mode++;
+        assert(mode<c.nstrengths && n.ecc.strength==c.ecc_strengths[mode]);
+        unsigned expected_bytes=(((c.ecc_strengths[mode]*14+7)/8)+1)&~1U;
+        assert(n.ecc.bytes==expected_bytes);
+        if(n.ecc.size==512) assert(n.ecc.ecc_ctl & NFC_ECC_BLOCK_512);
         n.ecc.steps=page/n.ecc.size;
         assert(n.ecc.steps && n.ecc.steps<=c.max_ecc_steps);
         assert(sunxi_get_oob_offset(&n,&n.ecc,n.ecc.steps)<=spare);

@@ -155,6 +155,8 @@ The first seven follow-up areas are itemized in
 [INTEGRATION-COVERAGE.md](INTEGRATION-COVERAGE.md). The deeper six-area extension
 is in [DEEP-VALIDATION.md](DEEP-VALIDATION.md); the subsequent boundary and
 historical-regression work is in [BOUNDARY-VALIDATION.md](BOUNDARY-VALIDATION.md).
+Command, manufacturer retry, lifetime-policy and byte/cache-line refinements
+are mapped in [REFINEMENT-VALIDATION.md](REFINEMENT-VALIDATION.md).
 All distinguish modeled from
 source-executed paths. Remaining end-to-end gaps include device-core probe/unbind,
 every combination of allocation failures, concurrent provider IRQ/tasklet
@@ -189,3 +191,16 @@ The separate sun4i cyclic witness is outside NAND's transfer modes. The
 provider harness's single function-local UBSan null-member-address exclusion
 is documented in the boundary map; it must not be hidden as an unqualified
 all-sanitizers pass.
+
+`run_transport.py` executes the real Hynix/Micron retry command sequences, but
+the emulator explicitly chooses whether a command took effect before its
+reported timeout. Staged/active parameter retention is a chip-state contract,
+not a measured property of every supported NAND. Source error propagation
+does not imply hardware rollback. Default-restoration failures are checked
+without pretending that a successful read's data was reported as success.
+
+`NandDetachPolicy` and the recovery model's quarantine policy are alternative
+ownership designs, not code present in the sunxi driver. Their passing cases
+do not resolve the retained-user/unbind finding. `NandDmaBytes` similarly
+states the cache-line ownership contract; it does not replace testing an
+architecture's actual DMA/cache-maintenance implementation.

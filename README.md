@@ -15,6 +15,9 @@ read/BBT failures.
 Boundary checks connect real core requests to persistent sunxi page operations,
 decode ONFI/ID values into attach decisions, execute MTD reference/partition
 removal and provider IRQ/tasklet paths, and detect historical bug patterns.
+The [refinement checks](docs/REFINEMENT-VALIDATION.md) connect requests to real
+command helpers and `exec_op()`, execute Hynix/Micron retry callbacks, and
+separate reset/stop, MTD lifetime and byte/cache-line ownership contracts.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -43,6 +46,7 @@ python3 run_lifecycle.py
 python3 run_providers.py
 python3 run_codec.py
 python3 run_composed.py
+python3 run_transport.py
 python3 run_discovery_boundary.py
 python3 run_lifetime_boundary.py
 python3 run_provider_boundary.py
@@ -104,6 +108,10 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandDiscovery` | Parameter-copy admission, geometry requirements and callback publication |
 | `NandProviderBanks` | Physical-channel ownership and complete IRQ-bank dispatch |
 | `NandCyclicLifetime` | IRQ/tasklet/termination lifetime for one DMA virtual channel; adjacent provider work, not a NAND transfer mode |
+| `NandRecoveryRegisters` | Backend-specific stop/reset, retained or cleared registers, same/different-chip reuse, outstanding writes and late events |
+| `NandDetachPolicy` | Two users on the same/different chips, retained publication, partition references, partial probe and alternative lifetime policies |
+| `NandDmaBytes` | RX/TX payload publication, exact bounce copyback, neighboring cache-line bytes and mapping-generation reuse |
+| `NandRetryProtocol` | Hynix enter/write/apply and Micron SET FEATURES, accepted-but-failed commands, retry reads and failed default restoration |
 
 The driver harnesses now extract all 90 function bodies **unchanged** from the
 bundled submitted driver, verify its hash, then compile them with host fixtures.
@@ -123,16 +131,21 @@ explicit kernel-service and hardware boundaries.
 `run_composed.py` connects core and driver bodies through value adapters and a
 persistent media/register fixture. The discovery, lifetime and provider-boundary
 runners replace additional earlier fixtures with pinned source bodies.
-`run_historical.py` requires four adapted historical regressions to fail their
+`run_transport.py` additionally executes the real core command helpers, RAW
+page helpers, dispatch, parser, sunxi `exec_op()` and IRQ bodies. Its core
+retry loop reaches actual manufacturer callbacks; its DMA data movement and
+hardware parameter effects remain explicit fixtures.
+`run_historical.py` requires seven adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The suite has 428 TLC configurations across 29 models, including positive checks,
+The suite has 551 TLC configurations across 34 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),
 [the integration coverage map](docs/INTEGRATION-COVERAGE.md),
 [the six-area deep-validation map](docs/DEEP-VALIDATION.md),
 [the boundary and historical-regression map](docs/BOUNDARY-VALIDATION.md),
+[the command/lifetime/ownership refinement map](docs/REFINEMENT-VALIDATION.md),
 [patch-by-patch coverage](docs/COVERAGE.md),
 [source-level findings](docs/FINDINGS.md), and
 [assumptions and limits](docs/ASSUMPTIONS.md).
@@ -176,20 +189,21 @@ and binding, unchanged NAND-core parser excerpts, and the matching full
 NAND-core/MTD/BBT source inputs, with original licensing.
 Additional manifests under `reference/codec`, `reference/compat` and
 `reference/providers` pin the independent comparison inputs and DMA providers.
-`reference/boundaries.json` pins ONFI, MTD partition and virt-dma inputs.
+`reference/boundaries.json` pins ONFI, MTD partition, virt-dma, manufacturer
+retry and internal NAND dispatch inputs.
 Source functions and their hashes are listed in each C-run summary. The
 reference files are inputs, not a second driver to edit.
 
 When changing the reference revision, replace it from the actual submitted
 series, update `source.json`, review the function-to-model mapping, and rerun all
-twelve runners. Do not update a digest merely to make a mismatch disappear.
+thirteen runners. Do not update a digest merely to make a mismatch disappear.
 Changes to hardware assumptions require independent documentation or
 measurements, not just a model that produces the desired result.
 
 ## Optional CI
 
 [ci/validate.yml](ci/validate.yml) is a pinned GitHub Actions workflow template.
-It runs all twelve suites on Ubuntu 24.04 with Java 21 and retains diagnostics and
+It runs all thirteen suites on Ubuntu 24.04 with Java 21 and retains diagnostics and
 counterexample traces. It is intentionally outside `.github/workflows/` in this
 initial publication because the publishing credential cannot install workflows.
 Automatic CI is not enabled. Install it as `.github/workflows/validate.yml` using

@@ -141,3 +141,6 @@ extend_validation(MODULES, add, mutation)
 
 from boundary_cases import extend_boundaries
 extend_boundaries(MODULES, add, mutation)
+
+from next_cases import extend_next
+extend_next(MODULES, add, mutation)

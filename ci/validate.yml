@@ -33,6 +33,8 @@ jobs:
         run: python3 run_codec.py
       - name: Compose core requests and BBT with persistent sunxi page operations
         run: python3 run_composed.py
+      - name: Execute command transport, vendor retries and byte-copy boundaries
+        run: python3 run_transport.py
       - name: Decode ONFI and ID pages into sunxi attach choices
         run: python3 run_discovery_boundary.py
       - name: Check actual MTD reference and partition removal boundaries

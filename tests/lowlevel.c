@@ -17,6 +17,10 @@ static u32 readl(const void *p)
     hw.reads++;
     if (off==NFC_REG_CTL && (load(off)&NFC_RESET) && !hw.reset_fail) {
         store(off,0); store(NFC_REG_ST,0); hw.active=false;
+        if(hw.reset_clears_context) {
+            store(caps.reg_spare_area,0);
+            store(NFC_REG_TIMING_CTL,0); store(NFC_REG_TIMING_CFG,0);
+        }
     }
     if (off==NFC_REG_ST && hw.fifo_busy) return load(off)|NFC_CMD_FIFO_STATUS;
     return load(off);
@@ -601,9 +605,44 @@ static void selection_matrix(void)
     printf("three-backend equal/different-clock chip-switch/error/retry matrix: %u\n",runs);
 #endif
 }
+static void recovery_refinement(void)
+{
+    unsigned checks=0,failures=0;
+    for(unsigned backend=0;backend<3;backend++)
+    for(unsigned clear=0;clear<2;clear++)
+    for(unsigned failed_stop=0;failed_stop<2;failed_stop++)
+    for(unsigned next_cs=0;next_cs<2;next_cs++) {
+        reset_fixture(backend);
+        sunxi_nfc_select_chip(&chip.nand,0);
+        unsigned clocks=hw.clock_calls;
+        struct scatterlist sg;
+        assert(!sunxi_nfc_dma_op_prepare(&nfc,media,1024,1,DMA_FROM_DEVICE,&sg));
+        hw.active=true; hw.reset_clears_context=clear;
+        hw.reset_fail=hw.terminate_fail=failed_stop;
+        sunxi_nfc_dma_op_abort(&nfc);
+        assert(hw.term==(backend==0));
+        sunxi_nfc_dma_op_cleanup(&nfc,DMA_FROM_DEVICE,&sg);
+        assert(hw.unsafe==failed_stop && hw.maps==hw.unmaps);
+        if(failed_stop) { failures++; continue; }
+        sunxi_nfc_select_chip(&chip.nand,next_cs);
+        assert(hw.clock_calls==clocks);
+        assert(load(caps.reg_spare_area)==2048);
+        assert(load(NFC_REG_TIMING_CFG)==chip.timing_cfg);
+        assert(load(NFC_REG_TIMING_CTL)==chip.timing_ctl);
+        assert(((load(NFC_REG_CTL)>>24)&7)==chip.sels[next_cs].cs);
+        checks++;
+    }
+    reset_fixture(2); hw.wait_mode=1;
+    assert(sunxi_nfc_wait_events(&nfc,NFC_CMD_INT_FLAG,false,1)==-ETIMEDOUT);
+    /* Conditional hardware witness: an old event arrives after timeout ack. */
+    store(NFC_REG_ST,NFC_CMD_INT_FLAG); hw.wait_mode=0;
+    assert(!sunxi_nfc_wait_events(&nfc,NFC_CMD_INT_FLAG,false,1));
+    printf("Recovery refinement: %u reselected contexts; %u failed-stop/unmap witnesses; one late-event contract witness\n",checks,failures);
+}
 int main(void)
 {
     dma_checks(); dma_init_checks(); irq_checks(); raw_media_checks(); command_checks(); parser_checks(); timing_checks(); selection_checks();
     selection_matrix();
+    recovery_refinement();
     puts("ALL LOWLEVEL CHECKS PASSED"); return 0;
 }

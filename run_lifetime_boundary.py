@@ -6,9 +6,9 @@ from pathlib import Path
 from boundary_common import HERE, sources, bodies, check
 
 FUNCTIONS = {
-    "mtd.h": ["mtd_get_master"],
-    "mtdcore.c": ["mtd_device_release", "del_mtd_device", "__get_mtd_device",
-                  "__put_mtd_device", "mtd_device_unregister"],
+    "mtd.h": ["mtd_get_master", "mtd_get_master_ofs"],
+    "mtdcore.c": ["mtd_release", "mtd_device_release", "del_mtd_device", "__get_mtd_device",
+                  "__put_mtd_device", "mtd_device_unregister", "get_mtd_device", "mtd_read_oob_std"],
     "mtdpart.c": ["__del_mtd_partitions", "del_mtd_partitions"],
     "sunxi_nand.c": ["sunxi_nand_chips_cleanup"],
 }
