@@ -151,6 +151,12 @@ proof. Older controllers, other NAND parts, failed bus reset, outstanding
 transactions from a genuinely wedged engine and write-abort recovery remain
 outside this experiment's evidence.
 
+The subsequent [recovery-composition extension](RECOVERY-COMPOSITION.md)
+adds bounded models of failed reset/context restoration, SRAM placement,
+write-confirm ambiguity and repeated failures. It also composes an observed
+post-abort outcome with the actual core/page retry path. These host checks
+do not change the limits of this hardware experiment.
+
 ## Reproduction and validation
 
 Read the [diagnostic safety requirements](../hardware/README.md) before using

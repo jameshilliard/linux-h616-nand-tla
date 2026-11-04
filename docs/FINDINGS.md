@@ -9,6 +9,12 @@ Separate [candidate-fix checks](CANDIDATE-FIXES.md) now exercise local fixes
 without replacing the pinned inputs. The observations below describe that
 original baseline, not the candidate branches.
 
+Later hardware-informed findings are recorded separately to preserve that
+baseline's scope: [post-abort data ordering](POST-ABORT-DATAPATH.md) and
+[large-tail stream composition](RECOVERY-COMPOSITION.md). The latter has an
+actual-candidate-source reproducer on a synthetic admitted geometry, not a
+claimed large-OOB physical-device reproduction.
+
 ## 1. Split address instructions lose the trailing address cycles
 
 Location: `sunxi_nfc_exec_subop()` in the pinned

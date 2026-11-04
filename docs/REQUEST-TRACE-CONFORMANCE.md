@@ -89,7 +89,13 @@ standard TLC catalog, dedicated probe/recovery/OOB/request traces and lifetime
 checks against one candidate snapshot. It currently expects the v10 count-limit,
 child-filtering and deferred-publication fixes; it is not a revision auto-detector.
 The suite records executable input hashes and rejects edits during a run.
-`--source-only` selects the fourteen ordinary C matrices without TLC.
+`--source-only` selects the source and hardware-replay matrices without TLC.
+
+The separate [measured-request runner](RECOVERY-COMPOSITION.md) replaces the
+historical continuous-stream fixture with captured H616 NORMAL semantics and
+adds post-abort delivery and accepted-confirm timeout cases. It includes
+PLACE_OOB reads because AUTO_OOB does not expose extra tails. This does not
+retroactively turn the historical fixture's assumptions into silicon facts.
 
 ## Remaining hardware and kernel boundaries
 

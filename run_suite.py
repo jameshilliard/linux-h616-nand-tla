@@ -37,7 +37,7 @@ def main():
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--module",choices=sorted(MODULES))
     parser.add_argument("--source-only",action="store_true",
-                        help="run the fourteen ordinary C matrices without TLC")
+                        help="run the source/hardware matrices without TLC")
     args=parser.parse_args()
     if args.module:
         return tlc.main([],cases=[c for c in CASES if c["module"]==args.module],
@@ -65,6 +65,7 @@ def main():
           ("provider-boundary","run_provider_boundary.py",[]),
           ("historical","run_historical.py",[]),
           ("mtd","run_mtd_boundary.py",shared)]
+    jobs.append(("measured-request","run_measured_requests.py",shared))
     followups={}
     if not args.source_only:
         for name,script,options in jobs:

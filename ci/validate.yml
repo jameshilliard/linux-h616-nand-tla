@@ -140,6 +140,8 @@ jobs:
         run: python3 run_ordering.py --download
       - name: Check whole-request source traces and independent images
         run: python3 run_request_refinement.py
+      - name: Compose measured H616 behavior with reference page/OOB requests
+        run: python3 run_measured_requests.py
       - name: Check source MTD open, close and NAND sync lifetimes
         run: python3 run_fd_lifetime.py
       - name: Explore two-user chip and controller locking
@@ -154,6 +156,8 @@ jobs:
             results/**/request-traces.jsonl
             results/**/request-media.bin
             results/**/request-vectors.bin
+            results/**/measured-pages.bin
+            results/**/measured-pages.jsonl
             results/**/fd-traces.jsonl
             results/**/tlc.log
             results/**/trace*.json

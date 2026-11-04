@@ -76,6 +76,14 @@ A new request-level model separates internal data ordering from reset
 completion, DMA retirement and successful ECC status, without assuming a
 universally safe recovery recipe.
 
+The [recovery-composition extension](docs/RECOVERY-COMPOSITION.md) adds full
+recovery-step failures, SRAM placement, staged/confirmed/torn writes, repeated
+faults and measured randomizer behavior through actual page/OOB requests.
+It identifies a large vendor-tail software/hardware stream mismatch on an
+admitted synthetic geometry; the tested 128-byte OOB layout remains passing.
+Current-source behavior and candidate bus-reset/quarantine policies stay
+separate, and successful model runs do not establish unknown reset guarantees.
+
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
 implementation. This repository validates that pinned implementation, **not
@@ -118,6 +126,7 @@ python3 run_request_refinement.py
 python3 run_fd_locking.py
 python3 run_fd_lifetime.py
 python3 run_hardware.py
+python3 run_measured_requests.py
 ```
 
 `--download` fetches the official TLA+ tools v1.8.0 prerelease asset and verifies
@@ -168,6 +177,10 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandProgram` | Finite partial-program budgets, bit monotonicity, erase, torn programs and no implicit write replay |
 | `NandRecovery` | Backend stop, outstanding bus transactions, IRQ drain and late controller completion are separate obligations |
 | `NandPostAbortRequest` | Post-abort internal data ordering, separate CMD/DMA completion, ECC status versus delivered bytes, continuation policies and conditional recovery across two requests |
+| `NandRecoverySequence` | Complete recovery-step ordering, failed reset/context restore, PIO error reuse, persistent device events and candidate quarantine |
+| `NandSramPlacement` | Rotated/oversized post-abort SRAM placement, failed-prefix copying and fresh subsequent request bytes |
+| `NandProgramRecovery` | Staging versus confirm/array effects, ambiguous program completion, partial media, failed NAND reset and no rollback assumptions |
+| `NandMeasuredPage` | Measured NORMAL streams through whole protected/tail requests, software-reader mismatch, partial errors and request reuse |
 | `NandNegotiation` | Bootloader timing handoff, SET/GET_FEATURES, SDR mode changes, fallback and failed recovery |
 | `NandRelocation` | BBT replacement failure/exhaustion, mirror separation, restart and torn-table rejection |
 | `NandSequence` | Persistent chip/seed/column/spare state and enable-bit cleanup across mixed operations |
@@ -223,7 +236,7 @@ hardware parameter effects remain explicit fixtures.
 `run_historical.py` requires seven adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The standard suite has 875 TLC configurations across 42 models, including positive checks,
+The standard suite has 1144 TLC configurations across 50 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. The dedicated probe trace runner additionally checks captured
 C executions, with input-specific counts. Other dedicated trace and ordering

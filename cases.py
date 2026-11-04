@@ -165,3 +165,6 @@ extend_measured(MODULES, add, mutation)
 
 from post_abort_cases import extend_post_abort
 extend_post_abort(MODULES, add, mutation)
+
+from recovery_expansion_cases import extend_recovery_expansion
+extend_recovery_expansion(MODULES, add, mutation)

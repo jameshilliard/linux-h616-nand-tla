@@ -12,6 +12,11 @@ observed scan/list/registration/unwind events to a separate TLA+ protocol.
 The table distinguishes modeled behavior from directly executed driver bodies.
 It does not imply full kernel line/branch coverage.
 
+The [recovery-composition map](RECOVERY-COMPOSITION.md) adds 149 model
+configurations and 256 candidate-source core calls for the five remaining
+recovery/placement/measured-stream/write/compound-failure areas. It also
+records their physical evidence boundaries and new conditional tail findings.
+
 | Patch | Critical behavior | Validation |
 | --- | --- | --- |
 | 1, centralize OOB handling | Protected/parity/free-region offsets; first two bytes reserved for BBM; per-format operations | `NandBatch`, `NandOob`; C layout functions and generic/vendor batch/finish functions |

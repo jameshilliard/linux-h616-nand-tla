@@ -1429,3 +1429,68 @@ An exported Git archive also passes the 170 capture checks, six safety tests
 and pinned-source low-level runner, including its 32 measured-profile cases.
 This packaging smoke test uses only release files and the host compiler; the
 pinned source retains its documented expected contract witnesses.
+
+# Recovery sequencing and measured whole-request composition
+
+Validated on 2026-11-04 against the unchanged v10 driver SHA-256
+`f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
+No production kernel edit, board access or flash operation occurred.
+
+The complete candidate run passes **71/71 jobs** in
+`results/suite-xmjnbpul/`. All executable input hashes stayed unchanged.
+The standard catalog contributes **1,144/1,144 matched expectations across
+50 models**; the dedicated trace/ordering jobs contribute 278, giving
+**1,422/1,422 matched TLC outcomes**. Known-bug, mutation and weakened-contract
+cases must produce their named counterexamples; these counts do not mean all
+modeled source policies are safe.
+
+| Added model | Expectations | Result directory |
+| --- | ---: | --- |
+| `NandRecoverySequence` | 41/41 | `results/tlc-xw10la0c/` |
+| `NandSramPlacement` | 24/24 | `results/tlc-5o8tvmdu/` |
+| `NandProgramRecovery` | 46/46 | `results/tlc-wy59s5p9/` |
+| `NandMeasuredPage` | 38/38 | `results/tlc-e_caj_6p/` |
+
+The measured-request runner executes **256 core calls** across 128, 256,
+2048 and 2049-byte OOB geometries. Independent physical-image expectations
+cover 48 stored/read images, 48 retry outcomes and 24 failed-write outcomes.
+ASan/UBSan and separate GCOV builds produce identical observation artifacts.
+Each report pins the extracted source, generated inputs and the two sanitized
+hardware captures used to define the fixture. Result directories are
+`results/measured-request-vduqwdzs/` (128),
+`results/measured-request-k6fmzdhl/` (256),
+`results/measured-request-ouc4xhcz/` (2048) and
+`results/measured-request-mo7bw1g1/` (2049).
+
+Separate pinned-v9 runs pass the 128/256-byte OOB cases in
+`results/measured-request-k4db1988/` and
+`results/measured-request-op_1e7ye/`. The larger synthetic cases require the
+candidate count-limit fix and are not silently applied to the posted baseline.
+
+The new caller-level finding is a vendor-format tail read/write mismatch:
+hardware writes restart the stream per NORMAL command, but the software
+reader descrambles a multicommand tail continuously. A separate odd-length
+case exposes the measured final-byte read quirk through PLACE_OOB. Both
+are reproduced against actual candidate source for synthetic attach-admitted
+geometries; neither establishes an affected physical large/odd-OOB part.
+The tested part's 128-byte OOB layout passes. No production fix is included.
+
+Development checks caught incorrect fixture expectations about protected OOB
+lengths and AUTO_OOB visibility. The final runner explicitly uses PLACE_OOB
+for extra-tail visibility and independently checks every stored byte. These
+checker mistakes were corrected rather than counted as driver defects.
+The full run has no unexpected compiler, sanitizer, parser, JVM, timeout or
+invariant failures. Python compilation, whitespace checks, CI-template YAML
+parsing and scans of the public additions for private paths/connection details
+pass. Hosted CI execution is not claimed.
+
+An archive of the staged public tree also passes the pinned-source 128/256-byte
+OOB measured-request runner, totaling 128 core calls. This packaging smoke
+test uses only the release files and host compiler; evidence is retained in
+`results/release-smoke-rf5w84/`. It is not another full-suite run.
+
+The detailed contracts, actual caller audit, Sashiko guidance checked and
+remaining silicon/refinement limits are in
+[RECOVERY-COMPOSITION.md](docs/RECOVERY-COMPOSITION.md). In particular, bus-reset
+retirement, late device events and interrupted programming remain explicitly
+parameterized; additional passing configurations do not prove those contracts.

@@ -9,6 +9,14 @@ model, capture-replay and actual-source tests. Older NFCs, failed-reset bus
 retirement and untested geometries remain assumptions; conditional software
 suite success must not be presented as silicon proof.
 
+The [whole-request composition](RECOVERY-COMPOSITION.md) now supplies measured
+H616 NORMAL behavior to actual core/page callers. It exposes a vendor-format
+tail mismatch above one 1024-byte command and a separate odd-length hardware
+read-tail case on synthetic attach-admitted geometries. These are not observed
+failures on the real 128-byte OOB part. Failed recovery, SRAM spill, write
+confirm ambiguity and repeated failures have additional bounded models;
+their parameters do not establish real failed-engine or power-loss behavior.
+
 The positive model configurations and host checks pass under their stated
 contracts. The tests also reproduce source-level observations:
 split address-cycle loss, a failed clock change cached as successful, ignored
