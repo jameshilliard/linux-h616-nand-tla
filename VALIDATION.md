@@ -362,3 +362,99 @@ fixtures establish those physical guarantees.
 No production kernel changes, NAND writes or new hardware tests were performed.
 Public artifacts were checked for private paths and test-hardware details.
 The updated seven-suite GitHub Actions template remains inactive.
+
+# Boundary and historical-regression validation record
+
+Validated on 2026-11-03 against the same pinned OOB v9 implementation. Earlier
+records above are preserved. The six areas are mapped in
+[BOUNDARY-VALIDATION.md](docs/BOUNDARY-VALIDATION.md), including the source and
+fixture boundary of each test.
+
+## TLC regression
+
+All **408 configurations across 28 models** matched their expectations:
+
+- 301 positive configurations passed their invariants and termination property.
+- 58 mutations failed the specifically required invariant.
+- 35 assumption tests reproduced their named safety/liveness failure.
+- 14 source-contract cases reproduced their named failure. These are test
+  configurations, not 14 distinct bugs or 14 corrected problems.
+- All **226 required positive-model actions** were reached.
+
+The additions are `NandSequence`, `NandMtdLifetime`, `NandProvider`,
+`NandDiscovery` and `NandProviderBanks`. The provider model explicitly separates
+the NAND client's no-callback case from a generic callback using the DMA buffer.
+The former does not acquire a fictitious callback-drain requirement.
+
+The runner now snapshots model bytes before beginning the run and hashes the
+snapshot actually checked. Changing a model in the workspace during a run can
+no longer make the final digest silently describe different code. Final model
+digests and each generated case copy were checked against the released files.
+
+## Exact-source C and regression tests
+
+All previous driver, low-level, core, lifecycle, provider-entrypoint and codec
+suites passed again. All five new runners passed their declared expectations.
+The production driver/reference bodies remain unchanged.
+
+| New runner | Result |
+| --- | --- |
+| Core/driver composition | 30 persistent-media profiles, 192 explicit requests, 1,158 page/OOB adapter calls including BBT traffic; AUTO/PLACE/RAW, cross-chip, error and reuse checks passed |
+| Discovery-to-attach | 483 ONFI/ID scenarios; ONFI attach submatrix has 576 accepted and 576 rejected profiles; CRC majority repair, extended ECC, malformed sections and three allocation failures checked |
+| MTD lifetime | 36 schedules, including 12 expected open-reference/resource-cleanup witnesses; nested partitions and both partitioned-master configurations |
+| Provider completion | 64 sun6i event schedules plus eight wrong-bank and four unvisited-bank witnesses; 24 sun4i schedules including two stale cyclic-callback witnesses; NULL/non-NULL callbacks and descriptor reuse checked |
+| Historical mutations | Unmodified baseline passes; all four adapted reseed/OOB-column/subpage-callback regressions fail their specific assertions |
+
+Separate unsanitized GCOV results, restricted to extracted source bodies:
+
+| Runner | Extracted / executed functions reported | Lines hit / compiled | Branch edges hit / compiled |
+| --- | ---: | ---: | ---: |
+| Composed requests | 112 / 89 | 1,220 / 1,833 | 486 / 944 |
+| Discovery core | 10 / 10 | 220 / 235 | 103 / 128 |
+| MTD lifetime | 9 / 9 | 83 / 94 | 37 / 48 |
+| Provider completion | 24 / 24 | 332 / 342 | 103 / 130 |
+
+These reports overlap earlier suites and cannot be added as disjoint coverage.
+The discovery runner also compiles the driver adapter's 59 source bodies; its
+coverage row above reports the ten discovery-core functions only. The composed
+report deliberately retains its uncalled functions instead of implying full
+coverage. The earlier combined driver matrix still executes all 90 driver
+function bodies, without claiming all branches or full-kernel execution.
+
+ASan and UBSan checks passed subject to one explicit provider-runner exception:
+only `vchan_complete()` has its null-member-address check disabled for the
+pinned empty-cyclic-callback address expression. The source body is unchanged;
+ASan and other UBSan checks remain. The rationale and its limitations are in
+the boundary map. Historical mutation success requires the intended assertion
+failure, not an unrelated sanitizer diagnostic or arbitrary crash.
+
+## Source audit, observations and limits
+
+The five added ONFI, partition and virt-dma inputs were compared byte-for-byte
+with the pinned kernel Git objects, independently of their manifest hashes.
+Source-execution summaries record extracted-body hashes, generated-unit hashes,
+compiler version/options, diagnostics and explicit limitations. The four
+historical fix commits were inspected; mutations are modern adaptations rather
+than claims to execute those exact older trees.
+
+Three additional source observations are recorded separately as findings 8–10:
+MTD references do not defer sunxi resource cleanup; upper-bank sun6i DMA IRQ
+dispatch can select the wrong channel or omit a partial bank; sun4i cyclic
+termination can leave a stale callback descriptor. The last is outside NAND's
+transfer modes. The user-draining assumption in earlier positive lifecycle
+models is explicitly corrected to a caller obligation, not a core guarantee.
+No newly demonstrated regression in the submitted OOB changes was found.
+
+The applicable Sashiko general, technical-pattern, false-positive, callstack,
+locking, I/O, allocation and alignment guidance was checked. Actual callers,
+reference ownership, configuration branches and the absence of a NAND DMA
+callback were inspected before classifying the observations. No bot approval
+or complete kernel integration proof is claimed.
+
+Remaining limits include actual device-core/sysfs concurrency, SMP provider
+interleavings, physical DMA stop and bus retirement, manufacturer quirks,
+hardware BCH/randomizer behavior and power-failure guarantees. No kernel
+implementation was changed and no board or NAND operation was performed.
+Public files were checked for private paths and hardware details. The
+twelve-suite Actions template remains inactive until installed with an
+appropriately authorized credential.

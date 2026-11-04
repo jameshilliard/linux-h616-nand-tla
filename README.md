@@ -12,6 +12,9 @@ draining, DMA visibility, device program budgets and interrupted BBT updates.
 Deeper checks execute scan/cleanup and ONFI negotiation, compare pre-series and
 BSP layouts, compose real BCH correction with the driver, and inject compound
 read/BBT failures.
+Boundary checks connect real core requests to persistent sunxi page operations,
+decode ONFI/ID values into attach decisions, execute MTD reference/partition
+removal and provider IRQ/tasklet paths, and detect historical bug patterns.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -32,6 +35,11 @@ python3 run_core.py
 python3 run_lifecycle.py
 python3 run_providers.py
 python3 run_codec.py
+python3 run_composed.py
+python3 run_discovery_boundary.py
+python3 run_lifetime_boundary.py
+python3 run_provider_boundary.py
+python3 run_historical.py
 ```
 
 `--download` fetches the official TLA+ tools v1.8.0 prerelease asset and verifies
@@ -51,6 +59,9 @@ subdirectories. A timeout, syntax error, unexpected invariant violation, or
 sanitizer failure fails the run. Expected counterexamples must violate their
 specific named invariant (or the named termination property for the IRQ
 starvation case); an arbitrary TLC failure does not count as success.
+The provider runner has one documented, function-local UBSan exclusion for an
+unused null-derived address in the pinned `vchan_complete()`; see the
+[boundary validation map](docs/BOUNDARY-VALIDATION.md).
 
 ## What is checked
 
@@ -79,6 +90,11 @@ starvation case); an arbitrary TLC failure does not count as success.
 | `NandRecovery` | Backend stop, outstanding bus transactions, IRQ drain and late controller completion are separate obligations |
 | `NandNegotiation` | Bootloader timing handoff, SET/GET_FEATURES, SDR mode changes, fallback and failed recovery |
 | `NandRelocation` | BBT replacement failure/exhaustion, mirror separation, restart and torn-table rejection |
+| `NandSequence` | Persistent chip/seed/column/spare state and enable-bit cleanup across mixed operations |
+| `NandMtdLifetime` | Registration references versus open users and NAND resource lifetime |
+| `NandProvider` | Command completion, provider IRQ/tasklet completion, memory drain and termination; explicit no-client-callback case |
+| `NandDiscovery` | Parameter-copy admission, geometry requirements and callback publication |
+| `NandProviderBanks` | Physical-channel ownership and complete IRQ-bank dispatch |
 
 The driver harnesses now extract all 90 function bodies **unchanged** from the
 bundled submitted driver, verify its hash, then compile them with host fixtures.
@@ -95,13 +111,19 @@ encoding, then runs additional real-codec vectors through the driver harness.
 `run_lifecycle.py` adds actual scan/cleanup and timing-mode negotiation;
 `run_providers.py` executes external DMA config/stop entrypoints. These retain
 explicit kernel-service and hardware boundaries.
+`run_composed.py` connects core and driver bodies through value adapters and a
+persistent media/register fixture. The discovery, lifetime and provider-boundary
+runners replace additional earlier fixtures with pinned source bodies.
+`run_historical.py` requires four adapted historical regressions to fail their
+specific checks, after first passing the unmodified baseline.
 
-The suite has 356 TLC configurations across 23 models, including positive checks,
+The suite has 408 TLC configurations across 28 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),
 [the integration coverage map](docs/INTEGRATION-COVERAGE.md),
 [the six-area deep-validation map](docs/DEEP-VALIDATION.md),
+[the boundary and historical-regression map](docs/BOUNDARY-VALIDATION.md),
 [patch-by-patch coverage](docs/COVERAGE.md),
 [source-level findings](docs/FINDINGS.md), and
 [assumptions and limits](docs/ASSUMPTIONS.md).
@@ -119,8 +141,8 @@ coverage of extracted functions under host fixtures is not whole-kernel branch
 coverage; TLC action coverage is a separate measure.
 The core runner records its multi-file coverage separately in its own summary,
 and fails if any extracted core function was not executed.
-The codec runner invokes `run_c.py` with generated binary vectors; it currently
-requires a little-endian host. It records parity/image/correction results rather
+The codec runner invokes `run_c.py` with generated binary vectors; it and the
+ONFI boundary fixture currently require a little-endian host. It records parity/image/correction results rather
 than claiming exhaustive branch coverage of the BCH library.
 
 ## Interpreting the result
@@ -145,19 +167,20 @@ and binding, unchanged NAND-core parser excerpts, and the matching full
 NAND-core/MTD/BBT source inputs, with original licensing.
 Additional manifests under `reference/codec`, `reference/compat` and
 `reference/providers` pin the independent comparison inputs and DMA providers.
+`reference/boundaries.json` pins ONFI, MTD partition and virt-dma inputs.
 Source functions and their hashes are listed in each C-run summary. The
 reference files are inputs, not a second driver to edit.
 
 When changing the reference revision, replace it from the actual submitted
 series, update `source.json`, review the function-to-model mapping, and rerun all
-seven runners. Do not update a digest merely to make a mismatch disappear.
+twelve runners. Do not update a digest merely to make a mismatch disappear.
 Changes to hardware assumptions require independent documentation or
 measurements, not just a model that produces the desired result.
 
 ## Optional CI
 
 [ci/validate.yml](ci/validate.yml) is a pinned GitHub Actions workflow template.
-It runs all seven suites on Ubuntu 24.04 with Java 21 and retains diagnostics and
+It runs all twelve suites on Ubuntu 24.04 with Java 21 and retains diagnostics and
 counterexample traces. It is intentionally outside `.github/workflows/` in this
 initial publication because the publishing credential cannot install workflows.
 Automatic CI is not enabled. Install it as `.github/workflows/validate.yml` using

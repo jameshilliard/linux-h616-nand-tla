@@ -138,3 +138,6 @@ extend_integration(MODULES, add, mutation)
 
 from validation_cases import extend_validation
 extend_validation(MODULES, add, mutation)
+
+from boundary_cases import extend_boundaries
+extend_boundaries(MODULES, add, mutation)

@@ -5,6 +5,11 @@ OOB v9 implementation. It adds executable checks, not kernel changes. All
 source references and model assumptions below are deliberate boundaries of the
 result: executing every driver function is not an end-to-end kernel proof.
 
+This records the deep-validation stage. The subsequent
+[boundary extension](BOUNDARY-VALIDATION.md) replaces several of the decoder,
+MTD-reference and provider IRQ/tasklet fixtures mentioned below with actual
+source execution. Its findings also narrow the earlier user-draining assumption.
+
 ## Coverage map
 
 | Area | Executed/model-checked | Still outside the result |

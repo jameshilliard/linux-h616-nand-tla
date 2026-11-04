@@ -1,7 +1,7 @@
 # Source-level findings and reachability
 
 These tests preserve the submitted driver and matching core. They reproduce
-seven conditional source-level observations; they do not silently apply fixes or
+ten source-level observations with explicit reachability limits; they do not silently apply fixes or
 establish that the OOB series introduced them. None has been observed on
 hardware by this suite.
 
@@ -68,8 +68,9 @@ the actual callback bodies, not a presumption that configuration usually works.
 Ineffective abort/reset, command completion preceding DMA completion, PIO
 timeout leaving a command active, and old-command interrupts arriving after
 reuse have explicit counterexamples. These remain hardware/provider questions
-until independently verified; they are not folded into the seven source
-findings above. Core-user draining and MMIO ordering are also assumptions.
+until independently verified; they are distinct from the source findings.
+The earlier core-user-draining assumption is narrowed by finding 8 below;
+MMIO ordering and physical bus retirement remain hardware contracts.
 
 The false-positive review distinguishes these classes deliberately. A formal
 model can show what goes wrong **if** an assumption is removed without proving
@@ -178,3 +179,80 @@ This is not reported as a new sunxi finding: the driver sets
 being populated. Likewise, write-error `oobretlen` behavior is checked as the
 actual core contract, not treated as proof that failed physical programming
 completed. Neither observation justifies a speculative driver change.
+
+## 8. Open MTD references do not defer sunxi resource cleanup
+
+Locations: `del_mtd_device()`, `mtd_device_unregister()`,
+`__del_mtd_partitions()` and `sunxi_nand_chips_cleanup()` in the pinned source.
+
+The actual MTD removal functions drop registration references; they do not
+wait for open references to reach zero. The sunxi caller immediately invokes
+`nand_cleanup()` after unregister returns. The new lifetime harness executes
+these bodies with one to three nested partitions, zero to two open users and
+both settings of `CONFIG_MTD_PARTITIONED_MASTER`. In 12 of the 36 schedules,
+unregister succeeds and sunxi cleanup runs while the open reference remains.
+
+This invalidates the earlier blanket assumption that MTD unregister itself
+drains users. `NandMtdLifetime` demonstrates why registration/refcount ownership
+alone cannot keep resources safe during an active operation. A separate positive
+configuration explicitly excludes unbind until the users have closed.
+
+Additional source inspection traces `mtdchar_open()` retaining an MTD handle
+until `mtdchar_close()`. The driver's platform registration does not suppress
+bind attributes; `unbind_store()` reaches device removal, followed by devres
+cleanup. A module reference is not the same as exclusion of administrative
+driver unbind. The source path therefore warrants a separate lifecycle audit.
+
+The host test represents `nand_cleanup()` resource release with an ownership
+flag and retains object storage for inspection. Its exact allocation/unwind
+body is tested separately in `run_lifecycle.py`. This is a confirmed mismatch
+between reference lifetime and immediate resource teardown, **not a measured
+use-after-free on hardware or a full concurrent sysfs test**. The OOB series
+does not introduce the cleanup sequence.
+
+## 9. The pinned sun6i DMA IRQ dispatch mishandles upper banks
+
+Location: `sun6i_dma_interrupt()` in the pinned
+[provider](../reference/providers/sun6i-dma.c).
+
+The outer loop uses `num_pchans / DMA_IRQ_CHAN_NR`, with eight channels per
+bank. The inner loop selects `sdev->pchans + j` without the bank offset.
+Consequently, with 16 channels an event for channel 8–15 is dispatched to
+channel 0–7. With 12 channels, integer division omits the upper partial bank
+entirely. The source contains 16-channel A31 and 12-channel H3 configurations;
+the counts are not invented invalid inputs.
+
+The fixture starts real provider descriptors on each channel, injects each
+upper-bank event, then executes the unchanged IRQ handler. It observes eight
+wrong descriptor-cookie completions and four unvisited events. The independent
+`NandProviderBanks` arithmetic model reproduces both cases. Its corrected-index
+reference configurations are model oracles, not edits to the kernel source.
+
+This finding concerns the pinned provider and a transfer allocated an upper
+physical channel. It does not establish that the NAND controller on a given
+board uses those channels. H616 NAND's integrated descriptor-MDMA path does not
+use this provider. Current upstream/provider fix status has not been inferred
+from this snapshot, and the OOB series does not change the IRQ handler.
+
+## 10. sun4i cyclic termination can retain a freed callback descriptor
+
+Locations: `sun4i_dma_interrupt()`, `sun4i_dma_terminate_all()` and
+`vchan_complete()` in the pinned provider/virt-dma source.
+
+A cyclic interrupt can queue `vc.cyclic` for the virt-dma tasklet. If termination
+runs before that tasklet, the sun4i path collects and frees the processing
+contract without clearing the queued cyclic pointer. The later tasklet obtains
+the callback from that contract. The source-extracted test reproduces this for
+both normal and dedicated physical channels.
+
+The fixture marks the contract logically freed but retains storage, allowing
+the callback to record the ownership violation without intentionally causing
+a host use-after-free. Its two witnesses are distinct from an already-running
+callback race: the tasklet has not started when the contract is freed.
+Non-cyclic schedules and NULL/non-NULL callback variants are checked as well.
+
+**sunxi NAND does not use cyclic DMA and installs no completion callback.**
+This is a provider finding discovered while extending the validation, not a
+NAND data-path failure or evidence that the OOB patches need cyclic support.
+No production fix is applied and later provider revisions were not assumed
+to have the same behavior.

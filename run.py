@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import tempfile
 import time
@@ -32,6 +31,8 @@ def render(value):
         return json.dumps(value)
     if isinstance(value, tuple):
         return "<<" + ", ".join(map(render, value)) + ">>"
+    if isinstance(value, dict):
+        return "[" + ", ".join(k + " |-> " + render(v) for k, v in value.items()) + "]"
     if isinstance(value, set):
         return "{" + ", ".join(render(v) for v in sorted(value)) + "}"
     raise TypeError(value)
@@ -74,6 +75,9 @@ def main():
     results = HERE / "results"
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="tlc-", dir=results))
+    # A run must not mix model revisions if the workspace changes while TLC
+    # is working. Record the bytes actually checked, not the files at exit.
+    model_inputs = {p.name: p.read_bytes() for p in (HERE / "models").glob("*.tla")}
     summary = []
     reached = {m: set() for m in MODULES}
     for case in selected:
@@ -81,8 +85,7 @@ def main():
         spec = MODULES[module]
         case_dir = out / case["name"]
         case_dir.mkdir()
-        shutil.copyfile(HERE / "models" / (module + ".tla"),
-                        case_dir / (module + ".tla"))
+        (case_dir / (module + ".tla")).write_bytes(model_inputs[module + ".tla"])
         wrapper = "Check" + module
         definitions, assignments = [], []
         for key, value in case["constants"].items():
@@ -153,7 +156,8 @@ def main():
     coverage_ok = all(not c["enforced"] or not c["missing"] for c in coverage.values())
     report = dict(driver_sha256=SOURCE["driver_sha256"], tlc_sha256=SOURCE["tlc_sha256"],
                   results=summary, coverage=coverage, passed=passed and coverage_ok,
-                  model_sha256={p.name: digest(p) for p in (HERE / "models").glob("*.tla")})
+                  model_sha256={name: hashlib.sha256(data).hexdigest()
+                                for name, data in model_inputs.items()})
     (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     for module, cov in coverage.items():
         if cov["enforced"] and cov["missing"]:

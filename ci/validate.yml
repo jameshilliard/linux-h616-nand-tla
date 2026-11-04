@@ -31,6 +31,16 @@ jobs:
         run: python3 run_providers.py
       - name: Cross-check real BCH and independent page formats
         run: python3 run_codec.py
+      - name: Compose core requests and BBT with persistent sunxi page operations
+        run: python3 run_composed.py
+      - name: Decode ONFI and ID pages into sunxi attach choices
+        run: python3 run_discovery_boundary.py
+      - name: Check actual MTD reference and partition removal boundaries
+        run: python3 run_lifetime_boundary.py
+      - name: Execute provider IRQ, tasklet and virt-dma completion paths
+        run: python3 run_provider_boundary.py
+      - name: Detect adapted historical regressions
+        run: python3 run_historical.py
       - name: Model-check positive and negative configurations
         run: python3 run.py --download
       - name: Retain diagnostics and counterexamples

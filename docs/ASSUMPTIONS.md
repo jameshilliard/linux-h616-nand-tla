@@ -3,10 +3,11 @@
 ## Results and their classification
 
 The positive model configurations and host checks pass under their stated
-contracts. The tests also reproduce seven conditional source-level observations:
+contracts. The tests also reproduce source-level observations:
 split address-cycle loss, a failed clock change cached as successful, ignored
 external DMA configuration failure, read-retry OOB misplacement, and ignored
-BBT scan/read transport errors, and ignored timing-recovery failures. Their actual-source
+BBT scan/read transport errors, ignored timing-recovery failures, open-reference
+cleanup, upper DMA IRQ-bank dispatch and stale cyclic callbacks. Their actual-source
 reproducers and reachability limits are in [FINDINGS.md](FINDINGS.md).
 The provider audit establishes that the injected configuration error is not
 reachable through the pinned sun4i/sun6i config callbacks, which always return
@@ -77,10 +78,12 @@ an automatic kernel fix.
 - The core interprets failed ECC counter deltas. A driver callback returning
   zero after classifying an all-zero vendor page does not mean that the page is
   valid: that path increments the failure count by the number of steps.
-- Removal relies on MTD/NAND core excluding new users and draining existing
-  operations before release. `NandLifecycle` makes this contract explicit and
-  demonstrates the failure when it is removed. Kernel unregister/devres
-  implementations are not compiled into the host fixtures.
+- `NandLifecycle`'s removal safety is conditional on excluding users before
+  resource release. The new `NandMtdLifetime` and actual MTD/partition-removal
+  tests establish that the pinned unregister path does **not** itself wait
+  for open users: registration references and NAND resources have different
+  lifetimes. The assumption cannot be cited as an actual core guarantee.
+  Full device-core/sysfs/devres concurrency is still outside the host fixtures.
 - Clock changes must succeed and rounding must preserve computed timing
   constraints. Both have negative model tests; failed rate-setting also has
   an actual-source reproducer. This suite does not prove a clock provider's
@@ -95,7 +98,11 @@ revision. The separate integration harness now compiles selected unchanged
 core request/read-retry and BBT scan/create/update/read functions. It does not
 compile core locking or device-core removal. The lifecycle runner now compiles
 scan-identification orchestration, scan-tail, cleanup and timing negotiation;
-ID/ONFI decoders and manufacturer internals are still fixtures.
+the new discovery-boundary runner executes actual ONFI/ID decoders into the
+actual sunxi attach functions. Manufacturer internals and real transport remain
+fixtures. The new composed runner connects core requests and BBT traffic to
+driver page/OOB/randomizer bodies, with raw storage and command transport
+still explicitly emulated.
 
 The contracts are consistent with the
 [DMAengine client interface](https://docs.kernel.org/driver-api/dmaengine/client.html),
@@ -146,9 +153,12 @@ uses weak fairness and makes no real-time latency guarantee.
 The first seven follow-up areas are itemized in
 [EXTENDED-COVERAGE.md](EXTENDED-COVERAGE.md); the six integration areas are in
 [INTEGRATION-COVERAGE.md](INTEGRATION-COVERAGE.md). The deeper six-area extension
-is in [DEEP-VALIDATION.md](DEEP-VALIDATION.md). All distinguish modeled from
+is in [DEEP-VALIDATION.md](DEEP-VALIDATION.md); the subsequent boundary and
+historical-regression work is in [BOUNDARY-VALIDATION.md](BOUNDARY-VALIDATION.md).
+All distinguish modeled from
 source-executed paths. Remaining end-to-end gaps include device-core probe/unbind,
-every combination of allocation failures, provider IRQ/tasklet/IOMMU behavior,
+every combination of allocation failures, concurrent provider IRQ/tasklet
+interleavings and IOMMU behavior,
 physical reset/clock/pinctrl, complete NAND discovery and optional BBT formats,
 firmware/device-tree parsing, and real hardware memory ordering. The driver
 supplies no PM callbacks whose suspend/resume protocol could be validated here.
@@ -169,3 +179,13 @@ retired. `run_providers.py` checks actual stop/config entrypoint control flow,
 but its list and MMIO fixtures do not prove provider concurrency or electrical
 quiescence. New late-event, active-command and pending-write counterexamples
 record the distinct guarantees still needed from hardware.
+
+`run_provider_boundary.py` now executes provider IRQ/dispatch/tasklet and
+virt-dma list/callback bodies, including no-client-callback operation matching
+the NAND client. It does not prove bus quiescence. The generic model's
+callback-access-after-unmap witness applies only when a client callback uses
+that mapping; it is not directly applicable to sunxi NAND, which installs none.
+The separate sun4i cyclic witness is outside NAND's transfer modes. The
+provider harness's single function-local UBSan null-member-address exclusion
+is documented in the boundary map; it must not be hidden as an unqualified
+all-sanitizers pass.

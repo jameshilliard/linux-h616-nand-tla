@@ -22,14 +22,22 @@ def build_and_collect(directory, command, source, names):
 
 
 def collect(directory, source, names):
-    run = subprocess.run(["gcov", "--json-format", "--branch-probabilities", "check.c"],
+    objects = sorted(p.name for p in directory.glob("*.gcno"))
+    run = subprocess.run(["gcov", "--json-format", "--branch-probabilities", *objects],
                          cwd=directory, text=True, capture_output=True)
     (directory / "gcov.log").write_text(run.stdout + run.stderr)
     if run.returncode:
         raise RuntimeError("gcov failed; see gcov.log")
-    with gzip.open(directory / "check.gcov.json.gz", "rt") as stream:
-        report = json.load(stream)
-    files = {f["file"]: f for f in report["files"]}
+    files = {}
+    for path in sorted(directory.glob("*.gcov.json.gz")):
+        with gzip.open(path, "rt") as stream:
+            report = json.load(stream)
+        for entry in report["files"]:
+            if entry["file"] in files:
+                files[entry["file"]]["functions"].extend(entry["functions"])
+                files[entry["file"]]["lines"].extend(entry["lines"])
+            else:
+                files[entry["file"]] = entry
     # Existing driver runners pass a list; the core runner supplies per-file
     # names. Never count fixture branches or accidentally merge same-name code.
     by_file = names if isinstance(names, dict) else {"sunxi_nand.c": names}

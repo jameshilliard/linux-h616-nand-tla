@@ -31,7 +31,7 @@ FUNCTIONS = {
 
 
 def extract(source, name):
-    match = re.search(r"^[A-Za-z_][\w \t*]*\b" + name +
+    match = re.search(r"^[A-Za-z_][\w \t*\n]*\b" + name +
                       r"\([^;{}]*\)\n\{", source, re.M)
     if not match:
         raise ValueError("missing function " + name)
