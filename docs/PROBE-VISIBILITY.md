@@ -148,3 +148,54 @@ Remaining high-value work is still separate from these two findings:
 The added models have bounded domains and explicitly abstract kernel services.
 They expand coverage without asserting full hardware or whole-driver proof.
 No board access, kernel edit or NAND-content change was performed.
+
+## Independent candidate fixes (2026-11-04)
+
+The model-only directions above now have two independent kernel candidates,
+each based directly on `30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85` rather
+than on the OOB series:
+
+| Candidate | Commit | Change |
+| --- | --- | --- |
+| Available children | `c8a746138a9d6f40b5a62183265168b87f054379` | Use the available-child scoped iterator before claiming chip selects |
+| Deferred publication | `f962731e99f6585a5b8fe54f0ef639d1f83b4316` | Scan all chips, then register their MTDs; record registration success for cleanup |
+
+Both carry a Fixes tag for the original sunxi driver addition. They are local
+drafts, not claimed to be merged or posted. Neither requires the other fix or
+the OOB series. Their actual diffs apply in either order and produce the same
+tree. The OOB-series branch and pinned reference files remain unchanged.
+
+`run_probe_fixes.py` resolves the supplied Git refs, extracts their actual
+driver sources, applies the diffs in separate temporary indexes, and runs
+the lifecycle suite against the base, each fix and their combination:
+
+```sh
+python3 run_probe_fixes.py --kernel-dir ../linux \
+  --base-ref mtd/nand/next \
+  --available-ref submit/sunxi-nand-disabled-children-v1 \
+  --publication-ref submit/sunxi-nand-probe-publication-v1
+```
+
+The expanded fixture checks zero to three children and injects a failure at
+every faultable event on each normal probe path. It verifies that all expected
+scans finish before the first registration attempt in the publication fix,
+rejects unregistering an unpublished MTD, and checks unmanaged allocation
+ownership through every unwind. Empty and all-unavailable controllers are
+explicit controls. The existing 28 availability cases and the first-chip user
+holding the real core's controller-lock sequence remain in place.
+
+Four negative controls must fail their specific assertion: restoring the
+all-child iterator, using early publication, unconditionally unregistering
+scanned chips, and failing to record successful registration. A compiler error,
+sanitizer error, timeout or arbitrary nonzero exit cannot pass these controls.
+
+The availability fix alone retains the publication-race witness. The publication
+fix alone retains the 16 unavailable-child scan witnesses. The combination
+removes both witnesses. Each standalone driver also builds with ARM32 LLVM and
+ARM64 GCC at `W=1`; both single-patch exports pass strict checkpatch.
+
+These tests still abstract OF references, MTD publication and kernel scheduling.
+They do not emulate physical NAND detection, execute kernel threads, or solve
+the separate MTD-unbind/retained-reference problem. Failure-path cleanup checks
+use no retained user; the live-user schedule ends its I/O before removal.
+No hardware access or NAND write was performed for these candidates.

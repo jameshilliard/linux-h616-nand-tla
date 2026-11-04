@@ -341,6 +341,13 @@ This is an independent sunxi DT-admission bug, also present before the OOB
 series. Filtering with the scoped available-child iterator before allocating
 chip selects is a fix candidate; no kernel fix is applied in this extension.
 
+**Candidate resolution (2026-11-04):** standalone commit `c8a746138a9d`
+uses the available-child scoped iterator on the pre-series NAND base. The
+source-extracted checks now confirm that unavailable children neither reach
+detection nor claim chip selects. The separate publication-race witness remains
+when this fix is tested alone. See the candidate section in
+[PROBE-VISIBILITY.md](PROBE-VISIBILITY.md).
+
 ## 13. Per-child publication allows live I/O to overlap the next NAND scan
 
 `sunxi_nand_chip_init()` scans and registers each child before the outer loop
@@ -368,3 +375,11 @@ Deferring MTD publication until all chips are scanned is an independent fix
 direction, requiring corresponding scanned/registered cleanup bookkeeping.
 No kernel implementation is included. Detailed caller paths, model bounds,
 review checks and remaining gaps are in [PROBE-VISIBILITY.md](PROBE-VISIBILITY.md).
+
+**Candidate resolution (2026-11-04):** standalone commit `f962731e99f6`
+completes all scans before registering any MTD and records successful
+registration separately from scan completion. Fault-injected source checks
+cover partial scanning, partial registration and cleanup, while an actual
+core-lock acquisition at publication no longer overlaps identification.
+The availability bug remains when this fix is tested alone. These checks do
+not resolve retained MTD users during removal or constitute hardware testing.

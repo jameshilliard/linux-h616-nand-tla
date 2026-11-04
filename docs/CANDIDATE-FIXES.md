@@ -132,3 +132,19 @@ virtual channels, posted-MMIO completion, or DMA bus retirement.
 Hardware/provider contracts in [FINDINGS.md](FINDINGS.md) remain explicit.
 The candidate source checks and bounded models do not replace hardware tests
 or establish that all possible concurrent interleavings have been checked.
+
+## Independent sunxi probe fixes
+
+Findings 12 and 13 now have standalone candidates on the pre-series NAND base:
+availability filtering and deferring MTD publication until all NAND scans
+finish. They do not depend on one another or on the OOB series.
+[PROBE-VISIBILITY.md](PROBE-VISIBILITY.md#independent-candidate-fixes-2026-11-04)
+records their commits, source checks and remaining boundaries.
+
+`run_probe_fixes.py` checks both real diffs in both application orders, tests
+the base, each independent fix and their combination, and requires four
+deliberate regressions to fail specific assertions. Its temporary Git indexes
+leave the kernel checkout and real index unchanged. For a candidate source
+file directly, `run_lifecycle.py` accepts `--expect-available-children` and/or
+`--expect-deferred-publication` together with `--candidate-source`; only enable
+the expectation implemented by that source.

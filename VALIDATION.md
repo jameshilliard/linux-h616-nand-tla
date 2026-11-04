@@ -1011,3 +1011,54 @@ whole-kernel concurrency and C/model refinement remain open. No kernel
 repository change, board access or NAND write occurred. Public files retain
 the pinned sources and exclude private paths, credentials, board identifiers
 and raw captures. Hosted CI remains inactive; these are local validated runs.
+
+# Standalone probe-fix validation
+
+Validated on 2026-11-04 after implementing independent fixes for findings 12
+and 13. Both candidates use NAND base
+`30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85`; the OOB v10 branch is unchanged.
+The pinned v9 reference, `source.json`, and all 40 model files are unchanged.
+
+| Source | Lifecycle cases | Assertions | Unavailable-child witnesses | Identification while a published user holds the controller lock |
+| --- | ---: | ---: | ---: | --- |
+| NAND base | 1,213 | 82,070 | 16 | Reproduced |
+| Available-child fix `c8a746138a9d` | 1,213 | 81,668 | 0 | Reproduced |
+| Publication fix `f962731e99f6` | 1,209 | 81,952 | 16 | Prevented |
+| Both fixes | 1,209 | 81,560 | 0 | Prevented |
+
+All four positive configurations pass ASan/UBSan and their separate GCOV runs.
+The newly added publication/unwind matrix contributes 173 cases per source,
+covering zero to three children, fault injection at each event, and an
+all-unavailable control. Earlier geometry, ONFI and allocation-failure tests
+remain enabled. Different totals reflect which events are reachable under
+the changed publication order, not removed checks.
+
+Four negative controls pass only by reaching their required assertion:
+unfiltered children, early registration, unregistering an unpublished chip,
+and missing registration bookkeeping. Both real patches apply in either
+order to yield identical trees. The combined driver SHA-256 is
+`582d2f3ff57357c33f0d7f123a88a5418ba9b6e60277d3725687b5099e88b59c`.
+The runner records all source digests and resolved commits in
+`results/probe-fixes-iuklj9zl/summary.json`.
+
+The unchanged pinned v9 source also passes the expanded baseline lifecycle
+checks (1,213 cases, 82,070 assertions), retaining both expected witnesses.
+Its local result is `results/lifecycle-knycat1z/`.
+
+The two relevant TLA+ models were rerun: all 34 child-admission and 37
+probe-publication expectations match, with all required positive actions
+reached. Results are `results/tlc-amu22hhf/` and `results/tlc-tu_sjn4z/`.
+The full 836-configuration run recorded above remains the latest full-suite
+result; this update does not claim a second full-model run.
+
+Both standalone kernel drivers pass ARM32 LLVM and ARM64 GCC `W=1` builds.
+Strict checkpatch reports no errors, warnings or checks; each b4 export is
+one signed-off patch with the original-driver Fixes tag and no external
+prerequisites. No patches were emailed. Review used the general Sashiko
+technical-pattern, false-positive and callstack guidance plus OF, cleanup,
+locking and I/O-accessor prompts at the revision recorded above.
+
+These are source-fixture and bounded-model results, not full-kernel concurrency
+or silicon tests. The existing retained-MTD/unbind lifetime problem is outside
+the fixes. No board access or NAND write occurred. Public validation additions
+contain no private paths, credentials, device identifiers or raw captures.

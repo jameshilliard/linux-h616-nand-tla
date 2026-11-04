@@ -5,6 +5,7 @@ static void defaults(void)
     CHECK(!held_user);
     hold_first_user=false;
     detects=unavailable_detects=scan_with_busy_controller=0;
+    scanned=register_calls=unregister_calls=0; expected_scans=2;
     for (unsigned i=0;i<nalloc;i++) CHECK(!allocations[i].live);
     memset(allocations,0,sizeof(allocations)); nalloc=events=fail_at=0;
     have_caps=slc=external_dma=true; with_calc=no_features=nvddr=false;
@@ -30,6 +31,7 @@ static void visibility_cases(void)
             unsigned index=first?0:1;
             nodes[index].status=statuses[st]; nodes[index].absent=!present;
             bool skipped=FILTERED_CHILDREN && !of_device_is_available(&nodes[index]);
+            expected_scans=skipped?1:2;
             int ret=sunxi_nfc_probe(&p);
             if (skipped) CHECK(!ret && registered==1 && detects==1);
             else if (present) CHECK(!ret && registered==2 && detects==2);
@@ -48,11 +50,61 @@ static void visibility_cases(void)
     struct platform_device p={.dev.of_node=&nodes[2]};
     defaults(); nodes[2].child=nodes; nodes[0].next=&nodes[1]; hold_first_user=true;
     CHECK(!sunxi_nfc_probe(&p));
-    CHECK(registered==2 && detects==2 && scan_with_busy_controller==1);
+    CHECK(registered==2 && detects==2);
+    CHECK(scan_with_busy_controller==(DEFERRED_PUBLICATION?0:1));
     CHECK(held_user && held_user->lock && held_user->controller->lock);
     nand_release_device(held_user); held_user=NULL;
     sunxi_nfc_remove(&p); release_devres(); cases_run++;
-    puts("SOURCE WITNESS: second nand_scan_ident reaches detection while first MTD user holds controller->lock");
+    if (DEFERRED_PUBLICATION)
+        puts("FIX VERIFIED: no identification after MTD publication while first user holds controller->lock");
+    else
+        puts("SOURCE WITNESS: second nand_scan_ident reaches detection while first MTD user holds controller->lock");
+}
+static unsigned publication_case(unsigned children, unsigned fault)
+{
+    struct device_node nodes[4]={
+        {.count=1,.cs={0},.rb={0}}, {.count=1,.cs={1},.rb={1}},
+        {.count=1,.cs={2},.rb={2}}, {0}};
+    struct platform_device p={.dev.of_node=&nodes[3]};
+    defaults(); expected_scans=children; fail_at=fault;
+    if (children) nodes[3].child=nodes;
+    for (unsigned i=1;i<children;i++) nodes[i-1].next=&nodes[i];
+    int ret=sunxi_nfc_probe(&p);
+    if (!ret) {
+        CHECK(scanned==children && registered==children && register_calls==children);
+        sunxi_nfc_remove(&p);
+        CHECK(unregister_calls==children);
+    } else {
+        CHECK(ret<0 && !registered);
+        if (DEFERRED_PUBLICATION && scanned<children)
+            CHECK(!register_calls && !unregister_calls);
+        if (register_calls) CHECK(unregister_calls<=register_calls);
+    }
+    unsigned last=events;
+    release_devres(); cases_run++;
+    return last;
+}
+static void publication_cases(void)
+{
+    unsigned before=cases_run;
+    for (unsigned n=0;n<=3;n++) {
+        unsigned count=publication_case(n,0);
+        for (unsigned f=1;f<=count;f++) publication_case(n,f);
+    }
+    /* All unavailable children must leave no scan, CS claim or MTD behind. */
+    struct device_node nodes[3]={
+        {.count=1,.cs={0},.status="disabled"},
+        {.count=1,.cs={1},.status="reserved"}, {0}};
+    struct platform_device p={.dev.of_node=&nodes[2]};
+    defaults(); nodes[2].child=nodes; nodes[0].next=&nodes[1];
+    expected_scans=FILTERED_CHILDREN?0:2;
+    CHECK(!sunxi_nfc_probe(&p));
+    CHECK(registered==expected_scans && detects==expected_scans);
+    struct sunxi_nfc *nfc=p.data;
+    CHECK(nfc->assigned_cs==(FILTERED_CHILDREN?0UL:3UL));
+    sunxi_nfc_remove(&p); release_devres(); cases_run++;
+    printf("Probe publication/unwind: %u cases (0-3 children, all event failures, all-unavailable control)\n",
+           cases_run-before);
 }
 static void release_devres(void)
 {
@@ -157,6 +209,7 @@ int main(void)
     }
     timing_cases();
     visibility_cases();
+    publication_cases();
     printf("Lifecycle/ONFI cases: %u; assertions: %u\n",cases_run,assertions);
     if (FIXED_TIMING)
         puts("FIX VERIFIED: timing mismatch recovery propagates controller and RESET failures");

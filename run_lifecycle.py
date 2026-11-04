@@ -34,9 +34,13 @@ def main():
                         help="nand_base.c containing the timing recovery error fix")
     parser.add_argument("--expect-available-children", action="store_true",
                         help="expect candidate to skip unavailable NAND children")
+    parser.add_argument("--expect-deferred-publication", action="store_true",
+                        help="expect candidate to scan all chips before MTD registration")
     args = parser.parse_args()
     if args.expect_available_children and not args.candidate_source:
         parser.error("--expect-available-children requires --candidate-source")
+    if args.expect_deferred_publication and not args.candidate_source:
+        parser.error("--expect-deferred-publication requires --candidate-source")
     pin = json.loads((HERE / "source.json").read_text())
     sources = {name: (HERE / "reference" / name).read_text() for name in FUNCTIONS}
     bodies, prototypes, hashes = [], [], {}
@@ -64,6 +68,7 @@ def main():
     fixture = fixture.replace("/* @prototypes@ */", "\n".join(prototypes))
     (out / "check.c").write_text(f'#define FIXED_TIMING {int(bool(args.candidate_nand_base))}\n' +
         f'#define FILTERED_CHILDREN {int(args.expect_available_children)}\n' +
+        f'#define DEFERRED_PUBLICATION {int(args.expect_deferred_publication)}\n' +
         fixture + "\n" + "\n".join(bodies) +
         '\n#line 1 "lifecycle-tests.c"\n' + (HERE / "tests/lifecycle.c").read_text())
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
@@ -87,6 +92,7 @@ def main():
         driver_sha256=hashlib.sha256(sources["sunxi_nand.c"].encode()).hexdigest(), functions=hashes,
         candidate=bool(args.candidate_nand_base or args.candidate_source),
         filtered_children=args.expect_available_children,
+        deferred_publication=args.expect_deferred_publication,
         source_sha256={n: hashlib.sha256(s.encode()).hexdigest() for n, s in sources.items()},
         output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
     print(run.stdout + run.stderr)

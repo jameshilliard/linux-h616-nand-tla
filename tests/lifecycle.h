@@ -59,6 +59,9 @@ static void list_add_tail(struct list_head *n, struct list_head *h)
 { n->prev=h->prev; n->next=h; h->prev->next=n; h->prev=n; }
 static void list_del(struct list_head *n) { n->prev->next=n->next; n->next->prev=n->prev; }
 #define list_first_entry(h,t,m) container_of((h)->next,t,m)
+#define list_for_each_entry(p,h,m) \
+    for (p=container_of((h)->next,typeof(*(p)),m); &(p)->m!=(h); \
+         p=container_of((p)->m.next,typeof(*(p)),m))
 struct device_node {
     struct device_node *child, *next;
     int count;
@@ -131,6 +134,7 @@ struct sunxi_nand_chip {
     struct nand_chip nand;
     const struct sunxi_nfc_oob_ops *oob_ops;
     u8 *user_data_bytes;
+    bool registered;
     int nsels;
     struct sunxi_nand_chip_sel sels[];
 };
@@ -152,6 +156,7 @@ static bool have_caps, external_dma, with_calc, slc, no_features, nvddr;
 static bool hold_first_user;
 static struct nand_chip *held_user;
 static unsigned detects, unavailable_detects, scan_with_busy_controller;
+static unsigned scanned, expected_scans, register_calls, unregister_calls;
 static unsigned options, engine, mode, writesize, oobsize, req_step, req_strength;
 static struct { void *p; bool managed,live; } allocations[256];
 static const char *event_names[256];
@@ -228,7 +233,8 @@ static int io_stub(void) { CHECK(!"I/O callback unexpectedly executed during sca
 #define nand_block_markbad io_stub
 #define nanddev_mtd_max_bad_blocks io_stub
 static const int rawnand_ops, layout;
-static const struct sunxi_nfc_oob_ops sunxi_nfc_plain_oob_ops, sunxi_nfc_scrambled_plain_bbm_oob_ops;
+static const struct sunxi_nfc_oob_ops sunxi_nfc_plain_oob_ops __attribute__((unused)),
+    sunxi_nfc_scrambled_plain_bbm_oob_ops __attribute__((unused));
 static const void *nand_get_small_page_ooblayout(void) { return &layout; }
 static const void *nand_get_large_page_hamming_ooblayout(void) { return &layout; }
 static const void *nand_get_large_page_ooblayout(void) { return &layout; }
@@ -324,9 +330,16 @@ static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c,struct device
   return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,n); }
 static const struct nand_controller_ops sunxi_nand_controller_ops={
     .attach_chip=sunxi_nand_attach_chip,.detach_chip=sunxi_nand_detach_chip,.setup_interface=setup_interface};
-static int nand_scan(struct nand_chip *c,unsigned n) { return nand_scan_with_ids(c,n,NULL); }
+static int nand_scan(struct nand_chip *c,unsigned n)
+{
+    int ret=nand_scan_with_ids(c,n,NULL);
+    if (!ret) scanned++;
+    return ret;
+}
 static int mtd_device_register(struct mtd_info *m,const void *p,int n)
 {
+    register_calls++;
+    if (DEFERRED_PUBLICATION) CHECK(scanned==expected_scans);
     if (fail("register")) return -EIO;
     CHECK(!mtd_to_nand(m)->fixture_registered);
     mtd_to_nand(m)->fixture_registered=true; registered++;
@@ -339,7 +352,12 @@ static int mtd_device_register(struct mtd_info *m,const void *p,int n)
     return 0;
 }
 static int mtd_device_unregister(struct mtd_info *m)
-{ CHECK(mtd_to_nand(m)->fixture_registered && registered); mtd_to_nand(m)->fixture_registered=false; registered--; return 0; }
+{
+    CHECK(mtd_to_nand(m)->fixture_registered && registered);
+    mtd_to_nand(m)->fixture_registered=false;
+    registered--; unregister_calls++;
+    return 0;
+}
 static struct resource resource;
 static struct sunxi_nfc_caps caps={true,true};
 static unsigned regs[16];

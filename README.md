@@ -33,7 +33,9 @@ a matching randomizer error can pass a write/read round trip.
 The [probe-visibility checks](docs/PROBE-VISIBILITY.md) exercise DT child
 availability and scanning a second chip while the first MTD is already usable.
 They reproduce two independent probe-path defects in both source versions;
-model-only filtering and deferred publication are checked separately.
+standalone filtering and deferred-publication fixes are now checked separately
+and together against the pre-series NAND base. The source fixtures also test
+partial registration cleanup and require deliberate regressions to fail.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -134,7 +136,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandDmaAperture` | 32-bit buffer/descriptor endpoints, mask/alignment/caller contracts, exact address encoding and balanced mapping cleanup |
 | `NandUserDataContext` | Persistent packed lengths across PIO/DMA requests, logical-step offsets, zero/unused slots, word boundaries and absent legacy registers |
 | `NandChildAdmission` | Available DT children, chip-select claims, absent devices, registration errors and probe rollback |
-| `NandProbePublication` | Scan-versus-published-I/O chip/context interference; model-only scan-before-publication ordering |
+| `NandProbePublication` | Scan-versus-published-I/O chip/context interference; scan-before-publication ordering, supplemented by candidate C checks |
 
 The driver harnesses now extract all 90 function bodies **unchanged** from the
 bundled submitted driver, verify its hash, then compile them with host fixtures.
