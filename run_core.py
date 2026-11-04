@@ -44,6 +44,8 @@ def extract(source, name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--candidate-dir", type=Path,
+                        help="raw NAND directory containing the OOB retry and BBT error fixes")
     args = parser.parse_args()
     pin = json.loads((HERE / "source.json").read_text())
     sources = {}
@@ -52,6 +54,9 @@ def main():
         if hashlib.sha256(data).hexdigest() != info["sha256"]:
             parser.error("reference hash mismatch: " + name)
         sources[name] = data.decode()
+    if args.candidate_dir:
+        for name in ("nand_base.c", "nand_bbt.c"):
+            sources[name] = (args.candidate_dir / name).read_text()
     header = (HERE / "tests/core.h").read_text()
     header = header.replace("/* @bbm@ */", sources["bbm.h"])
     definitions = []
@@ -69,7 +74,8 @@ def main():
             line = sources[filename][:sources[filename].index(body)].count("\n") + 1
             generated.append(f'#line {line} "{filename}"\n' + body)
             hashes[f"{filename}:{name}"] = hashlib.sha256(body.encode()).hexdigest()
-    combined = ("\n".join(definitions) + '\n#line 1 "core.h"\n' + header +
+    combined = (f'#define FIXED_CORE {int(bool(args.candidate_dir))}\n' +
+                "\n".join(definitions) + '\n#line 1 "core.h"\n' + header +
                 "\n" + "\n".join(generated) + '\n#line 1 "core.c"\n' +
                 (HERE / "tests/core.c").read_text())
     (HERE / "results").mkdir(exist_ok=True)
@@ -98,7 +104,8 @@ def main():
     (out / "summary.json").write_text(json.dumps(dict(
         passed=passed, functions=hashes, output=run.stdout, diagnostics=run.stderr,
         coverage=coverage,
-        source_sha256={n: i["sha256"] for n, i in pin["core_sources"].items()}), indent=2) + "\n")
+        candidate=bool(args.candidate_dir),
+        source_sha256={n: hashlib.sha256(s.encode()).hexdigest() for n, s in sources.items()}), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)
     return 0 if passed else 1

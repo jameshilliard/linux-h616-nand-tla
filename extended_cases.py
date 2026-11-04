@@ -122,6 +122,8 @@ def extend(modules, add, mutation):
         kind="assumption", expected="NoUseAfterRelease")
     add("NandLifecycle", "lifecycle-assumption-clock-set-fails", dict(life, ClockWorks=False),
         kind="assumption", expected="CorrectChipContext")
+    add("NandLifecycle", "lifecycle-fixed-clock-set-fails",
+        dict(life, ClockWorks=False, Mutation="checked-clock-error"))
 
     probe = dict(FailAt=0, Backend="external", MaskOK=True, AllocOK=True,
                  Request="ok", ConfigOK=True, ChipSelects=(0, 1))

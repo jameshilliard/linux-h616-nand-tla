@@ -3,14 +3,15 @@
 \* Non-cyclic IRQ queue-complete events, one active descriptor per channel.
 \* SourceDispatch reproduces the pinned sun6i bank loop/index arithmetic.
 EXTENDS Integers
-CONSTANTS Channels, SourceDispatch, Mutation
+CONSTANTS Channels, ChannelsPerBank, SourceDispatch, Mutation
 VARIABLE s
 vars == <<s>>
 Init == s = [channel |-> 0, wrong |-> FALSE, delivered |-> {}]
 Dispatch == /\ s.channel < Channels
-    /\ LET bank == s.channel \div 8
-           banks == IF SourceDispatch THEN Channels \div 8 ELSE (Channels + 7) \div 8
-           recipient == IF SourceDispatch THEN s.channel % 8 ELSE s.channel
+    /\ LET bank == s.channel \div ChannelsPerBank
+           banks == IF SourceDispatch THEN Channels \div ChannelsPerBank
+                    ELSE (Channels + ChannelsPerBank - 1) \div ChannelsPerBank
+           recipient == IF SourceDispatch THEN s.channel % ChannelsPerBank ELSE s.channel
        IN s' = [s EXCEPT !.wrong = @ \/ bank >= banks \/ recipient # s.channel,
             !.delivered = IF bank < banks THEN @ \cup {recipient} ELSE @,
             !.channel = @ + 1]

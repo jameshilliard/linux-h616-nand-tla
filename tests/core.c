@@ -194,9 +194,21 @@ static void request_checks(void)
         CHECK(nand_do_read_ops(&chip,0,&ops)==0 && ops.retlen==2*PAGE && ops.oobretlen==2*per);
         if (mode==MTD_OPS_AUTO_OOB) CHECK(mtd_ooblayout_get_databytes(&chip.mtd,expected,spare[1],0,per)==0);
         else memcpy(expected,spare[1],per);
-        CHECK(memcmp(oob+per,expected,per)!=0 && reads==3 && chip.mtd.ecc_stats.failed==0);
+        CHECK(reads==3 && chip.mtd.ecc_stats.failed==0);
+#if FIXED_CORE
+        CHECK(!memcmp(oob+per,expected,per));
+        if (mode==MTD_OPS_AUTO_OOB) CHECK(!mtd_ooblayout_get_databytes(&chip.mtd,expected,spare[0],0,per));
+        else memcpy(expected,spare[0],per);
+        CHECK(!memcmp(oob,expected,per));
+#else
+        CHECK(memcmp(oob+per,expected,per)!=0);
+#endif
     }
+#if FIXED_CORE
+    puts("FIX VERIFIED: read retries publish only final-attempt OOB, once per page");
+#else
     puts("SOURCE WITNESS: successful read retry duplicates page-0 OOB into page-1 output");
+#endif
     for (int mode=0;mode<3;mode++) for (int partial=0;partial<2;partial++) {
         reset(false); memset(data,0x5a,sizeof(data)); memset(oob,0xa5,sizeof(oob));
         unsigned int n=partial?256:2*PAGE, col=partial?256:0, on=mode==MTD_OPS_AUTO_OOB?6:SPARE;
@@ -316,10 +328,20 @@ static void bbt_checks(void)
         mirror=primary; mirror.pattern=mirror_pattern;
         page_error[PPB]=-EIO; spare[2*PPB][0]=0;
         CHECK(create_bbt(&chip,buf,&bad,-1)==-EIO);
+#if FIXED_CORE
+        CHECK(check_create(&chip,buf,&bad)==-EIO);
+        CHECK(primary.pages[0]==-1 && mirror.pages[0]==-1);
+        CHECK(!writes && !primary.version[0] && !mirror.version[0]);
+#else
         CHECK(check_create(&chip,buf,&bad)==0 && primary.pages[0]>=0);
         CHECK(bbt_get_entry(&chip,2)==BBT_BLOCK_GOOD);
+#endif
     }
+#if FIXED_CORE
+    puts("FIX VERIFIED: marker-scan failure does not publish an incomplete BBT");
+#else
     puts("SOURCE WITNESS: check_create ignores scan EIO and writes an incomplete BBT");
+#endif
     for (int no_oob=0;no_oob<2;no_oob++) {
         reset(false);
         if (no_oob) { primary.options|=NAND_BBT_NO_OOB; primary.veroffs=4; primary.offs=0; }
@@ -327,9 +349,30 @@ static void bbt_checks(void)
         CHECK(check_create(&chip,buf,&bad)==0);
         bbt_mark_entry(&chip,7,BBT_BLOCK_WORN); CHECK(nand_update_bbt(&chip,0)==0);
         memset(ram_bbt,0,sizeof(ram_bbt)); main_error[primary.pages[0]]=-EIO;
+#if FIXED_CORE
+        unsigned before=writes;
+        CHECK(check_create(&chip,buf,&bad)==-EIO && writes==before);
+#else
         CHECK(check_create(&chip,buf,&bad)==0 && bbt_get_entry(&chip,7)==BBT_BLOCK_GOOD);
+#endif
     }
+#if FIXED_CORE
+    for (int versioned=0;versioned<2;versioned++) for (int which=0;which<2;which++) {
+        reset(false);
+        if (!versioned) primary.options &= ~NAND_BBT_VERSION;
+        mirror=primary; mirror.pattern=mirror_pattern;
+        CHECK(!check_create(&chip,buf,&bad));
+        if (versioned && which) primary.pages[0]=-1;
+        main_error[which ? mirror.pages[0] : primary.pages[0]]=-EIO;
+        unsigned before=writes;
+        unsigned pv=primary.version[0], mv=mirror.version[0];
+        CHECK(check_create(&chip,buf,&bad)==-EIO && writes==before);
+        CHECK(primary.version[0]==pv && mirror.version[0]==mv);
+    }
+    puts("FIX VERIFIED: primary/mirror/versionless BBT transport errors propagate without rewriting tables");
+#else
     puts("SOURCE WITNESS: check_create accepts BBT read EIO without recovering the bad-block entries");
+#endif
     puts("BBT: BBM page/width, PLACE_OOB, scan/create, mirrors, in-band/OOB, per-chip, update, relocation, reserved regions and version wrap checked");
 }
 static void compound_checks(void)
@@ -347,8 +390,12 @@ static void compound_checks(void)
         CHECK(data[PAGE]==0xa5 && !chip.mtd.ecc_stats.failed && chip.selected==-1);
         CHECK(retry_mode==0 && retries==(mode==MTD_OPS_RAW?0:2));
         if (with_oob) {
+#if FIXED_CORE
+            CHECK(ops.oobretlen==per && oob[per]==0xa5);
+#else
             /* Source witness persists on error, not just successful reads. */
             CHECK(ops.oobretlen==(mode==MTD_OPS_RAW?per:2*per));
+#endif
             CHECK(oob[3*per]==0xa5);
         }
         cases++;

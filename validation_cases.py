@@ -34,6 +34,8 @@ def extend_validation(modules, add, mutation):
     for fault in ("recover-host","recover-chip"):
         add("NandNegotiation","validation-onfi-source-"+fault,dict(negotiation,AckMatches=False,Fault=fault),
             kind="source-contract",expected="RecoveryError")
+        add("NandNegotiation", "validation-onfi-fixed-"+fault,
+            dict(negotiation, AckMatches=False, Fault=fault, Mutation="checked-recovery"))
     for mode in ("place","auto","raw"):
         add("NandRequest","validation-compound-retry-transport-data-"+mode,
             dict(Pages=3,Oob=False,Retry=True,FailPage=1,TransportPage=2,Mode=mode))

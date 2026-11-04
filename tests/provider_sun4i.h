@@ -18,6 +18,7 @@ struct sun4i_dma_vchan {
 struct sun4i_dma_config { unsigned ndma_nr_max_channels,dma_nr_max_channels; };
 struct sun4i_dma_dev {
     struct dma_device slave; struct lock lock; void *base;
+    int irq;
     struct sun4i_dma_pchan *pchans;
     struct sun4i_dma_vchan *vchans;
     struct sun4i_dma_config *cfg;
@@ -34,3 +35,19 @@ static u32 a10_regs[2],a10_channel_regs[16][8];
 #define readl_relaxed(p) readl(p)
 static void writel_relaxed(u32 v,void *p)
 { if(p==&a10_regs[1]) v=readl(p)&~v; memcpy(p,&v,4); }
+#define READ_ONCE(x) (x)
+#define WRITE_ONCE(x,v) ((x)=(v))
+static unsigned s4_irq_syncs;
+static void synchronize_irq(int irq) { s4_irq_syncs++; }
+/* Inject termination after the IRQ looked up its vchan, before taking its lock. */
+static void (*s4_before_lock)(struct lock *);
+static void s4_spin_lock(struct lock *l)
+{
+    if (s4_before_lock) {
+        void (*hook)(struct lock *)=s4_before_lock;
+        s4_before_lock=NULL;
+        hook(l);
+    }
+    spin_lock(l);
+}
+#define spin_lock(l) s4_spin_lock(l)

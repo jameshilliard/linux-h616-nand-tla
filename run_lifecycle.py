@@ -27,6 +27,8 @@ FUNCTIONS = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--candidate-nand-base", type=Path,
+                        help="nand_base.c containing the timing recovery error fix")
     args = parser.parse_args()
     pin = json.loads((HERE / "source.json").read_text())
     sources = {name: (HERE / "reference" / name).read_text() for name in FUNCTIONS}
@@ -36,6 +38,9 @@ def main():
         expected = pin["driver_sha256"] if name == "sunxi_nand.c" else pin["core_sources"][name]["sha256"]
         if hashlib.sha256(src.encode()).hexdigest() != expected:
             parser.error("source hash mismatch: " + name)
+        if name == "nand_base.c" and args.candidate_nand_base:
+            src = args.candidate_nand_base.read_text()
+            sources[name] = src
         for func in names:
             body = extract(src, func)
             prototypes.append(body[:body.index("\n{")] + ";")
@@ -47,7 +52,8 @@ def main():
     out = Path(tempfile.mkdtemp(prefix="lifecycle-", dir=results))
     fixture = (HERE / "tests/lifecycle.h").read_text()
     fixture = fixture.replace("/* @prototypes@ */", "\n".join(prototypes))
-    (out / "check.c").write_text(fixture + "\n" + "\n".join(bodies) +
+    (out / "check.c").write_text(f'#define FIXED_TIMING {int(bool(args.candidate_nand_base))}\n' +
+        fixture + "\n" + "\n".join(bodies) +
         '\n#line 1 "lifecycle-tests.c"\n' + (HERE / "tests/lifecycle.c").read_text())
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",
@@ -67,6 +73,8 @@ def main():
     if coverage:
         assert all(v["calls"] for v in coverage["functions"].values()), "unexecuted lifecycle function"
     (out / "summary.json").write_text(json.dumps(dict(passed=passed, driver_sha256=pin["driver_sha256"], functions=hashes,
+        candidate=bool(args.candidate_nand_base),
+        source_sha256={n: hashlib.sha256(s.encode()).hexdigest() for n, s in sources.items()},
         output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)

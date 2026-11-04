@@ -14,6 +14,9 @@ def extend_boundaries(modules, add, mutation):
             actions=["Read", "Reject", "Decode", "Attach", "Publish"]),
         "NandProviderBanks": dict(invariants=["CorrectRecipient", "CompleteCoverage"],
             actions=["Dispatch"]),
+        "NandCyclicLifetime": dict(invariants=["NoUseAfterFree", "DrainedAtReturn"],
+            actions=["IrqLookup", "IrqLock", "IrqEnqueue", "IrqUnlock",
+                     "TaskCapture", "TaskFinish", "Terminate", "DrainIRQ", "DrainTask"]),
     })
     for kinds in (("ecc", "raw", "ecc"), ("ecc", "status", "ecc"), ("raw", "ecc", "raw")):
         ops = tuple(dict(kind=k, chip=i % 2, page=i + 1, column=i * 1024,
@@ -52,10 +55,14 @@ def extend_boundaries(modules, add, mutation):
     for engine in ("host", "software", "none"):
         add("NandDiscovery", "boundary-discovery-engine-" + engine, dict(base, Engine=engine))
     mutation("NandDiscovery", base, "zero-step-hardware", "HardwareHasGeometry", Page=512)
-    for channels in (8,12,16):
-        add("NandProviderBanks", f"boundary-banks-source-{channels}",
-            dict(Channels=channels, SourceDispatch=True),
-            **({} if channels==8 else dict(kind="source-contract",expected="CorrectRecipient")))
-        if channels>8:
-            add("NandProviderBanks", f"boundary-banks-reference-{channels}",
-                dict(Channels=channels, SourceDispatch=False))
+    for width in (1, 8):
+        for channels in (8, 12, 16, 24, 32):
+            add("NandProviderBanks", f"boundary-banks-source-width{width}-{channels}",
+                dict(Channels=channels, ChannelsPerBank=width, SourceDispatch=True),
+                **({} if channels<=width else dict(kind="source-contract",expected="CorrectRecipient")))
+            add("NandProviderBanks", f"boundary-banks-reference-width{width}-{channels}",
+                dict(Channels=channels, ChannelsPerBank=width, SourceDispatch=False))
+    add("NandCyclicLifetime", "boundary-cyclic-retain-until-sync",
+        dict(RetainUntilSync=True))
+    add("NandCyclicLifetime", "boundary-cyclic-free-at-termination",
+        dict(RetainUntilSync=False), kind="source-contract", expected="NoUseAfterFree")

@@ -1,9 +1,13 @@
 # Source-level findings and reachability
 
-These tests preserve the submitted driver and matching core. They reproduce
+The baseline tests preserve the submitted driver and matching core. They reproduce
 ten source-level observations with explicit reachability limits; they do not silently apply fixes or
 establish that the OOB series introduced them. None has been observed on
 hardware by this suite.
+
+Separate [candidate-fix checks](CANDIDATE-FIXES.md) now exercise local fixes
+without replacing the pinned inputs. The observations below describe that
+original baseline, not the candidate branches.
 
 ## 1. Split address instructions lose the trailing address cycles
 

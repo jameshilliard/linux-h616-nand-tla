@@ -27,11 +27,15 @@ FUNCTIONS = [
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--candidate-source", type=Path,
+                        help="sunxi_nand.c containing the split-address and clock-error fixes")
     args = parser.parse_args()
     source = (HERE / "reference/sunxi_nand.c").read_text()
     pin = json.loads((HERE / "source.json").read_text())
     if hashlib.sha256(source.encode()).hexdigest() != pin["driver_sha256"]:
         parser.error("reference source hash mismatch")
+    if args.candidate_source:
+        source = args.candidate_source.read_text()
     core = (HERE / "reference/nand_parser.c").read_text()
     header = (HERE / "reference/nand_parser.h").read_text()
     for text, key in ((core, "parser_excerpt_sha256"), (header, "parser_header_excerpt_sha256")):
@@ -77,7 +81,8 @@ def main():
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="lowlevel-", dir=results))
     fixture = (HERE / "tests/lowlevel.h").read_text().replace("/* @parser-header@ */", header)
-    combined = ('#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +
+    combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
+                '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +
                 "\n".join(generated) + '\n#line 1 "lowlevel.c"\n' +
                 (HERE / "tests/lowlevel.c").read_text())
     (out / "check.c").write_text(combined)
@@ -97,7 +102,8 @@ def main():
     from source_coverage import build_and_collect
     coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
     (out / "summary.json").write_text(json.dumps(dict(
-        passed=passed, driver_sha256=pin["driver_sha256"], functions=hashes,
+        passed=passed, driver_sha256=hashlib.sha256(source.encode()).hexdigest(),
+        candidate=bool(args.candidate_source), functions=hashes,
         output=run.stdout, diagnostics=run.stderr, coverage=coverage), indent=2) + "\n")
     print(run.stdout + run.stderr)
     print("Logs:", out)

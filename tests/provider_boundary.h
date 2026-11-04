@@ -22,6 +22,7 @@ struct dmaengine_desc_callback { void (*callback)(void *); void *param; };
 static void dma_cookie_init(struct dma_chan *c) { }
 static void dma_cookie_complete(struct dma_async_tx_descriptor *d) { assert(d->cookie); d->cookie=0; }
 static bool dmaengine_desc_test_reuse(struct dma_async_tx_descriptor *d) { return d->reuse; }
+static void dmaengine_desc_clear_reuse(struct dma_async_tx_descriptor *d) { d->reuse=false; }
 static void dmaengine_desc_get_callback(struct dma_async_tx_descriptor *d, struct dmaengine_desc_callback *c)
 { c->callback=d->callback; c->param=d->callback_param; }
 static void dmaengine_desc_callback_invoke(struct dmaengine_desc_callback *c, const struct dmaengine_result *r)

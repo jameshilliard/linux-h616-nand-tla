@@ -458,3 +458,46 @@ implementation was changed and no board or NAND operation was performed.
 Public files were checked for private paths and hardware details. The
 twelve-suite Actions template remains inactive until installed with an
 appropriately authorized credential.
+
+# Candidate-fix validation record
+
+Validated on 2026-11-03 without replacing the pinned baseline. The local
+kernel changes are organized as documented in
+[CANDIDATE-FIXES.md](docs/CANDIDATE-FIXES.md); this record does not claim they
+have been posted or merged.
+
+The complete revised TLC suite passed **428/428 expectations across 29
+models**: 313 positive configurations, 58 mutations, 35 assumption tests,
+and 22 source-contract witnesses. All required positive-model actions were
+reached. Added positive cases cover checked clock errors, checked timing
+recovery, both current sun6i IRQ bank widths, and one-vchan sun4i
+IRQ/tasklet/termination interleavings.
+
+The modified baseline low-level, core, lifecycle and provider-boundary
+runners were rerun successfully, retaining their original witnesses.
+Separate candidate runs passed:
+
+| Candidate source check | Result |
+| --- | --- |
+| sunxi split address / clock failure | All ten split address cycles emitted; failed clock setup leaves controller registers and cached rate unchanged, returns the error and allows a subsequent retry |
+| NAND-core OOB / BBT | 20,648 assertions; final-attempt OOB identity, partial error lengths, marker-scan failure, primary/mirror and unversioned BBT read errors |
+| NAND-core timing fallback | 1,011 cases, 65,972 assertions; controller/reset failures propagated, successful fallback preserved |
+| Current sun6i IRQ handler and register helpers | 368 cases; zero wrong/missed events, versus 278 with the current unpatched baseline |
+| sun4i callback lifetime | 60 schedules; zero freed callback uses, including repeated termination, stale IRQ lookup and termination from a callback |
+
+ASan/UBSan and source-coverage checks passed with the previously documented
+`vchan_complete()` null-member-address sanitizer exception. ARM64 `W=1`
+object builds passed for `sunxi_nand.o`, `nand_base.o`, `nand_bbt.o`,
+`sun6i-dma.o` and `sun4i-dma.o`. These are object builds, not a full kernel
+build or a board test.
+
+Review used the cached Sashiko general/core, technical-pattern,
+false-positive, callstack, locking, I/O-accessor, allocation, alignment and
+Fixes-tag guidance. Refreshing the public prompt location failed, so this
+does not claim comparison against its latest revision.
+
+The open-MTD-reference/unbind finding remains unresolved. The external DMA
+configuration-error observation remains conditional because both supported
+provider callbacks return zero. Physical bus retirement and cross-vchan
+physical-channel reuse are not proved by the new one-vchan lifetime model.
+No hardware operation was performed for these candidate checks.

@@ -21,7 +21,9 @@ Publish ==
 Begin ==
     /\ s.pc = "live" /\ s.accepting /\ s.active = 0 /\ s.operations < 2
     /\ LET chip == s.operations + 1 IN
-        s' = [s EXCEPT !.active = chip, !.selected = chip,
+        s' = IF Mutation = "checked-clock-error" /\ ~ClockWorks THEN
+            [s EXCEPT !.operations = @ + 1] ELSE
+            [s EXCEPT !.active = chip, !.selected = chip,
             !.clock = IF ClockWorks THEN chip ELSE @,
             !.geometry = IF Mutation = "stale-geometry" /\ chip = 2 THEN @ ELSE chip,
             !.operations = @ + 1]

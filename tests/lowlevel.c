@@ -340,8 +340,15 @@ static void command_checks(void)
     struct nand_subop sub={.instrs=&ins,.ninstrs=1,.first_instr_start_off=8,.last_instr_end_off=10};
     assert(nand_subop_get_num_addr_cyc(&sub,0)==2);
     assert(!sunxi_nfc_exec_subop(&chip.nand,&sub));
+#if FIXED_SUNXI
+    assert(load(NFC_REG_CMD)&NFC_SEND_ADR);
+    assert(hw.address_cycles==2);
+    assert(load(NFC_REG_ADDR_LOW)==((u32)addresses[8] | (u32)addresses[9]<<8));
+    assert(!load(NFC_REG_ADDR_HIGH));
+#else
     assert(!(load(NFC_REG_CMD)&NFC_SEND_ADR));
     puts("SOURCE CONTRACT WITNESS: split 10-cycle address, start 8/count 2, emits no address; normal NAND reachability not established");
+#endif
     reset_fixture(2);
     struct nand_op_instr three[3]={{.type=0},{.type=0},{.type=0}};
     sub=(struct nand_subop){.instrs=three,.ninstrs=3};
@@ -390,8 +397,14 @@ static void parser_checks(void)
     struct nand_operation op={.instrs=&addr,.ninstrs=1};
     assert(!sunxi_nfc_exec_op(&chip.nand,&op,true) && !hw.writes);
     assert(!sunxi_nfc_exec_op(&chip.nand,&op,false));
+#if FIXED_SUNXI
+    assert(hw.commands==2 && hw.address_cycles==10);
+    assert(load(NFC_REG_ADDR_LOW)==0x0908 && !load(NFC_REG_ADDR_HIGH));
+    puts("FIX VERIFIED through NAND-core parser: all 10 address cycles emitted");
+#else
     assert(hw.commands==2 && hw.address_cycles==8);
     puts("SOURCE CONTRACT WITNESS confirmed through unchanged NAND-core parser: 10 address cycles accepted, only 8 emitted");
+#endif
     reset_fixture(2); addr.type=99;
     assert(sunxi_nfc_exec_op(&chip.nand,&op,true)==-ENOTSUPP && !hw.writes);
     printf("actual NAND-core parser + exec_op: %u read/write/check-only/RB/error cases\n",runs);
@@ -483,11 +496,31 @@ static void selection_checks(void)
     sunxi_nfc_select_chip(&chip.nand,2); assert(hw.writes==writes);
     chip.sels[0].rb=-1; sunxi_nfc_select_chip(&chip.nand,0);
     assert(!(load(NFC_REG_CTL)&NFC_RB_SEL_MSK));
+#if FIXED_SUNXI
+    unsigned oldwrites=hw.writes, calls=hw.clock_calls;
+    hw.clock_set_error=-EBUSY;
+    assert(sunxi_nfc_select_chip(&other.nand,0)==-EBUSY);
+    assert(nfc.clk_rate==chip.clk_rate && hw.real_rate==chip.clk_rate);
+    assert(hw.writes==oldwrites);
+    assert(sunxi_nfc_select_chip(&other.nand,0)==-EBUSY);
+    assert(hw.clock_calls==calls+2 && hw.writes==oldwrites);
+    struct nand_op_instr cmd={.type=NAND_OP_CMD_INSTR,.ctx.cmd.opcode=0x70};
+    struct nand_operation op={.instrs=&cmd,.ninstrs=1};
+    assert(!sunxi_nfc_exec_op(&other.nand,&op,true));
+    assert(hw.clock_calls==calls+2 && hw.writes==oldwrites);
+    assert(sunxi_nfc_exec_op(&other.nand,&op,false)==-EBUSY);
+    assert(!hw.commands && hw.writes==oldwrites);
+    hw.clock_set_error=0;
+    assert(!sunxi_nfc_exec_op(&other.nand,&op,false));
+    assert(hw.commands==1 && hw.real_rate==other.clk_rate && nfc.clk_rate==other.clk_rate);
+    puts("FIX VERIFIED: failed clock setup leaves registers/cache unchanged, propagates through exec_op, and retries successfully");
+#else
     hw.clock_set_error=-EIO; sunxi_nfc_select_chip(&other.nand,0);
     assert(nfc.clk_rate==other.clk_rate && hw.real_rate!=other.clk_rate);
     unsigned calls=hw.clock_calls;
     sunxi_nfc_select_chip(&other.nand,0); assert(hw.clock_calls==calls);
     puts("chip context alternation passes; SOURCE CONTRACT WITNESS: failed clk_set_rate leaves cached/requested and physical clocks different");
+#endif
 }
 int main(void)
 {

@@ -84,6 +84,7 @@ static void timing_cases(void)
         timing_fault=f;
         int ret=nand_setup_interface(&c,0);
         if ((f==1 && features) || f==2 || (f==3 && features==2)) CHECK(ret==-EIO);
+        else if (FIXED_TIMING && features==2 && f>=5) CHECK(ret==-EIO);
         else CHECK(ret==0);
         if (features==2 && f>=4) {
             CHECK(c.current_interface_config==&reset_config);
@@ -114,7 +115,10 @@ int main(void)
     }
     timing_cases();
     printf("Lifecycle/ONFI cases: %u; assertions: %u\n",cases_run,assertions);
-    puts("CONTRACT: timing mismatch plus failed recovery can return success; not a hardware observation");
+    if (FIXED_TIMING)
+        puts("FIX VERIFIED: timing mismatch recovery propagates controller and RESET failures");
+    else
+        puts("CONTRACT: timing mismatch plus failed recovery can return success; not a hardware observation");
     puts("ALL LIFECYCLE CHECKS PASSED");
     return 0;
 }

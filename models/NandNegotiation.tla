@@ -33,11 +33,15 @@ ReadAck ==
 RecoverHost ==
     /\ s.pc = "recover-host"
     /\ s' = [s EXCEPT !.host = IF Fault = "recover-host" THEN @ ELSE 0,
-        !.cached = 0, !.resetFailed = Fault = "recover-host", !.pc = "recover-chip"]
+        !.cached = 0, !.resetFailed = Fault = "recover-host",
+        !.rc = IF Mutation = "checked-recovery" /\ Fault = "recover-host" THEN "error" ELSE @,
+        !.pc = IF Mutation = "checked-recovery" /\ Fault = "recover-host" THEN "done" ELSE "recover-chip"]
 RecoverChip ==
     /\ s.pc = "recover-chip"
     /\ s' = [s EXCEPT !.chip = IF Fault = "recover-chip" THEN @ ELSE 0,
-        !.resetFailed = @ \/ Fault = "recover-chip", !.pc = "done"]
+        !.resetFailed = @ \/ Fault = "recover-chip",
+        !.rc = IF Mutation = "checked-recovery" /\ Fault = "recover-chip" THEN "error" ELSE @,
+        !.pc = "done"]
 Done == s.pc = "done" /\ UNCHANGED vars
 Next == HostReset \/ ChipReset \/ SetFeature \/ HostSetup \/ ReadAck \/ RecoverHost \/ RecoverChip \/ Done
 Spec == Init /\ [][Next]_vars /\ WF_vars(Next)

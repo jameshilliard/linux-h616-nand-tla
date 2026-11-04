@@ -21,6 +21,10 @@ The v10 draft inspected when this repository was created has the same driver
 implementation. This repository validates that pinned implementation, **not
 whatever happens to be in the latest kernel tree**.
 
+Optional [candidate-fix checks](docs/CANDIDATE-FIXES.md) exercise local fixes
+alongside that baseline, with separate source hashes and positive regression
+expectations. They do not replace the pinned submission or its counterexamples.
+
 ## Run
 
 Requirements: Python 3.10+, Java 17+ (the CI template uses 21), and GCC with its
@@ -117,7 +121,7 @@ runners replace additional earlier fixtures with pinned source bodies.
 `run_historical.py` requires four adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The suite has 408 TLC configurations across 28 models, including positive checks,
+The suite has 428 TLC configurations across 29 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. See [the recorded validation](VALIDATION.md),
 [the seven-area coverage map](docs/EXTENDED-COVERAGE.md),
