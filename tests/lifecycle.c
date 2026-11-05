@@ -15,6 +15,7 @@ static void defaults(void)
     timing_fault=extra_die_fault=0; reset_deasserted=false;
     mode_setup_calls=set_calls=get_calls=reset_calls=0;
     caps.has_ecc_clk=caps.has_mbus_clk=true;
+    caps.needs_bus_reset=false;
 }
 static void release_devres(void);
 static void visibility_cases(void)
@@ -139,9 +140,10 @@ static unsigned probe_case(unsigned failpoint, int variant)
     if (variant==14) { external_dma=false; slc=false; }
     if (variant==15) { req_strength=0; }
     if (variant==16) { nodes[1].count=-1; }
-    if (variant>=17) {
+    if (variant>=17 && variant<=19) {
         caps.has_ecc_clk=variant==18; caps.has_mbus_clk=variant==19;
     }
+    if (variant==20) caps.needs_bus_reset=true;
     ret=sunxi_nfc_probe(&p);
     if (!ret) {
         struct sunxi_nfc *n=p.data;
@@ -203,7 +205,7 @@ int main(void)
 {
     /* Fault every event observed on each successful/invalid input path; later
      * cleanup allocations are checked by ownership, not just return status. */
-    for (int variant=0;variant<20;variant++) {
+    for (int variant=0;variant<20+MANDATORY_RESET;variant++) {
         unsigned count=probe_case(0,variant);
         for (unsigned f=1;f<=count;f++) probe_case(f,variant);
     }

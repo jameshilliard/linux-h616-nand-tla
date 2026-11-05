@@ -168,6 +168,34 @@ static void batch_transport_errors(void)
 static void control_flow(void)
 {
     unsigned runs = 0;
+#if STREAMING_RECOVERY
+    /* Fault each event in the real page functions, then make the abort helper
+     * retire DMA but fail deassertion. No path may leak its mapping, confirm a
+     * partial write, or access reset-held registers on read fallback. */
+    for (unsigned operation=0;operation<3;operation++) {
+        struct caps c=caps(true);
+        u8 user[]={32,32,32,32,32,32};
+        controller.caps=&c; controller.use_mdma=true;
+        struct nand_chip nand=chip(6,56,6*88+9);
+        nand.user_data_bytes=user;
+        nand.oob_ops=&flow_ops; nand.options=NAND_NEED_SCRAMBLING;
+        expected_stop=operation==2 ? 5 : 6;
+        unsigned total=0;
+        for(unsigned fail=0;fail<=total;fail++) {
+            reset_flow(fail); flow.abort_failure=true;
+            int ret=operation ? read_case(&nand,operation==1 ? 1 : 3) :
+                               write_case(&nand,1,true);
+            if(!fail) total=flow.calls;
+            assert(!flow.mapped && !flow.active);
+            if(flow.aborts) {
+                assert(ret==-EIO && flow.reset_held && !flow.confirms);
+                runs++;
+            }
+        }
+    }
+    printf("DMA page read/subpage/write held-reset cleanup paths: %u\n",runs);
+    runs=0; reset_flow(0);
+#endif
 #if FIXED_SUNXI
     /* The low-level runner checks the real selector. Here inject its errors
      * at the page-callback boundary and check that no write is started. */

@@ -1,6 +1,10 @@
 # H616 abort recovery: implementation and evidence
 
-The 26-patch v10 candidate now contains an H616-specific recovery fix for
+Historical snapshot: the private-buffer policy below has been superseded by
+the [streaming-buffer implementation](H616-STREAMING-IMPLEMENTATION.md).
+Its measurements and source hashes remain records of that earlier candidate.
+
+The 26-patch v10 candidate described here contains an H616-specific recovery fix for
 the [observed first-read-after-abort corruption](POST-ABORT-DATAPATH.md).
 This supersedes the unresolved implementation status in the earlier reports;
 their original captures, failures and hardware limitations are preserved.

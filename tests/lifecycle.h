@@ -140,7 +140,7 @@ struct sunxi_nand_chip {
     int nsels;
     struct sunxi_nand_chip_sel sels[];
 };
-struct sunxi_nfc_caps { bool has_ecc_clk,has_mbus_clk; };
+struct sunxi_nfc_caps { bool has_ecc_clk,has_mbus_clk,needs_bus_reset; };
 struct sunxi_nfc {
     struct device *dev;
     struct nand_controller controller;
@@ -403,7 +403,7 @@ static int mtd_device_unregister(struct mtd_info *m)
     return 0;
 }
 static struct resource resource;
-static struct sunxi_nfc_caps caps={true,true};
+static struct sunxi_nfc_caps caps={.has_ecc_clk=true,.has_mbus_clk=true};
 static unsigned regs[16];
 static void *devm_platform_get_and_ioremap_resource(struct platform_device *p,int i,struct resource **r)
 { *r=&resource; return fail("ioremap")?ERR_PTR(-ENOMEM):regs; }
@@ -413,9 +413,17 @@ static void *devm_clk_get_enabled(struct device *d,const char *s)
 { if (fail(s)) return ERR_PTR(-EIO); clock_live++; return (void *)1; }
 static void *devm_reset_control_get_optional_exclusive(struct device *d,const char *s)
 { return fail("reset-get")?ERR_PTR(-EIO):(void *)1; }
+static void *devm_reset_control_get_exclusive(struct device *d,const char *s)
+{ return fail("mandatory-reset-get")?ERR_PTR(-ENOENT):(void *)1; }
 static bool reset_deasserted;
 static int reset_control_deassert(void *r) { if (fail("reset-deassert")) return -EIO; reset_deasserted=true; return 0; }
-static int reset_control_assert(void *r) { reset_deasserted=false; return 0; }
+static int reset_control_assert(void *r)
+{
+    if (caps.needs_bus_reset && !reset_deasserted && fail("initial-reset-assert"))
+        return -EIO;
+    reset_deasserted=false; return 0;
+}
+static void udelay(unsigned n) { CHECK(n==2); }
 static int sunxi_nfc_rst(struct sunxi_nfc *n) { return fail("controller-reset")?-ETIMEDOUT:0; }
 static void writel(unsigned v,void *p) { *(unsigned *)p=v; }
 static int sunxi_nfc_interrupt(int irq,void *p) { return 0; }

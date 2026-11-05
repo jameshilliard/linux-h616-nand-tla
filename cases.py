@@ -171,3 +171,6 @@ extend_recovery_expansion(MODULES, add, mutation)
 
 from private_recovery_cases import extend_private_recovery
 extend_private_recovery(MODULES, add, mutation)
+
+from streaming_recovery_cases import extend_streaming_recovery
+extend_streaming_recovery(MODULES, add, mutation)

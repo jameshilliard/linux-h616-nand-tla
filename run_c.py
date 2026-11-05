@@ -120,6 +120,7 @@ def main():
     from compat_sources import generate
     compat, compat_hashes = generate(HERE)
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
+                f'#define STREAMING_RECOVERY {int("bool recovery_failed;" in source and "sunxi_nfc_dma_release(" not in source)}\n' +
                 '#line 1 "fixtures.h"\n' + (HERE / "tests/fixtures.h").read_text() + "\n" +
                 "\n".join(generated) + '\n#line 1 "compat-source.c"\n' + compat +
                 '\n#line 1 "check-tests.c"\n' + (HERE / "tests/check.c").read_text() +

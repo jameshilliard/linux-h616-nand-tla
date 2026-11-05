@@ -11,11 +11,13 @@ from hardware.test_safety import BackupSafety
 from hardware.test_reset import ResetEvidence
 from hardware.test_native_abort import NativeAbortEvidence
 from hardware.test_direct import DirectEvidence
+from hardware.test_streaming_implementation import StreamingImplementationEvidence
 from codec_oracle import scramble
 from hardware.replay_extended import replay
 from hardware.replay_reset import replay as replay_reset
 from hardware.replay_native_abort import replay as replay_native_abort
 from hardware.replay_direct import replay as replay_direct
+from hardware.streaming_implementation import CAPTURE as STREAMING_CAPTURE, check as check_streaming
 
 HERE = Path(__file__).resolve().parent
 
@@ -80,7 +82,7 @@ def main():
     print(f'{checks} captured hardware checks replayed; 72 stream digests each measured on three pages')
     tests = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case)
                                for case in (BackupSafety, ResetEvidence, NativeAbortEvidence,
-                                            DirectEvidence))
+                                            DirectEvidence, StreamingImplementationEvidence))
     result = unittest.TextTestRunner().run(tests)
     if not result.wasSuccessful():
         raise SystemExit(1)
@@ -88,6 +90,8 @@ def main():
     replay_reset(HERE / 'hardware/h616-reset-20261104.json')
     replay_native_abort()
     replay_direct()
+    check_streaming(json.loads(STREAMING_CAPTURE.read_text()))
+    print('Final streaming implementation: 680 native reads, abort/retry, guards and delayed-write checks passed')
     print('No board access. Passing replay does not validate unmeasured hardware contracts.')
 
 

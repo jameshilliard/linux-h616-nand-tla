@@ -79,7 +79,8 @@ def main():
     hashes = {}
     functions = chunk_functions(source) + FUNCTIONS
     recovery_fixed = 'bool recovery_failed;' in source
-    if recovery_fixed:
+    streaming_recovery = recovery_fixed and 'sunxi_nfc_dma_release(' not in source
+    if recovery_fixed and not streaming_recovery:
         functions = functions + ['sunxi_nfc_dma_release']
     for name in functions:
         if name == "sunxi_nfc_exec_op":
@@ -101,10 +102,12 @@ def main():
         fixture_inputs["recovery_trace.c"] = (HERE / "tests/recovery_trace.c").read_text()
         tests = tests.replace("/* @recovery-traces@ */", fixture_inputs["recovery_trace.c"])
     if recovery_fixed:
-        fixture_inputs['abort_recovery.c'] = (HERE/'tests/abort_recovery.c').read_text()
-        tests = tests.replace('/* @abort-recovery@ */', fixture_inputs['abort_recovery.c'])
+        recovery_test = 'streaming_recovery.c' if streaming_recovery else 'abort_recovery.c'
+        fixture_inputs[recovery_test] = (HERE/'tests'/recovery_test).read_text()
+        tests = tests.replace('/* @abort-recovery@ */', fixture_inputs[recovery_test])
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
                 f'#define FIXED_ABORT {int(recovery_fixed)}\n' +
+                f'#define STREAMING_RECOVERY {int(streaming_recovery)}\n' +
                 f'#define FIXED_COUNT {int(args.expect_count_fixed)}\n' +
                 f'#define RECOVERY_TRACES {int(args.recovery_traces)}\n' +
                 '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +

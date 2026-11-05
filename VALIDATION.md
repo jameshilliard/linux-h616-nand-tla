@@ -1,3 +1,24 @@
+# Current streaming-recovery validation
+
+The current 25-patch v10 draft uses streaming DMA data buffers and requires
+H616 AHB reset retirement before returning an aborted transfer's memory.
+The [implementation report](docs/H616-STREAMING-IMPLEMENTATION.md) records
+the source digest, exact commits, failure policy and hardware limitations.
+
+The new model matched all 28 expected outcomes: 17 positive configurations,
+seven mutation counterexamples and four hardware/availability witnesses.
+All 16 source/hardware-fixture suite jobs passed against the current driver;
+the final live test performed 680 read-only observations, including 128
+injected abort/retries and 400 stress reads. All data/OOB comparisons and
+delayed-write checks passed, with no ECC corrections or failures. Flash
+backups were unchanged and normal boot was restored. The public capture
+also passes its replayer and 19 deliberate evidence-corruption checks.
+
+Successful API return is not a proof of physical bus retirement, and finite
+hardware waits cannot exclude arbitrarily late writes. Permanent reset
+assertion failure deliberately retains the request and mapping indefinitely.
+Earlier validation records below retain their original source snapshots.
+
 # Initial validation record
 
 Validated on 2026-11-03 against the posted 18-patch NAND OOB v9 implementation.

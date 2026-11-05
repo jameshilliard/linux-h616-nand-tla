@@ -13,6 +13,7 @@ static u16 shift_n(u16 s,unsigned n) { while(n--) s=shift_bit(s); return s; }
 static u16 stream_state;
 static u32 readl(const void *p)
 {
+    assert(!hw.reset_held);
     unsigned off=regoff(p);
     hw.reads++;
     if (off==NFC_REG_CTL && (load(off)&NFC_RESET) && !hw.reset_fail) {
@@ -29,6 +30,7 @@ static u32 readl(const void *p)
 }
 static void writel(u32 value, void *p)
 {
+    assert(!hw.reset_held);
     unsigned off=regoff(p);
     hw.writes++; hw.serial++;
     hw.reg_writes[off/4]++;

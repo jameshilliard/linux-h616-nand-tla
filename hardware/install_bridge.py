@@ -29,6 +29,7 @@ hooks = {
     'sunxi_nfc_hw_ecc_write_subpage': ('\tret = nand_prog_page_begin_op(nand, page, 0, NULL, 0);', 1),
 }
 declaration = 'static u32 sunxi_nfc_lab_counts[4];\n\n'
+private_decl = '#define SUNXI_NFC_LAB_PRIVATE_BUFFER\n'
 include = '\n#include "sunxi_nand_lab.h"\n'
 fault_decl = '''#define SUNXI_NFC_LAB_ABORT_RECOVERY
 static bool sunxi_nfc_lab_timeout_armed;
@@ -51,6 +52,7 @@ if a.remove:
     if text.count(declaration) != 1 or not text.endswith(include):
         raise SystemExit('unrecognized diagnostic instrumentation')
     text = text.removesuffix(include).replace(declaration, '', 1)
+    text = text.replace(private_decl, '', 1)
     if fault_decl in text:
         if text.count(fault_hook) != 1:
             raise SystemExit('unexpected fault hook count')
@@ -71,7 +73,9 @@ if a.expected_source_sha256 and hashlib.sha256(text.encode()).hexdigest() != a.e
     raise SystemExit('source hash mismatch; no file changed')
 if a.abort_recovery:
     if 'bool recovery_failed;' not in text:
-        raise SystemExit('requires the private-buffer abort-recovery candidate')
+        raise SystemExit('requires the H616 abort-recovery candidate')
+    if 'void *mdma_buf;' in text or '\tvoid *mdma_buf;' in text:
+        text = private_decl + text
     text = text.replace('static int sunxi_nfc_wait_events(', fault_decl +
                         'static int sunxi_nfc_wait_events(', 1)
     marker = '\tif (events & ~NFC_INT_MASK)'

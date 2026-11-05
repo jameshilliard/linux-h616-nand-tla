@@ -73,6 +73,7 @@ def main():
         tests = ('#define main lifecycle_main\n' + tests + '\n#undef main\n' +
                  (HERE / "tests/probe_trace.c").read_text())
     (out / "check.c").write_text(f'#define FIXED_TIMING {int(bool(args.candidate_nand_base))}\n' +
+        f'#define MANDATORY_RESET {int("devm_reset_control_get_exclusive(dev" in sources["sunxi_nand.c"])}\n' +
         f'#define FILTERED_CHILDREN {int(args.expect_available_children)}\n' +
         f'#define DEFERRED_PUBLICATION {int(args.expect_deferred_publication)}\n' +
         fixture + "\n" + "\n".join(bodies) +

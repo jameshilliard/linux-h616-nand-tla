@@ -96,9 +96,9 @@ in every later batch. The recovery model now varies stop and bus-reset
 retirement guarantees independently; the physical post-abort anomaly remains
 unresolved.
 
-The [H616 abort-recovery implementation](docs/H616-ABORT-RECOVERY.md) adds two
-independently reviewable patches before the optimizations and format work,
-making the current draft 26 patches. Controller-owned DMA storage and an
+The historical [H616 private-buffer implementation](docs/H616-ABORT-RECOVERY.md)
+added two patches before the optimizations and format work, producing a
+26-patch draft. Controller-owned DMA storage and an
 H616-specific AHB reset address the observed first-read corruption; failed
 recovery blocks further I/O and retains unsafe DMA allocations. The actual
 driver passed 192 injected read-abort/retry trials and 2,000 subsequent stress
@@ -111,9 +111,20 @@ The subsequent [streaming-DMA investigation](docs/H616-DIRECT-DMA.md) tests
 whether the full-size private coherent data buffer is necessary. Read-only
 H616 measurements cover immediate buffer reuse, observable late-write controls,
 actual ECC abort/retry, and a corrected-ECC outlier with follow-up stress.
-The kernel draft is unchanged. Nine added model configurations distinguish
-safe direct DMA after retirement from missing/failed-reset lifetime failures;
+That investigation left the kernel draft unchanged. Nine added model
+configurations distinguish safe direct DMA after retirement from
+missing/failed-reset lifetime failures;
 the reset's physical retirement contract remains explicit.
+
+The [streaming-buffer implementation](docs/H616-STREAMING-IMPLEMENTATION.md)
+then folds recovery into one patch, producing a **25-patch v10 draft**. It
+requires an exclusive AHB reset, retains caller mappings until completion or
+reset retirement, and releases mappings without MMIO after failed deassertion.
+The full-size private coherent data allocation and per-transfer copies are
+gone; the small coherent descriptor remains. A permanently failing assertion
+retains the request rather than returning memory to its caller. The new
+28-case model and actual-source error tests keep this availability limit and
+the physical retirement assumption explicit.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -210,7 +221,8 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandProgram` | Finite partial-program budgets, bit monotonicity, erase, torn programs and no implicit write replay |
 | `NandRecovery` | Backend stop, outstanding bus transactions, IRQ drain and late controller completion are separate obligations |
 | `NandPostAbortRequest` | Post-abort internal data ordering, separate CMD/DMA completion, ECC status versus delivered bytes, continuation policies and conditional recovery across two requests |
-| `NandPrivateRecovery` | Implemented H616 private-buffer lifetime, IRQ/reset ordering, failed-recovery closure, context restoration and no write replay; explicit weaker-reset counterexamples |
+| `NandPrivateRecovery` | Historical H616 private-buffer policy, IRQ/reset ordering, failed-recovery closure, context restoration and no write replay; explicit weaker-reset counterexamples |
+| `NandStreamingRecovery` | Current caller-buffer policy: mandatory reset, mapped ownership during retries, safe held-reset cleanup, no write replay and explicit permanent-failure availability limit |
 | `NandRecoverySequence` | Complete recovery-step ordering, failed reset/context restore, PIO error reuse, persistent device events and candidate quarantine |
 | `NandSramPlacement` | Rotated/oversized post-abort SRAM placement, failed-prefix copying and fresh subsequent request bytes |
 | `NandProgramRecovery` | Staging versus confirm/array effects, ambiguous program completion, partial media, failed NAND reset and no rollback assumptions |

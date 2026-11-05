@@ -1,5 +1,12 @@
 # Restricted H616 hardware diagnostic
 
+For the current streaming-buffer recovery implementation, see its
+[implementation and hardware record](../docs/H616-STREAMING-IMPLEMENTATION.md).
+`install_bridge.py --abort-recovery` supports both the historical private-buffer
+candidate and the current streaming candidate. On the latter, modes 1 and 2
+both exercise the existing streaming path; no private buffer pointer exists
+to override. Keep each capture tied to its original uninstrumented source hash.
+
 This is a dangerous board-specific diagnostic, not a general MTD utility or
 upstream driver patch. Read the [measurement report](../docs/HARDWARE-MEASUREMENTS-20261104.md).
 

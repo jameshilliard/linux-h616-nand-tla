@@ -1,6 +1,14 @@
 # Current sunxi driver verification
 
-## Current integration (2026-11-04, reviewability update)
+## Current integration: streaming DMA recovery
+
+The 25-patch v10 draft ends at `f9d1d60fc9aa`. Its driver digest is
+`183c5ff0ad786560110def4fd836bb42b40ff5eb884f1d633496c79e3d17f282`.
+The [streaming implementation report](H616-STREAMING-IMPLEMENTATION.md)
+supersedes the private-buffer recovery draft and records current checks.
+Earlier source/coverage totals below retain their original snapshots.
+
+## Previous integration (2026-11-04, reviewability update)
 
 The 24-patch v10 draft now ends at `8a14d3e441eb`. Its driver digest is
 `932f8d879868b5e80fd2441b8873a4c79d4182dc239b99e72c8937b53e996aaa`.

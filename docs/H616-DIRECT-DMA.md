@@ -1,5 +1,9 @@
 # H616 streaming DMA and reset retirement
 
+This is the investigation record, preceding the
+[streaming-buffer implementation](H616-STREAMING-IMPLEMENTATION.md). Statements
+about the unchanged draft below refer to this experiment's original snapshot.
+
 This investigation separates two questions: whether AHB reset repairs the
 [observed post-abort data-path anomaly](POST-ABORT-DATAPATH.md), and whether
 the data target needs to be a private coherent allocation. The v10 kernel

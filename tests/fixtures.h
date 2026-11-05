@@ -165,12 +165,13 @@ static unsigned mmio_reads[0x1000 / 4], mmio_writes[0x1000 / 4];
 static unsigned raw_calls, fail_raw_at, erased_flips, column, page_reads, column_reads;
 static unsigned plain_read_calls, random_read_calls;
 static bool raw_is_erased;
-/* Ordered fault points in extracted page/control functions. These fixtures
- * assume successful DMA termination; NandTransfer checks that assumption. */
+/* Ordered fault points in extracted page/control functions. The abort stub
+ * models retirement followed by optional deassert failure; the low-level
+ * runner separately executes the real reset/retirement helper. */
 enum flow_point { FP_NONE, FP_FIFO, FP_PREPARE, FP_BEGIN, FP_COLUMN,
                   FP_BUFFER, FP_WAIT, FP_CONFIRM, FP_READ };
 static struct {
-    bool enabled, mapped, active, ecc, random;
+    bool enabled, mapped, active, ecc, random, abort_failure, reset_held;
     unsigned calls, fail_at, begins, confirms, issued, dma_issued, prepares, aborts;
     unsigned issued_at_failure;
     enum flow_point failure;
@@ -192,6 +193,7 @@ static const void *memchr_inv(const void *data, int value, size_t n) {
     return NULL;
 }
 static u32 readl(const void *p) {
+    assert(!flow.reset_held);
     ptrdiff_t off = (const u8 *)p - controller.regs;
     u32 v;
     assert(off >= 0 && off + 4 <= (ptrdiff_t)sizeof(controller.regs) && !(off % 4));
@@ -200,6 +202,7 @@ static u32 readl(const void *p) {
     return v;
 }
 static void writel(u32 v, void *p) {
+    assert(!flow.reset_held);
     ptrdiff_t off = (u8 *)p - controller.regs;
     assert(off >= 0 && off + 4 <= (ptrdiff_t)sizeof(controller.regs) && !(off % 4));
     mmio_writes[off / 4]++;
@@ -239,6 +242,7 @@ static int transfer(struct nand_chip *n, unsigned col, void *dst, unsigned len) 
 }
 static int nand_read_page_op(struct nand_chip *n, unsigned page,
                             unsigned col, void *dst, unsigned len) {
+    if (flow.reset_held) return -EIO;
     page_reads++;
     return transfer(n, col, dst, len);
 }
@@ -290,6 +294,11 @@ static int sunxi_nfc_dma_op_prepare(struct sunxi_nfc *n, const void *buf,
 static int sunxi_nfc_dma_op_abort(struct sunxi_nfc *n) {
     flow.aborts++;
     flow.active = false;
+    if (flow.abort_failure) {
+        flow.reset_held=true;
+        flow.ecc=flow.random=false;
+        return -EIO;
+    }
     return 0;
 }
 static void dma_rmb(void) { }
@@ -300,15 +309,18 @@ static void sunxi_nfc_dma_op_cleanup(struct sunxi_nfc *n, int dir,
 }
 static void dma_async_issue_pending(void *dmac) { assert(flow.mapped); }
 static int select_error;
-static int sunxi_nfc_select_chip(struct nand_chip *n, unsigned cs) { return select_error; }
+static int sunxi_nfc_select_chip(struct nand_chip *n, unsigned cs)
+{ return flow.reset_held ? -EIO : select_error; }
 static void sunxi_nfc_hw_ecc_enable(struct nand_chip *n) {
     assert(!flow.ecc);
     flow.ecc = true;
 }
-static void sunxi_nfc_hw_ecc_disable(struct nand_chip *n) { flow.ecc = false; }
+static void sunxi_nfc_hw_ecc_disable(struct nand_chip *n)
+{ assert(!flow.reset_held); flow.ecc = false; }
 static void sunxi_nfc_randomizer_config(struct nand_chip *n, int page, bool ecc) { }
 static void sunxi_nfc_randomizer_enable(struct nand_chip *n) { flow.random = true; }
-static void sunxi_nfc_randomizer_disable(struct nand_chip *n) { flow.random = false; }
+static void sunxi_nfc_randomizer_disable(struct nand_chip *n)
+{ assert(!flow.reset_held); flow.random = false; }
 static int nand_prog_page_begin_op(struct nand_chip *n, int page, unsigned col,
                                    const void *data, unsigned len) {
     flow.begins++;
