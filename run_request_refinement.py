@@ -113,7 +113,7 @@ def generate(candidate):
     replacements={
         "sunxi_nfc_wait_cmd_fifo_empty":"return request_fifo();",
         "sunxi_nfc_wait_events":"int ret=request_wait(events,poll,ms); if(!ret) flow.active=false; return ret;",
-        "sunxi_nfc_dma_op_abort":"request_abort(); flow.active=false;",
+        "sunxi_nfc_dma_op_abort":"request_abort(); flow.active=false; return 0;",
         "sunxi_nfc_dma_op_cleanup":"request_cleanup(dir); flow.mapped=false;",
         "sunxi_nfc_dma_op_prepare":
             "int ret=request_prepare(buf,size,count,direction); sg->len=size*count; "

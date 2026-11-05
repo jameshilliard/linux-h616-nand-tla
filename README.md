@@ -35,7 +35,7 @@ availability and scanning a second chip while the first MTD is already usable.
 They reproduce two independent probe-path defects in the original snapshots.
 Filtering and deferred-publication fixes are checked separately and together
 against the pre-series NAND base, and are now carried as patches 18 and 19
-of the 24-patch sunxi v10 draft. The source fixtures also test partial
+of the earlier 24-patch sunxi v10 draft. The source fixtures also test partial
 registration cleanup and require deliberate regressions to fail. Fixes outside
 the sunxi NAND driver retain separate submission branches.
 The [probe trace checker](docs/PROBE-TRACE-CONFORMANCE.md) now feeds actual
@@ -91,6 +91,17 @@ fixtures validate programmed user-data registers, each DMA batch and failures
 in every later batch. The recovery model now varies stop and bus-reset
 retirement guarantees independently; the physical post-abort anomaly remains
 unresolved.
+
+The [H616 abort-recovery implementation](docs/H616-ABORT-RECOVERY.md) adds two
+independently reviewable patches before the optimizations and format work,
+making the current draft 26 patches. Controller-owned DMA storage and an
+H616-specific AHB reset address the observed first-read corruption; failed
+recovery blocks further I/O and retains unsafe DMA allocations. The actual
+driver passed 192 injected read-abort/retry trials and 2,000 subsequent stress
+reads, with every SPL backup restored. A new 41-case policy model, exact-helper
+error checks and sanitized capture replay retain explicit limits on failed
+silicon reset, older controllers and performance. Earlier reports remain
+historical records, including their original unresolved findings.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -185,6 +196,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandProgram` | Finite partial-program budgets, bit monotonicity, erase, torn programs and no implicit write replay |
 | `NandRecovery` | Backend stop, outstanding bus transactions, IRQ drain and late controller completion are separate obligations |
 | `NandPostAbortRequest` | Post-abort internal data ordering, separate CMD/DMA completion, ECC status versus delivered bytes, continuation policies and conditional recovery across two requests |
+| `NandPrivateRecovery` | Implemented H616 private-buffer lifetime, IRQ/reset ordering, failed-recovery closure, context restoration and no write replay; explicit weaker-reset counterexamples |
 | `NandRecoverySequence` | Complete recovery-step ordering, failed reset/context restore, PIO error reuse, persistent device events and candidate quarantine |
 | `NandSramPlacement` | Rotated/oversized post-abort SRAM placement, failed-prefix copying and fresh subsequent request bytes |
 | `NandProgramRecovery` | Staging versus confirm/array effects, ambiguous program completion, partial media, failed NAND reset and no rollback assumptions |

@@ -168,3 +168,6 @@ extend_post_abort(MODULES, add, mutation)
 
 from recovery_expansion_cases import extend_recovery_expansion
 extend_recovery_expansion(MODULES, add, mutation)
+
+from private_recovery_cases import extend_private_recovery
+extend_private_recovery(MODULES, add, mutation)

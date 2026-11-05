@@ -119,6 +119,7 @@ struct caps {
     bool (*spare_is_erased)(struct nand_chip *, const u8 *, int);
 };
 struct sunxi_nfc {
+    void *mdma_buf;
     u8 regs[0x1000];
     struct caps *caps;
     void *dev;
@@ -286,10 +287,12 @@ static int sunxi_nfc_dma_op_prepare(struct sunxi_nfc *n, const void *buf,
     flow.mapped = true;
     return 0;
 }
-static void sunxi_nfc_dma_op_abort(struct sunxi_nfc *n) {
+static int sunxi_nfc_dma_op_abort(struct sunxi_nfc *n) {
     flow.aborts++;
     flow.active = false;
+    return 0;
 }
+static void dma_rmb(void) { }
 static void sunxi_nfc_dma_op_cleanup(struct sunxi_nfc *n, int dir,
                                    struct scatterlist *sg) {
     assert(flow.mapped && !flow.active);

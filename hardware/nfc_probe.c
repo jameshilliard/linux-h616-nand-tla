@@ -202,7 +202,7 @@ static int validate(const struct probe_request *r)
 {
 	if (poisoned)
 		return -EIO;
-	if (r->op > PROBE_RESET_FOLLOWUP || r->op == 22 || r->op == 23 ||
+	if (r->op > PROBE_ABORT_NATIVE_READ || r->op == 22 || r->op == 23 ||
 	    r->flags & ~127U || r->seed > 0x7fff)
 		return -EINVAL;
 	if (r->op == PROBE_INFO || r->op == PROBE_BANKS)
@@ -248,6 +248,12 @@ static int validate(const struct probe_request *r)
 	if (r->op == PROBE_RESET_FOLLOWUP) {
 		if (!allow_recovery || r->page < FIRST_PAGE || r->column ||
 		    r->length != 2048 || r->chunk > 1024 || r->flags > 3)
+			return -EPERM;
+		return no_attached_ubi();
+	}
+	if (r->op == PROBE_ABORT_NATIVE_READ) {
+		if (!allow_recovery || r->page < FIRST_PAGE || r->column ||
+		    r->length != 2048 || r->chunk > 10000 || r->flags || r->seed)
 			return -EPERM;
 		return no_attached_ubi();
 	}
@@ -597,7 +603,12 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 		ret = pio_ecc_read(r);
 		break;
 	case PROBE_NATIVE_READ ... PROBE_NATIVE_RAW_WRITE:
+	case PROBE_ABORT_NATIVE_READ:
 		ret = native_request(r);
+		if (r->regs[15] & BIT(31)) {
+			poisoned = true;
+			__module_get(THIS_MODULE);
+		}
 		break;
 	case PROBE_RECOVERY:
 		ret = recovery_test(r);
@@ -662,9 +673,10 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 		r->regs[3] = readl(regs + ST);
 		break;
 	}
-	if (r->op == PROBE_ECC_READ || r->op == PROBE_ECC_WRITE ||
+	if (!poisoned && (r->op == PROBE_ECC_READ || r->op == PROBE_ECC_WRITE ||
 	    r->op == PROBE_ACTUAL_SUBREAD || r->op == PROBE_MASKED_NATIVE_READ ||
-	    (r->op >= PROBE_NATIVE_READ && r->op <= PROBE_NATIVE_RAW_WRITE)) {
+	    r->op == PROBE_ABORT_NATIVE_READ ||
+	    (r->op >= PROBE_NATIVE_READ && r->op <= PROBE_NATIVE_RAW_WRITE))) {
 		r->regs[0] = master->ecc_stats.corrected - corrected;
 		r->regs[1] = master->ecc_stats.failed - failed;
 		r->regs[2] = readl(regs + ECC_ST);

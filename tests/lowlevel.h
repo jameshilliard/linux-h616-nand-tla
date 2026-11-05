@@ -57,7 +57,7 @@ struct dma_async_tx_descriptor { int unused; };
 struct completion { bool done; };
 struct sunxi_nfc_timings { u8 setup_cycles; s32 tWB[4], tADL[4], tWHR[4], tRHW[4]; };
 struct sunxi_nfc_caps {
-    bool has_mdma, has_mdma_desc, has_ecc_block_512;
+    bool has_mdma, has_mdma_desc, has_ecc_block_512, needs_bus_reset;
     unsigned reg_spare_area, random_en_mask;
     unsigned reg_ecc_err_cnt, reg_user_data, reg_user_data_len, reg_pat_found;
     unsigned random_dir_mask, ecc_mode_mask, ecc_err_mask, pat_found_mask;
@@ -72,6 +72,10 @@ struct sunxi_nfc {
     bool use_mdma;
     struct sunxi_nfc_mdma_desc *mdma_desc;
     dma_addr_t mdma_desc_dma;
+    void *mdma_buf, *reset;
+    dma_addr_t mdma_buf_dma;
+    size_t mdma_buf_size;
+    bool recovery_failed, dma_unsafe;
     unsigned long clk_rate;
     int irq;
     struct completion complete;
@@ -133,6 +137,8 @@ static struct {
     bool mapped, active, irq_disabled, fifo_busy, published, unsafe;
     bool outstanding_bus, retain_stop_bus;
     bool mask_fail, alloc_fail, enforce_dma_mask;
+    bool bus_assert_fail, bus_deassert_fail, buffer_alloc_fail;
+    unsigned bus_asserts, bus_deasserts, frees, allocs;
     int channel_error, config_error;
     u64 dma_mask;
     int wait_mode, clock_set_error;
@@ -142,6 +148,7 @@ static struct {
     unsigned clock_calls, soft_wait_ms;
 } hw;
 static struct dma_async_tx_descriptor descriptor;
+static u8 coherent_buffer[32768];
 static irqreturn_t sunxi_nfc_interrupt(int, void *);
 static u32 readl(const void *p);
 static void writel(u32 value, void *p);
@@ -201,6 +208,20 @@ static int dmaengine_terminate_all(void *c)
     return 0;
 }
 static void dma_wmb(void) { hw.barrier=++hw.serial; }
+static void dma_rmb(void) { }
+static void udelay(unsigned n) { assert(n == 2); }
+static int reset_control_assert(void *r)
+{
+    assert(r); hw.bus_asserts++;
+    if (hw.bus_assert_fail) return -EIO;
+    hw.active=hw.outstanding_bus=false;
+    return 0;
+}
+static int reset_control_deassert(void *r)
+{
+    assert(r); hw.bus_deasserts++;
+    return hw.bus_deassert_fail ? -EIO : 0;
+}
 struct resource { u64 start; };
 struct dma_slave_config {
     u64 src_addr, dst_addr;
@@ -217,6 +238,23 @@ static void *dmam_alloc_coherent(void *dev,size_t n,dma_addr_t *addr,int flags)
     *addr=hw.allocation_address;
     return &desc;
 }
+static void *dma_alloc_coherent(void *dev,size_t n,dma_addr_t *addr,int flags)
+{
+    hw.allocs++;
+    if (n==sizeof(desc)) return dmam_alloc_coherent(dev,n,addr,flags);
+    assert(n==sizeof(coherent_buffer));
+    if (hw.buffer_alloc_fail) return NULL;
+    *addr=0x4000;
+    return coherent_buffer;
+}
+static void dma_free_coherent(void *dev,size_t n,void *buf,dma_addr_t addr)
+{
+    assert((buf==&desc && n==sizeof(desc)) ||
+           (buf==coherent_buffer && n==sizeof(coherent_buffer)));
+    hw.unsafe |= hw.active || hw.outstanding_bus;
+    hw.frees++;
+}
+static void dma_release_channel(void *c) { }
 static void *dma_request_chan(void *dev,const char *name)
 { assert(!strcmp(name,"rxtx")); return hw.channel_error ? (void *)(intptr_t)hw.channel_error : &descriptor; }
 static int dmaengine_slave_config(void *chan, const struct dma_slave_config *conf)

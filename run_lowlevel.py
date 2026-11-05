@@ -62,7 +62,7 @@ def main():
               "reg_io_data", "dma_maxburst", "sram_size", "timings", "max_ecc_steps",
               "reg_ecc_err_cnt", "reg_user_data", "reg_user_data_len", "reg_pat_found",
               "random_dir_mask", "ecc_mode_mask", "ecc_err_mask", "pat_found_mask",
-              "has_ecc_block_512")
+              "has_ecc_block_512", "needs_bus_reset")
     generated.append("static const struct sunxi_nfc_caps source_caps[] = {")
     for soc in ("a10", "a23", "h616"):
         match = re.search(r"^static const struct sunxi_nfc_caps sunxi_nfc_" + soc +
@@ -78,6 +78,9 @@ def main():
     generated.append("};")
     hashes = {}
     functions = chunk_functions(source) + FUNCTIONS
+    recovery_fixed = 'bool recovery_failed;' in source
+    if recovery_fixed:
+        functions = functions + ['sunxi_nfc_dma_release']
     for name in functions:
         if name == "sunxi_nfc_exec_op":
             start = source.index("static const struct nand_op_parser sunxi_nfc_op_parser")
@@ -97,7 +100,11 @@ def main():
     if args.recovery_traces:
         fixture_inputs["recovery_trace.c"] = (HERE / "tests/recovery_trace.c").read_text()
         tests = tests.replace("/* @recovery-traces@ */", fixture_inputs["recovery_trace.c"])
+    if recovery_fixed:
+        fixture_inputs['abort_recovery.c'] = (HERE/'tests/abort_recovery.c').read_text()
+        tests = tests.replace('/* @abort-recovery@ */', fixture_inputs['abort_recovery.c'])
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
+                f'#define FIXED_ABORT {int(recovery_fixed)}\n' +
                 f'#define FIXED_COUNT {int(args.expect_count_fixed)}\n' +
                 f'#define RECOVERY_TRACES {int(args.recovery_traces)}\n' +
                 '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +

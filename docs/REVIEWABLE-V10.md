@@ -1,5 +1,11 @@
 # Reviewable v10 and command-local tail decoding
 
+This records the earlier 24-patch snapshot. The subsequent
+[H616 abort-recovery update](H616-ABORT-RECOVERY.md) adds patches 20-21 and
+renumbers the optimization/binding/format tail to 22-26. Its physical results
+supersede the unresolved implementation status below; this record and its
+validation limits are preserved.
+
 The revised draft ends at `8a14d3e441eb` and keeps the NAND base
 `30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85`. Its driver SHA-256 is:
 

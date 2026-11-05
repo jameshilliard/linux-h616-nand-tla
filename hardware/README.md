@@ -182,3 +182,47 @@ After final restoration and unload with `finish_extended.py`, use
 `export_reset.py` to export only these synthetic matrices. It never reads
 original flash dumps. `run_hardware.py` replays the captured bytes offline
 and deliberately preserves the observed soft-reset failures.
+
+## Actual-driver abort recovery
+
+The [candidate recovery report](../docs/H616-ABORT-RECOVERY.md) uses a newer
+driver and the actual DMA-read timeout path rather than a separate diagnostic
+reset sequence. Preserve all backup, RAM-only, UBI-detachment and block-7
+authorization requirements above. Use a **fresh private evidence directory**;
+do not reuse another run's NAND backups.
+
+Build the kernel and module together after instrumenting the candidate:
+
+```sh
+python3 hardware/install_bridge.py /path/to/kernel-build --abort-recovery \
+    --expected-source-sha256 7f93090564302e65e251c48d7a700ec4d20b1b46e2a29d4f777e747f638348cc
+```
+
+After independent boot and fresh backup verification, load the module with
+both `allow_write=1` and `allow_recovery=1`. The write permission is needed
+to prepare synthetic pages and restore the scratch block; only reads are
+interrupted. The new operation arms one timeout after the real MDMA launch.
+
+```sh
+python3 hardware/run_native_abort.py --ram-only-confirmed --repeat 6 \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+python3 hardware/run_extended.py --ram-only-confirmed --phase stress \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+python3 hardware/finish_extended.py --directory /path/to/private-evidence \
+    ssh root@TEST_BOARD
+```
+
+A driver-recovery failure poisons the diagnostic module. Do not force unload
+or continue to access a controller held in reset; restore from independent
+boot after restoring hardware health. On successful testing, preserve images
+and source privately, remove the hooks with `install_bridge.py --remove` and
+the matching uninstrumented source hash, rebuild the ordinary integration
+kernel and return the board to its normal boot. A source directory newer than
+the build copy must be resynchronized explicitly if the build uses rsync's
+update-only policy.
+
+`export_native_abort.py` selects only synthetic fields and requires the exact
+192-trial matrix, 2,000 stress reads and final restoration checks. Review its
+output before publication. The recorded capture uses the pre-indentation
+hash documented in the report; a new source revision needs its own provenance
+and immutable capture, not a silent replacement of this run.

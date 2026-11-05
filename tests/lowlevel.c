@@ -136,6 +136,9 @@ static void reset_fixture(unsigned backend)
     assert(backend<ARRAY_SIZE(source_caps));
     hw.backend=backend;
     caps=source_caps[backend];
+    /* Keep the historical weak-stop controls explicit. The separate abort
+     * matrix below enables the real H616 recovery capability. */
+    caps.needs_bus_reset=false;
     /* Independent generation distinctions from the manuals/BSP. */
     assert(caps.has_mdma==(backend==1) && caps.has_mdma_desc==(backend==2));
     assert(caps.reg_io_data==(backend==0 ? 0x30 : 0x300));
@@ -950,6 +953,7 @@ static void recovery_refinement(void)
     printf("Recovery refinement: %u reselected contexts; %u failed-stop/unmap witnesses; one late-event contract witness\n",checks,failures);
 }
 /* @recovery-traces@ */
+/* @abort-recovery@ */
 int main(void)
 {
     dma_checks(); dma_init_checks(); dma_aperture_checks(); irq_checks(); raw_media_checks();
@@ -957,6 +961,9 @@ int main(void)
     selection_matrix();
     probe_context_interleaving();
     recovery_refinement();
+#if FIXED_ABORT
+    abort_recovery_checks();
+#endif
 #if RECOVERY_TRACES
     recovery_traces();
 #endif

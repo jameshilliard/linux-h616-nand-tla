@@ -35,6 +35,16 @@ int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r)
 	if (write)
 		nand->pagecache.page = -1;
 	switch (r->op) {
+#ifdef SUNXI_NFC_LAB_ABORT_RECOVERY
+	case PROBE_ABORT_NATIVE_READ:
+		sunxi_nfc_lab_timeout_delay = r->chunk;
+		sunxi_nfc_lab_timeout_armed = true;
+		ret = sunxi_nfc_hw_ecc_read_page_dma(nand, buf, 1, r->page);
+		if (sunxi_nfc_lab_timeout_armed)
+			ret = -ENODATA;
+		sunxi_nfc_lab_timeout_armed = false;
+		break;
+#endif
 	case PROBE_NATIVE_READ:
 		if (r->seed == 0)
 			ret = sunxi_nfc_hw_ecc_read_page(nand, buf, 1, r->page);
@@ -86,6 +96,10 @@ int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r)
 	if (!r->regs[14])
 		ret = -EOVERFLOW;
 	r->regs[15] = 0x10;
+#ifdef SUNXI_NFC_LAB_ABORT_RECOVERY
+	if (nfc->recovery_failed)
+		r->regs[15] |= BIT(31);
+#endif
 	kfree(allocation);
 	return ret;
 }

@@ -1570,3 +1570,78 @@ under `results/release-smoke-reviewable-v10-20261104/`. Executable inputs still
 match the complete suite, and the public additions pass whitespace, Python
 compilation and private-path/credential checks. Hosted CI execution is not
 claimed.
+
+# Implemented H616 DMA-abort recovery
+
+Validated on 2026-11-04 against the 26-patch v10 candidate ending at
+`6e32068f844984d63dc3ac213a45dd361a3ebb27`, with driver SHA-256
+`7f93090564302e65e251c48d7a700ec4d20b1b46e2a29d4f777e747f638348cc`.
+The integration branch and ordinary rebuilt kernel contain that exact driver.
+The [recovery report](docs/H616-ABORT-RECOVERY.md) records implementation,
+review boundaries, assumptions and the performance caveat.
+
+The final suite passes **72/72 jobs**, with executable inputs unchanged,
+in `results/suite-pk1751pf/`. Its 51 standard models meet **1,294/1,294**
+expectations; dedicated trace/ordering checks meet 278, for **1,572/1,572
+matched TLC outcomes**. Expected counterexamples are counted as matched
+expectations, not proofs that the corresponding weak policy is correct.
+An earlier complete run of the pre-indentation source also passed 72/72 in
+`results/suite-0wgt8i8a/`.
+
+- `NandPrivateRecovery`: **41/41**, consisting of 32 positive cases, three
+  weakened-hardware-contract witnesses and six policy mutation controls.
+  Positive cases check the named safety invariants and termination.
+- Actual-source low-level checks pass in `results/lowlevel-taunvrm_/`,
+  including 24 new direction/chip/reset-error cases, repeated recovery,
+  private-buffer ownership, allocation unwind and unsafe-memory retention.
+  ASan/UBSan and coverage executions agree.
+- Actual page tests pass in `results/c-4034f8bt/`; lifecycle tests pass in
+  `results/lifecycle-trzwi9yv/`. Historical weak-stop trace fixtures retain
+  their explicit capability override; they are not presented as refinement
+  of the new H616 policy. The separate exact-helper matrix uses the real
+  candidate's H616 capability.
+- Offline hardware replay passes all captured matrices and 14 unit tests,
+  including twelve deliberate mutations of the new abort capture.
+
+The board passed **192 actual-driver injected read-abort/retry trials**,
+with **576 matched read observations**, and **2,000 separate alternating
+PIO/MDMA stress reads**. Each recovery reported no corrected/failed ECC,
+exactly one PIO retry and intact caller guards. Synthetic writes were checked
+against independent BCH/LFSR stored-byte encoding. All four original SPL
+copies were restored and independently verified, the diagnostic module was
+unloaded, and an ordinary 32 MiB MTD read passed. The board subsequently
+booted its normal image. No program/erase operation was interrupted.
+
+The image used source hash
+`42b063bbdafd7ca5b1b592c411df84c8a7fcd7d2896b279c78775b195572df7a`
+plus test-only counters and a one-shot timeout hook. Only two continuation
+indents differ from the final uninstrumented driver. After preserving the
+diagnostic artifacts privately, the hooks were removed and the normal
+integration kernel was rebuilt successfully with the final exact source.
+The public capture contains only synthetic hashes, counters and restoration
+booleans; private flash contents, credentials and machine paths are excluded.
+
+The first 19 series prefix trees are unchanged from the previously built
+draft. Changed prefixes 20-26 each pass ARM32 and ARM64 `W=1` driver builds,
+14 additional clean object builds. Final indentation-only adjustments pass
+strict checkpatch; all **26 patches** have zero checkpatch errors, warnings
+or checks. Export produces 27 messages. The audit verifies every previous
+patch's added/deleted lines, author metadata and commit message unchanged,
+including the context-only adaptation of the status-caching patch. Historical
+v1-v9 changelogs match the sent record verbatim, user sign-offs occur once per
+patch, and no external prerequisite is introduced. No patch mail was sent.
+
+An archive of the staged release passes hardware replay plus both pinned
+and candidate low-level checks under
+`results/release-smoke-abort-20261104.Z2ZWAX/`. Independent pinned low-level
+and request-trace runs also pass in `results/lowlevel-qke9v9jc/` and
+`results/tlc-_wkr7u7r/`; the latter meets 25/25 expected outcomes. Public
+additions pass Python parsing, JSON parsing, whitespace and private-information
+checks. Hosted CI execution is not claimed.
+
+Missing-reset and reset-API errors are host-injected, not induced CCU failures
+on the physical board. A genuinely wedged interconnect and universal DMA
+retirement remain unproved hardware contracts. The private coherent buffer
+adds a copy per DMA batch; initial reads were slower than the older normal
+image, but this was not a controlled patch-only comparison. Neither full
+silicon proof nor unchanged performance is claimed.

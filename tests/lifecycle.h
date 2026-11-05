@@ -424,5 +424,9 @@ static int devm_request_irq(struct device *d,int i,int (*f)(int,void *),int a,co
 static int sunxi_nfc_dma_init(struct sunxi_nfc *n,struct resource *r)
 { if (fail("dma-init")) return -EPROBE_DEFER; if (external_dma) { n->dmac=(void *)1; dma_live++; } return 0; }
 static void dma_release_channel(void *p) { CHECK(dma_live); dma_live--; }
+/* Allocation/free and failed-engine retention are exercised with the exact
+ * helper in run_lowlevel.py; lifecycle tests use external DMA only. */
+static void sunxi_nfc_dma_release(struct sunxi_nfc *n)
+{ if(n->dmac) dma_release_channel(n->dmac); }
 static void platform_set_drvdata(struct platform_device *p,void *d) { p->data=d; }
 static void *platform_get_drvdata(struct platform_device *p) { return p->data; }
