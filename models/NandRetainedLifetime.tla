@@ -49,7 +49,7 @@ DropInitial == /\ s.remove=2
     /\ s'=[s EXCEPT !.driver=FALSE,!.remove=3]
 Teardown == /\ s.remove=3
     /\ s'=[s EXCEPT !.hardware=FALSE,!.remove=4,
-                     !.badHardware=@ \/ s.active # {}]
+         !.badHardware=@ \/ (\E u \in s.active:s.pc[u]="read-unlock")]
 \* Device 1 embeds the master, retained separately by life_refcnt. For deeper
 \* partitions the child holds its parent's device reference through release.
 DeviceRelease == \E d \in s.devices:
