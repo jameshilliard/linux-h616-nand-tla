@@ -2,10 +2,13 @@
 
 ## Current integration: streaming DMA recovery
 
-The 25-patch v10 draft ends at `f9d1d60fc9aa`. Its driver digest is
-`183c5ff0ad786560110def4fd836bb42b40ff5eb884f1d633496c79e3d17f282`.
-The [streaming implementation report](H616-STREAMING-IMPLEMENTATION.md)
-supersedes the private-buffer recovery draft and records current checks.
+The 25-patch v10 draft ends at `56d96fe94ff7`. Its driver digest is
+`102b942b18d37e37f6f6dd605233da79149e2fbff61f38daf25acde75f0ce676`.
+The [reset error policy report](H616-RESET-ERROR-POLICY.md) records current
+checks and the explicit H616 provider/hardware assumptions. It replaces the
+indefinite assertion retry with error propagation and rejection of further I/O.
+The [streaming implementation capture](H616-STREAMING-IMPLEMENTATION.md)
+retains its original source digest and hardware results.
 Earlier source/coverage totals below retain their original snapshots.
 
 ## Previous integration (2026-11-04, reviewability update)

@@ -9,7 +9,6 @@
 #include <string.h>
 #include <errno.h>
 #include <endian.h>
-#include <setjmp.h>
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -140,7 +139,7 @@ static struct {
     bool mask_fail, alloc_fail, enforce_dma_mask;
     bool bus_assert_fail, bus_deassert_fail, buffer_alloc_fail;
     unsigned bus_asserts, bus_deasserts, frees, allocs;
-    unsigned bus_assert_failures, retry_sleeps;
+    int bus_assert_error;
     bool reset_held;
     int channel_error, config_error;
     u64 dma_mask;
@@ -161,7 +160,6 @@ static void memcpy_fromio(void *dst, const void *src, size_t n);
 static void (*recovery_observe)(const char *, int);
 static unsigned (*recovery_wait)(struct completion *);
 static void (*recovery_drain)(void);
-static void (*recovery_retry)(void);
 #define RECOVERY_EVENT(kind, value) do { \
     if (recovery_observe) recovery_observe(kind, value); \
 } while (0)
@@ -214,17 +212,11 @@ static int dmaengine_terminate_all(void *c)
 static void dma_wmb(void) { hw.barrier=++hw.serial; }
 static void dma_rmb(void) { }
 static void udelay(unsigned n) { assert(n == 2); }
-static void msleep(unsigned n)
-{
-    assert(n == 1000);
-    hw.retry_sleeps++;
-    if (recovery_retry) recovery_retry();
-}
 static int reset_control_assert(void *r)
 {
     assert(r); hw.bus_asserts++;
     if (hw.bus_assert_fail) return -EIO;
-    if (hw.bus_assert_failures) { hw.bus_assert_failures--; return -EIO; }
+    if (hw.bus_assert_error) return hw.bus_assert_error;
     hw.active=hw.outstanding_bus=false;
     hw.reset_held=true;
     return 0;

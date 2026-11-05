@@ -1,5 +1,10 @@
 # H616 streaming-buffer recovery implementation
 
+This is the historical implementation/capture record for the digest below.
+The [current reset error policy](H616-RESET-ERROR-POLICY.md) supersedes its
+assertion-retry behavior and software model results. The hardware capture
+remains tied to this original source snapshot.
+
 The v10 draft now has 25 patches. Patch 20, `e4d2008d73ac`, implements H616
 recovery directly; the earlier private coherent data-buffer patch is removed.
 Submission tip `f9d1d60fc9aa` and integration commit `557602a55834` contain

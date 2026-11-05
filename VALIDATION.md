@@ -1,5 +1,17 @@
 # Current streaming-recovery validation
 
+The current 25-patch v10 draft propagates unexpected reset errors and blocks
+subsequent commands, relying on the supported H616 CCU provider contract.
+The [reset error policy report](docs/H616-RESET-ERROR-POLICY.md) records the
+new source digest and explicit limitations. All 26 expected model outcomes
+and all 16 source/hardware-fixture suite jobs passed. A failed assertion with
+DMA still active remains an assumption counterexample, not safe recovery.
+
+No fresh board test was performed for this error-path revision. The preceding
+680-read hardware capture below retains its original implementation digest.
+
+# Previous streaming-recovery validation
+
 The current 25-patch v10 draft uses streaming DMA data buffers and requires
 H616 AHB reset retirement before returning an aborted transfer's memory.
 The [implementation report](docs/H616-STREAMING-IMPLEMENTATION.md) records

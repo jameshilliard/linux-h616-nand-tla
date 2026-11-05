@@ -117,14 +117,20 @@ missing/failed-reset lifetime failures;
 the reset's physical retirement contract remains explicit.
 
 The [streaming-buffer implementation](docs/H616-STREAMING-IMPLEMENTATION.md)
-then folds recovery into one patch, producing a **25-patch v10 draft**. It
+then folded recovery into one patch, producing a **25-patch v10 draft**. It
 requires an exclusive AHB reset, retains caller mappings until completion or
 reset retirement, and releases mappings without MMIO after failed deassertion.
 The full-size private coherent data allocation and per-transfer copies are
-gone; the small coherent descriptor remains. A permanently failing assertion
-retains the request rather than returning memory to its caller. The new
-28-case model and actual-source error tests keep this availability limit and
-the physical retirement assumption explicit.
+gone; the small coherent descriptor remains. That snapshot retained the
+request indefinitely on assertion failure; its report and hardware capture
+retain their original source identity.
+
+The [current reset-error policy](docs/H616-RESET-ERROR-POLICY.md) propagates an
+unexpected reset error and blocks further commands without an indefinite retry.
+It relies on the supported H616 CCU callback/lifetime contract. The 26-case
+model and actual-source tests explicitly retain failed assertion with active
+DMA as an unsafe-unmap counterexample: error propagation does not itself
+retire DMA. No new hardware run is attributed to this policy change.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
@@ -222,7 +228,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandRecovery` | Backend stop, outstanding bus transactions, IRQ drain and late controller completion are separate obligations |
 | `NandPostAbortRequest` | Post-abort internal data ordering, separate CMD/DMA completion, ECC status versus delivered bytes, continuation policies and conditional recovery across two requests |
 | `NandPrivateRecovery` | Historical H616 private-buffer policy, IRQ/reset ordering, failed-recovery closure, context restoration and no write replay; explicit weaker-reset counterexamples |
-| `NandStreamingRecovery` | Current caller-buffer policy: mandatory reset, mapped ownership during retries, safe held-reset cleanup, no write replay and explicit permanent-failure availability limit |
+| `NandStreamingRecovery` | Current caller-buffer policy: mandatory reset, error propagation, held-reset cleanup, no write replay and explicit failed-assertion/active-DMA counterexamples |
 | `NandRecoverySequence` | Complete recovery-step ordering, failed reset/context restore, PIO error reuse, persistent device events and candidate quarantine |
 | `NandSramPlacement` | Rotated/oversized post-abort SRAM placement, failed-prefix copying and fresh subsequent request bytes |
 | `NandProgramRecovery` | Staging versus confirm/array effects, ambiguous program completion, partial media, failed NAND reset and no rollback assumptions |
