@@ -76,6 +76,14 @@ class BackupSafety(unittest.TestCase):
         source.write_bytes(original)
         command = [sys.executable, str(root / 'hardware/install_bridge.py'),
                    str(self.directory), '--expected-source-sha256', hashlib.sha256(original).hexdigest()]
+        # The pinned v9 has no abort-recovery implementation: advanced hooks
+        # must reject it without leaving partially instrumented source behind.
+        for flags in (['--request-faults'], ['--abort-recovery'],
+                      ['--abort-recovery', '--request-faults']):
+            with self.subTest(flags=flags):
+                unsupported = subprocess.run(command + flags, capture_output=True)
+                self.assertNotEqual(unsupported.returncode, 0)
+                self.assertEqual(source.read_bytes(), original)
         subprocess.run(command, check=True, capture_output=True)
         instrumented = source.read_bytes()
         self.assertNotEqual(instrumented, original)

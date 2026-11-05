@@ -275,3 +275,87 @@ profile: 100 rounds of PIO, private DMA, direct DMA and a 5-us direct-DMA
 abort. It has the same read-only/RAM-only preconditions and validates the
 existing PIO/DMA parity-representation difference with the bit-level oracle.
 The original observation remains in the capture even when repetitions pass.
+
+## Current-source write aborts and PIO timeout reuse
+
+Operations 30/31 and [their report](../docs/H616-REQUEST-FAULTS-20261105.md)
+extend the actual-driver bridge. Operation 30 interrupts a DMA write before
+the driver's explicit PROGRAM CONFIRM; operation 31 expires a PIO wait while
+preserving its real timeout cleanup and observes the first following read.
+They do not simulate an indefinitely stuck DMA engine or PIO state machine.
+
+Use the matching **disposable build copy**, kernel and module. These hooks
+require the abort-recovery candidate; they reject the pinned older driver.
+The supported current uninstrumented source SHA-256 is shown below:
+
+```sh
+python3 hardware/install_bridge.py /path/to/kernel-build \
+    --abort-recovery --request-faults \
+    --expected-source-sha256 102b942b18d37e37f6f6dd605233da79149e2fbff61f38daf25acde75f0ce676
+```
+
+Rebuild and RAM-boot the diagnostic image without installing it in persistent
+storage. These runners require the `rdinit=/init-lab` marker, no flash mounts,
+and UBI explicitly detached. Initially load the probe with `allow_write=0`
+and `allow_recovery=1`. Acquire a new private backup set:
+
+```sh
+python3 -m hardware.snapshot_requests --directory /path/to/private-evidence \
+    ssh root@TEST_BOARD
+```
+
+The snapshot runner compares raw MTD reads of all four SPL partitions against
+independent 512- and 1024-byte module reads and backs up the bounded UBI block.
+Any mismatch stops the preflight; investigate it before authorizing writes.
+Do not modify a mismatching dump to make it pass. Keep rejected observations
+and obtain a fresh consistent backup set. No backup belongs in this repository.
+
+Only after verification, reload with both `allow_write=1` and
+`allow_recovery=1`. The next runner **erases and programs authorized block 7**:
+
+```sh
+python3 -m hardware.run_request_faults --ram-only-confirmed --repeat 4 \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+python3 -m hardware.snapshot_requests --verify \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD
+```
+
+The write matrix checks erased-page preservation, the actual DMA source,
+explicit confirm count, subsequent normal writes and independent raw/ECC
+readback. It holds the source allocation for 100 ms after successful recovery;
+unchanged source memory does not detect late device reads. The PIO matrix
+varies NORMAL/ECC-special command, delay, PIO/DMA follower and inter-request
+gap. No diagnostic reset or discarded read is inserted between callbacks.
+
+The runner attempts restoration in `finally`, unless a recovery failure has
+poisoned the controller. A poisoned module must not be force-unloaded: retain
+the private backups and restore from an independently booted healthy system.
+No live flash consumers may run concurrently, and no array program/erase
+after confirm or power interruption is part of this test.
+
+After all raw backups match, unload the module, archive the diagnostic image
+and remove the hooks with `install_bridge.py --remove` and the same source
+hash. Rebuild and RAM-boot the ordinary integration Image, without the module,
+and detach UBI. Then run three non-destructive 64 MiB MTD reads and verify the
+scratch block again:
+
+```sh
+python3 -m hardware.finish_requests --directory /path/to/private-evidence \
+    ssh root@TEST_BOARD
+```
+
+Restore normal boot, check that UBI attaches normally, then finalize and export:
+
+```sh
+python3 -m hardware.finish_requests --normal-boot \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD
+python3 -m hardware.request_faults_evidence \
+    --export-directory /path/to/private-evidence --capture /path/to/new-capture.json
+python3 run_hardware.py
+```
+
+The exporter allowlists numeric observations and comparison booleans and
+refuses to replace a capture. It requires the complete four-repeat matrix,
+real timeout/late-event witnesses and final restoration checks. Inspect the
+export before publishing. Replaying a capture verifies its recorded assertions;
+it does not extend the hardware evidence to unmeasured failure modes.

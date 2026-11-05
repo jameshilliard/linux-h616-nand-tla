@@ -1,5 +1,10 @@
 # H616 reset error propagation
 
+This report records the policy change's initial validation. The later
+[current-source board run](H616-REQUEST-FAULTS-20261105.md) uses the same driver
+digest and adds write-abort, PIO-timeout and ordinary-kernel evidence without
+changing the failed-assertion limitations below.
+
 The current 25-patch v10 draft ends at `56d96fe94ff7`; recovery is patch 20,
 `e53c8f2daddd`. The integration commit is `51601eff4029`. Both branches
 contain identical NAND driver bytes:

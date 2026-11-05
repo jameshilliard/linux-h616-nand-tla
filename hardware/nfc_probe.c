@@ -49,7 +49,7 @@ module_param(allow_write, bool, 0400);
 MODULE_PARM_DESC(allow_write, "Permit block 7 erase/program AFTER raw backup verification");
 static bool allow_recovery;
 module_param(allow_recovery, bool, 0400);
-MODULE_PARM_DESC(allow_recovery, "RAM-only/no UBI: permit read-side MDMA reset observations");
+MODULE_PARM_DESC(allow_recovery, "RAM-only/no UBI: permit bounded timeout/reset observations");
 static struct mtd_info *partition, *master;
 static struct nand_chip *chip;
 static struct platform_device *pdev;
@@ -202,11 +202,27 @@ static int validate(const struct probe_request *r)
 {
 	if (poisoned)
 		return -EIO;
-	if (r->op > PROBE_NATIVE_DIRECT_READ || r->op == 22 || r->op == 23 ||
+	if (r->op > PROBE_PIO_TIMEOUT_REUSE || r->op == 22 || r->op == 23 ||
 	    r->flags & ~127U || r->seed > 0x7fff)
 		return -EINVAL;
 	if (r->op == PROBE_INFO || r->op == PROBE_BANKS)
 		return 0;
+	if (r->op == PROBE_ABORT_NATIVE_WRITE) {
+		if (!allow_write || r->page < FIRST_PAGE || r->page >= END_PAGE)
+			return -EROFS;
+		if (!allow_recovery || r->column || r->length != 2048 ||
+		    r->chunk > 10000 || r->seed || r->flags)
+			return -EPERM;
+		return no_attached_ubi();
+	}
+	if (r->op == PROBE_PIO_TIMEOUT_REUSE) {
+		if (!allow_recovery || r->page < FIRST_PAGE || r->page >= END_PAGE ||
+		    r->column < FIRST_PAGE || r->column >= END_PAGE ||
+		    r->page == r->column || r->length != 2048 ||
+		    r->chunk > 10000 || r->seed < 1 || r->seed > 2 || r->flags > 3)
+			return -EPERM;
+		return no_attached_ubi();
+	}
 	/* Read-only ECC tests on one bounded, already-populated UBI block.
 	 * No program/erase operation gains access to this additional range.
 	 */
@@ -629,6 +645,8 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 	case PROBE_NATIVE_READ ... PROBE_NATIVE_RAW_WRITE:
 	case PROBE_ABORT_NATIVE_READ:
 	case PROBE_NATIVE_DIRECT_READ:
+	case PROBE_ABORT_NATIVE_WRITE:
+	case PROBE_PIO_TIMEOUT_REUSE:
 		ret = native_request(r);
 		if (r->regs[15] & BIT(31)) {
 			poisoned = true;

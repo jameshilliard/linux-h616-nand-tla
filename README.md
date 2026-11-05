@@ -130,7 +130,16 @@ unexpected reset error and blocks further commands without an indefinite retry.
 It relies on the supported H616 CCU callback/lifetime contract. The 26-case
 model and actual-source tests explicitly retain failed assertion with active
 DMA as an unsafe-unmap counterexample: error propagation does not itself
-retire DMA. No new hardware run is attributed to this policy change.
+retire DMA. That policy report retains its original validation record.
+
+The [fresh current-source hardware checks](docs/H616-REQUEST-FAULTS-20261105.md)
+add 32 pre-confirm DMA write aborts and 256 PIO timeout/reuse trials, including
+105 actual timeout returns and 97 observed late command-complete events.
+Every first follow-up read matched; three ordinary-kernel 64 MiB reads then
+completed with nine corrected bitflips and no failed ECC. All flash backups
+were restored and normal boot returned. The report preserves raw-backup
+discrepancies and distinguishes the tested finite delays from stuck PIO,
+failed-reset and older-controller assumptions.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver

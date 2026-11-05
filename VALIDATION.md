@@ -1,4 +1,28 @@
-# Current streaming-recovery validation
+# Current-source physical validation
+
+The [2026-11-05 request-fault report](docs/H616-REQUEST-FAULTS-20261105.md)
+records new H616 measurements on driver SHA-256
+`102b942b18d37e37f6f6dd605233da79149e2fbff61f38daf25acde75f0ce676`.
+All 32 pre-confirm DMA write aborts and 256 PIO timeout/reuse cases passed
+their data/OOB, path, ordering and restoration checks. The latter includes
+105 real timeout returns and 97 observed late command-complete events, not
+just successful timeout rechecks.
+
+Three uninstrumented current-kernel 64 MiB reads completed with nine corrected
+bitflips and zero failed ECC or controller errors. All four SPL copies and
+the bounded UBI snapshot were verified, and normal boot was restored. The
+raw-backup discrepancy and the limits on failed-reset, stuck-PIO and older
+silicon behavior remain explicit in the report.
+
+All 129 expected outcomes across the program-recovery, recovery-sequence and
+streaming-recovery models matched. Public capture replay includes 24 negative
+evidence mutations; it never accesses the board or publishes flash contents.
+The fresh current-source suite passed all 16 jobs with unchanged executable
+inputs, including the new hardware capture and its negative checks.
+The earlier validation records below retain their original scope and source
+identities.
+
+# Reset-error policy validation before the new board run
 
 The current 25-patch v10 draft propagates unexpected reset errors and blocks
 subsequent commands, relying on the supported H616 CCU provider contract.

@@ -4,6 +4,9 @@
 #ifdef SUNXI_NFC_LAB_ABORT_RECOVERY
 #include "sunxi_nand_lab_direct.h"
 #endif
+#ifdef SUNXI_NFC_LAB_REQUEST_FAULTS
+#include "sunxi_nand_lab_faults.h"
+#endif
 
 int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r);
 int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r)
@@ -20,6 +23,10 @@ int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r)
 
 	lockdep_assert_held(&nand->lock);
 	lockdep_assert_held(&nand->controller->lock);
+#ifdef SUNXI_NFC_LAB_REQUEST_FAULTS
+	if (r->op == PROBE_ABORT_NATIVE_WRITE || r->op == PROBE_PIO_TIMEOUT_REUSE)
+		return sunxi_nfc_lab_request_fault(nand, r);
+#endif
 #ifdef SUNXI_NFC_LAB_ABORT_RECOVERY
 	if (r->op == PROBE_NATIVE_DIRECT_READ)
 		return sunxi_nfc_lab_direct_read(nand, r);
