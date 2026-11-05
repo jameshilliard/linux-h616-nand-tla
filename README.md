@@ -141,6 +141,13 @@ were restored and normal boot returned. The report preserves raw-backup
 discrepancies and distinguishes the tested finite delays from stuck PIO,
 failed-reset and older-controller assumptions.
 
+The [provider-owned pulse update](docs/H616-RESET-PULSE.md) then switches
+H616 probe and recovery to `reset_control_reset()`. Its source fixtures check
+the CCU's 10 microsecond pulse, reset-core errors and repeated exclusive
+resets. Source/model checks and cross-builds pass; no new hardware run has
+yet tested this API/timing revision. The earlier captures keep their original
+driver digests and are not presented as measurements of the new pulse.
+
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
 implementation. This repository validates that pinned implementation, **not

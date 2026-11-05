@@ -9,7 +9,9 @@ static void abort_recovery_checks(void)
     for (unsigned dir=0;dir<2;dir++)
     for (unsigned next_cs=0;next_cs<2;next_cs++)
     for (unsigned soft_fail=0;soft_fail<2;soft_fail++)
-    for (unsigned deassert_fail=0;deassert_fail<2;deassert_fail++) {
+    /* Deassertion failure belongs only to the historical split-call fixture:
+     * the actual CCU pulse callback unconditionally returns success. */
+    for (unsigned deassert_fail=0;deassert_fail<(PULSE_RESET ? 1 : 2);deassert_fail++) {
         reset_fixture(2);
         caps.needs_bus_reset=source_caps[2].needs_bus_reset;
         assert(caps.needs_bus_reset);
@@ -30,6 +32,8 @@ static void abort_recovery_checks(void)
         assert(nfc.recovery_failed==deassert_fail && hw.reset_held==deassert_fail);
         assert(hw.irq_disabled==deassert_fail);
         assert(hw.bus_asserts==1 && hw.bus_deasserts==1);
+        assert(hw.bus_pulses==(unsigned)PULSE_RESET);
+        assert(hw.reset_hold_us==(PULSE_RESET ? 10U : 2U));
         assert(hw.mapped && !hw.active && !hw.outstanding_bus);
         unsigned accesses=hw.reads+hw.writes;
         sunxi_nfc_dma_op_cleanup(&nfc,dir,&sg);
@@ -46,6 +50,8 @@ static void abort_recovery_checks(void)
                 assert(!sunxi_nfc_dma_op_prepare(&nfc,input,1024,2,dir,&sg));
                 hw.active=hw.outstanding_bus=true;
                 assert(!sunxi_nfc_dma_op_abort(&nfc));
+                assert(hw.bus_pulses==(PULSE_RESET ? repeat+2 : 0));
+                assert(hw.reset_hold_us==(repeat+2)*(PULSE_RESET ? 10U : 2U));
                 sunxi_nfc_dma_op_cleanup(&nfc,dir,&sg);
                 assert(!sunxi_nfc_select_chip(&chip.nand,next_cs));
             }
@@ -54,7 +60,7 @@ static void abort_recovery_checks(void)
         trials++;
     }
     unsigned boundaries=0;
-    const int errors[]={-EIO,-ENODEV,-EPERM,-EOPNOTSUPP};
+    const int errors[]={-EIO,-ENODEV,-EPERM,PULSE_RESET ? -ENOTSUPP : -EOPNOTSUPP};
     for (unsigned dir=0;dir<2;dir++)
     for (unsigned active=0;active<2;active++)
     for (unsigned error=0;error<ARRAY_SIZE(errors);error++) {
@@ -64,9 +70,12 @@ static void abort_recovery_checks(void)
         assert(!sunxi_nfc_dma_op_prepare(&nfc,input,1024,2,dir,&sg));
         hw.active=hw.outstanding_bus=active;
         hw.retain_stop_bus=hw.reset_fail=true;
-        hw.bus_assert_error=errors[error];
+        if (PULSE_RESET) hw.bus_reset_error=errors[error];
+        else hw.bus_assert_error=errors[error];
         assert(sunxi_nfc_dma_op_abort(&nfc)==errors[error]);
-        assert(hw.bus_asserts==1 && !hw.bus_deasserts);
+        assert(hw.bus_pulses==(unsigned)PULSE_RESET);
+        assert(hw.bus_asserts==(PULSE_RESET ? 0U : 1U) && !hw.bus_deasserts);
+        assert(!hw.reset_hold_us);
         assert(nfc.recovery_failed && hw.irq_disabled && !hw.reset_held);
         unsigned accesses=hw.reads+hw.writes;
         sunxi_nfc_dma_op_cleanup(&nfc,dir,&sg);
@@ -75,9 +84,10 @@ static void abort_recovery_checks(void)
         assert(hw.reads+hw.writes==accesses);
         /* Explicit assumption witness, NOT a passing safety claim: a failed
          * assertion with DMA still active makes the current cleanup unsafe.
-         * H616's validated CCU assertion callback cannot produce this error. */
+         * H616's validated CCU callback cannot produce this error; framework
+         * rejection before reaching it is still an assumption boundary. */
         assert(hw.unsafe==(bool)active && hw.outstanding_bus==(bool)active);
         boundaries++;
     }
-    printf("H616 streaming recovery: %u reset/direction/chip cases, repeated reuse, held-reset unmap; %u error-return boundary cases retain the active-DMA counterexample\n",trials,boundaries);
+    printf("H616 streaming recovery: %u reset/direction/chip cases, repeated reuse, %s; %u error-return boundary cases retain the active-DMA counterexample\n",trials,PULSE_RESET ? "CCU pulse timing" : "held-reset unmap",boundaries);
 }

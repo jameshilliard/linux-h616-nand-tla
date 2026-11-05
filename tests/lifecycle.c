@@ -13,6 +13,7 @@ static void defaults(void)
     writesize=2048; oobsize=128; req_step=1024; req_strength=16;
     host_mode=7; chip_mode[0]=chip_mode[1]=7; /* Unknown bootloader state. */
     timing_fault=extra_die_fault=0; reset_deasserted=false;
+    reset_pulses=reset_deasserts=0;
     mode_setup_calls=set_calls=get_calls=reset_calls=0;
     caps.has_ecc_clk=caps.has_mbus_clk=true;
     caps.needs_bus_reset=false;
@@ -147,6 +148,8 @@ static unsigned probe_case(unsigned failpoint, int variant)
     ret=sunxi_nfc_probe(&p);
     if (!ret) {
         struct sunxi_nfc *n=p.data;
+        CHECK(reset_pulses==(unsigned)(PULSE_RESET && caps.needs_bus_reset));
+        CHECK(reset_deasserts==(PULSE_RESET && caps.needs_bus_reset ? 0U : 1U));
         CHECK(registered==2 && !list_empty(&n->chips));
         struct sunxi_nand_chip *c=list_first_entry(&n->chips,struct sunxi_nand_chip,node);
         CHECK(c->nand.base.memorg.ntargets==(extra_die_fault ? 1U : 2U));

@@ -138,8 +138,8 @@ static struct {
     bool outstanding_bus, retain_stop_bus;
     bool mask_fail, alloc_fail, enforce_dma_mask;
     bool bus_assert_fail, bus_deassert_fail, buffer_alloc_fail;
-    unsigned bus_asserts, bus_deasserts, frees, allocs;
-    int bus_assert_error;
+    unsigned bus_asserts, bus_deasserts, bus_pulses, reset_hold_us, frees, allocs;
+    int bus_assert_error, bus_reset_error;
     bool reset_held;
     int channel_error, config_error;
     u64 dma_mask;
@@ -211,7 +211,8 @@ static int dmaengine_terminate_all(void *c)
 }
 static void dma_wmb(void) { hw.barrier=++hw.serial; }
 static void dma_rmb(void) { }
-static void udelay(unsigned n) { assert(n == 2); }
+static void udelay(unsigned n)
+{ assert(n == 2 || n == 10); assert(hw.reset_held); hw.reset_hold_us+=n; }
 static int reset_control_assert(void *r)
 {
     assert(r); hw.bus_asserts++;
@@ -226,6 +227,18 @@ static int reset_control_deassert(void *r)
     assert(r); hw.bus_deasserts++;
     if (hw.bus_deassert_fail) return -EIO;
     hw.reset_held=false;
+    return 0;
+}
+static int reset_control_reset(void *r)
+{
+    assert(r); hw.bus_pulses++;
+    /* Reset-core rejection happens before the CCU callback runs. */
+    if (hw.bus_reset_error) return hw.bus_reset_error;
+    /* ccu_reset_reset(): its register-update callbacks cannot fail. */
+    assert(!hw.bus_assert_fail && !hw.bus_assert_error && !hw.bus_deassert_fail);
+    reset_control_assert(r);
+    udelay(10);
+    reset_control_deassert(r);
     return 0;
 }
 struct resource { u64 start; };

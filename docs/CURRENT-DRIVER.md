@@ -1,6 +1,16 @@
 # Current sunxi driver verification
 
-## Current integration: streaming DMA recovery
+## Current integration: provider-owned reset pulse
+
+The 26-patch v10 draft ends at `dfc9d0414859`. H616 probe and DMA-abort
+recovery use `reset_control_reset()`, leaving the assertion interval to the
+CCU provider. Submission and integration driver bytes match, with digest
+`ffd7225a3cb9680dfc6463a2e3cf842fa564b430c85a6b3a322826ea538a37bb`.
+The [pulse validation report](H616-RESET-PULSE.md) records source checks,
+cross-builds, the preserved provider assumptions and the outstanding fresh
+hardware smoke test. Earlier captures below retain their original digests.
+
+## Previous integration: streaming DMA recovery
 
 The 25-patch v10 draft ends at `56d96fe94ff7`. Its driver digest is
 `102b942b18d37e37f6f6dd605233da79149e2fbff61f38daf25acde75f0ce676`.

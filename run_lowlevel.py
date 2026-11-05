@@ -80,6 +80,7 @@ def main():
     functions = chunk_functions(source) + FUNCTIONS
     recovery_fixed = 'bool recovery_failed;' in source
     streaming_recovery = recovery_fixed and 'sunxi_nfc_dma_release(' not in source
+    pulse_reset = 'reset_control_reset(nfc->reset)' in source
     if recovery_fixed and not streaming_recovery:
         functions = functions + ['sunxi_nfc_dma_release']
     for name in functions:
@@ -108,6 +109,7 @@ def main():
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
                 f'#define FIXED_ABORT {int(recovery_fixed)}\n' +
                 f'#define STREAMING_RECOVERY {int(streaming_recovery)}\n' +
+                f'#define PULSE_RESET {int(pulse_reset)}\n' +
                 f'#define FIXED_COUNT {int(args.expect_count_fixed)}\n' +
                 f'#define RECOVERY_TRACES {int(args.recovery_traces)}\n' +
                 '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +

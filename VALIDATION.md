@@ -1,4 +1,17 @@
-# Current-source physical validation
+# Current-source provider-owned reset pulse
+
+The [reset-pulse report](docs/H616-RESET-PULSE.md) records v10 at
+`dfc9d0414859`, driver digest
+`ffd7225a3cb9680dfc6463a2e3cf842fa564b430c85a6b3a322826ea538a37bb`.
+All 16 source-regression jobs and 26 streaming-recovery expectations pass.
+ARM64 and ARM32 builds pass at every changed prefix, patches 21 through 26.
+The source fixtures model the CCU-owned 10 microsecond pulse and distinguish
+reset-core rejection from successful provider execution. Existing active-DMA
+failure counterexamples remain explicit. No new board run was performed;
+the earlier physical measurements below used the consumer-owned 2 microsecond
+sequence and retain their original source identity.
+
+# Previous-source physical validation
 
 The [2026-11-05 request-fault report](docs/H616-REQUEST-FAULTS-20261105.md)
 records new H616 measurements on driver SHA-256

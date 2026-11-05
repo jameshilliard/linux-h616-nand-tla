@@ -416,7 +416,15 @@ static void *devm_reset_control_get_optional_exclusive(struct device *d,const ch
 static void *devm_reset_control_get_exclusive(struct device *d,const char *s)
 { return fail("mandatory-reset-get")?ERR_PTR(-ENOENT):(void *)1; }
 static bool reset_deasserted;
-static int reset_control_deassert(void *r) { if (fail("reset-deassert")) return -EIO; reset_deasserted=true; return 0; }
+static unsigned reset_pulses, reset_deasserts;
+static int reset_control_deassert(void *r)
+{ reset_deasserts++; if (fail("reset-deassert")) return -EIO; reset_deasserted=true; return 0; }
+static int reset_control_reset(void *r)
+{
+    CHECK(r && caps.needs_bus_reset); reset_pulses++;
+    if (fail("reset-pulse")) return -EIO;
+    reset_deasserted=true; return 0;
+}
 static int reset_control_assert(void *r)
 {
     if (caps.needs_bus_reset && !reset_deasserted && fail("initial-reset-assert"))

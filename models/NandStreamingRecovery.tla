@@ -4,6 +4,11 @@
 \* path clearing are explicit hardware contracts, not DMA-API guarantees.
 \* Runtime assertion failure violates the supported H616 provider contract;
 \* the error return alone does not make an active caller buffer safe to unmap.
+\* The current driver uses reset_control_reset() at probe and recovery. Assert
+\* and Deassert below are internal phases of that provider pulse, not separate
+\* consumer API calls. The real H616 CCU holds reset for 10 us and returns zero.
+\* "assert" also abstracts reset-core rejection before reaching the provider;
+\* "deassert" remains a hypothetical weakened-provider assumption check.
 EXTENDS Integers
 CONSTANTS Direction, Fault, Normal, Launched, BusRetires, BusClears, Mutation
 VARIABLE s
