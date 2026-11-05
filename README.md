@@ -34,8 +34,8 @@ The [probe-visibility checks](docs/PROBE-VISIBILITY.md) exercise DT child
 availability and scanning a second chip while the first MTD is already usable.
 They reproduce two independent probe-path defects in the original snapshots.
 Filtering and deferred-publication fixes are checked separately and together
-against the pre-series NAND base, and are now carried as patches 20 and 21
-of the 23-patch sunxi v10 draft. The source fixtures also test partial
+against the pre-series NAND base, and are now carried as patches 18 and 19
+of the 24-patch sunxi v10 draft. The source fixtures also test partial
 registration cleanup and require deliberate regressions to fail. Fixes outside
 the sunxi NAND driver retain separate submission branches.
 The [probe trace checker](docs/PROBE-TRACE-CONFORMANCE.md) now feeds actual
@@ -83,6 +83,14 @@ It identifies a large vendor-tail software/hardware stream mismatch on an
 admitted synthetic geometry; the tested 128-byte OOB layout remains passing.
 Current-source behavior and candidate bus-reset/quarantine policies stay
 separate, and successful model runs do not establish unknown reset guarantees.
+
+The [reviewable v10 update](docs/REVIEWABLE-V10.md) folds the vendor-tail
+correction into the format patch, separates preparation, fixes and
+optimizations, and requires positive candidate decoding checks. Larger-page
+fixtures validate programmed user-data registers, each DMA batch and failures
+in every later batch. The recovery model now varies stop and bus-reset
+retirement guarantees independently; the physical post-abort anomaly remains
+unresolved.
 
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver

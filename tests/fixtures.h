@@ -15,6 +15,7 @@ typedef uint32_t u32;
 #define GENMASK(h, l) ((UINT32_MAX >> (31 - (h))) & (UINT32_MAX << (l)))
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#define min3(a, b, c) min(min(a, b), c)
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min_t(t, a, b) min((t)(a), (t)(b))
 #define max_t(t, a, b) max((t)(a), (t)(b))
@@ -105,6 +106,7 @@ struct mtd_info {
 struct nand_chip;
 #define sunxi_nfc_caps caps
 struct caps {
+    int sram_size;
     unsigned reg_user_data_len, reg_user_data, reg_pat_id, reg_pat_found;
     unsigned reg_ecc_err_cnt, ecc_err_mask, pat_found_mask, max_ecc_steps;
     const u8 *user_data_len_tab;

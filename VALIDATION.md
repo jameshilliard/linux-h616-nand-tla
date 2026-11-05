@@ -1494,3 +1494,79 @@ remaining silicon/refinement limits are in
 [RECOVERY-COMPOSITION.md](docs/RECOVERY-COMPOSITION.md). In particular, bus-reset
 retirement, late device events and interrupted programming remain explicitly
 parameterized; additional passing configurations do not prove those contracts.
+
+# Reviewable v10 and corrected vendor-tail decoding
+
+Validated on 2026-11-04 against the revised 24-patch draft ending at
+`8a14d3e441eb0f5f1f29d8e9fb35bdd5cda6108f`. Its driver SHA-256 is
+`932f8d879868b5e80fd2441b8873a4c79d4182dc239b99e72c8937b53e996aaa`.
+The posted v9 reference is unchanged. No new board or flash test was performed.
+
+The full candidate run passes **71/71 jobs** in
+`results/suite-6ct3xn4u/`, with executable inputs unchanged throughout.
+The 50 standard models meet **1,253/1,253 expectations**; the dedicated
+trace/ordering checks meet 278, for **1,531/1,531 matched TLC outcomes**.
+These include required known-bug and weakened-contract counterexamples, not
+1,531 claims that every source policy is correct.
+
+- `NandMeasuredPage`: **131/131**, including corrected command-boundary
+  decoding and three new regression controls, in `results/tlc-sodos7mo/`.
+- `NandRecoverySequence`: **57/57**, with independent stop and bus-reset
+  retirement contracts, in `results/tlc-a_zbe5qe/`.
+- The measured-request runner requires the fixed tail with
+  `--expect-tail-fixed`. Across eight geometries it executes **864 actual
+  core calls**, checks 96 independent stored/read images, and injects
+  **176 later-batch failure profiles**. Sanitizer and GCOV artifacts agree.
+
+| Page/OOB bytes | Core calls | Later-batch fault profiles | Result directory |
+| --- | ---: | ---: | --- |
+| 2048/128 | 64 | 0 | `results/measured-request-7nmfaum3/` |
+| 2048/256 | 64 | 0 | `results/measured-request-musl3jjm/` |
+| 2048/2048 | 64 | 0 | `results/measured-request-8x6jkupb/` |
+| 2048/2049 | 64 | 0 | `results/measured-request-p2xwxtcm/` |
+| 4096/512 | 64 | 0 | `results/measured-request-df2g3bnc/` |
+| 8192/1024 | 96 | 16 | `results/measured-request-o8v6emlb/` |
+| 16384/2048 | 160 | 48 | `results/measured-request-y46vro6p/` |
+| 32768/4096 | 288 | 112 | `results/measured-request-_80is4qy/` |
+
+The strict candidate check against the prior driver fails at the intended
+independent `PLACE tail` comparison, after successful compilation and C
+execution (`results/measured-request-5p_sunvn/`). Its report is marked failed;
+that negative-control run is not counted as a candidate pass. Separate pinned
+v9 runs still pass their 128/256-byte OOB expectations in
+`results/measured-request-rs7cqvmj/` and `results/measured-request-4h6pxqno/`.
+
+The page, low-level and lifecycle coverage union executes **91/91 extracted
+driver functions**, **1,437/1,441 source lines**, and **707/718 branch edges**.
+Reports are `results/c-8gqygr9_/`, `results/lowlevel-wg9rtf4v/` and
+`results/lifecycle-lfppndew/`. Identical helpers compiled in multiple
+translation units are merged only when their source coordinates and branch
+identities agree. The remaining four lines are timing-lookup error returns;
+branch gaps and all hardware/weak-memory limitations remain explicit. These
+are host-fixture counts, not a full-path or real-kernel coverage claim.
+
+Every one of the 24 series prefixes builds the NAND driver with ARM64 GCC
+and ARM32 LLVM at `W=1`: **48 clean object builds**. All 24 patches pass
+checkpatch without warnings or errors. Export produces 25 messages, with
+exactly one user sign-off per patch, no external prerequisites and no excluded
+mail recipients. Historical v1-v9 notes match the sent v9 record verbatim.
+The final tree is identical before and after reordering; a later cover-only
+metadata correction leaves every built prefix tree unchanged. No mail was sent.
+
+The [review map](docs/REVIEWABLE-V10.md) explains the patch boundaries, changed
+contracts and Sashiko guidance used. Post-abort data placement, native
+non-word randomized reads and retained-MTD lifetime remain separate unresolved
+issues. The new passing tests do not establish universal bus-reset retirement,
+older-controller randomizer behavior or unbounded C-to-TLA+ refinement.
+
+The pinned-source page and low-level runners also pass independently after
+the extraction changes (`results/c-rx2a_ahb/` and
+`results/lowlevel-77ifu038/`). An archive of the staged release passes both
+pinned 128/256-byte OOB request matrices and the fixed candidate's
+32768/4096-byte matrix: 416 core calls, including 112 later-batch failures.
+The latter uses the explicitly supplied, hash-checked candidate source; it
+does not replace the bundled v9 reference. Packaging artifacts are retained
+under `results/release-smoke-reviewable-v10-20261104/`. Executable inputs still
+match the complete suite, and the public additions pass whitespace, Python
+compilation and private-path/credential checks. Hosted CI execution is not
+claimed.

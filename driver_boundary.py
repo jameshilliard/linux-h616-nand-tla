@@ -3,7 +3,7 @@
 import hashlib
 import re
 from boundary_common import HERE
-from run_c import FUNCTIONS, STRUCTURES, ARRAYS, extract_function
+from run_c import FUNCTIONS, STRUCTURES, ARRAYS, extract_function, chunk_functions, chunk_defines
 from run_core import extract
 
 
@@ -40,14 +40,15 @@ def generate(src, *, persistent=False):
         header = header.replace("static unsigned plain_read_calls, random_read_calls;", "static unsigned plain_read_calls;")
         header = header.replace("static const u8 *format_image;\nstatic size_t format_image_len;", "")
         header += "\n" + (HERE/"tests/persistent_driver.h").read_text()
-    generated = [header,"struct sunxi_nfc_ecc_read; struct sunxi_nfc_ecc_snapshot;"]
+    generated = [header, chunk_defines(source),
+                 "struct sunxi_nfc_ecc_read; struct sunxi_nfc_ecc_snapshot;"]
     hashes = {}
     for name in STRUCTURES:
         start = source.index("struct " + name + " {")
         generated.append(source[start:source.index("\n};",start)+3])
     for name in ARRAYS:
         generated.append(re.search(r"^static const u(?:8|16) " + name + r"\[\] = \{.*?\n};",source,re.M|re.S)[0])
-    for name in [*FUNCTIONS,*extra]:
+    for name in [*chunk_functions(source),*FUNCTIONS,*extra]:
         if name == "sunxi_nfc_allwinner_oob_attach_chip":
             for ops in ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops", "sunxi_nfc_allwinner_oob_ops"):
                 generated.append(re.search(r"^static const struct sunxi_nfc_oob_ops " + ops + r" = \{.*?\n};",source,re.M|re.S)[0])

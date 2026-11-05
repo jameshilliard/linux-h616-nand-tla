@@ -11,6 +11,7 @@ import re
 from boundary_common import HERE, bodies, check
 from driver_boundary import fixture_body
 from run_composed import units as composed_units
+from run_c import chunk_functions
 
 CORE = ["nand_fill_column_cycles", "nand_sp_exec_read_page_op",
         "nand_lp_exec_read_page_op", "nand_read_page_op", "nand_read_oob_op",
@@ -69,7 +70,8 @@ def units(candidate_source=None):
         "{ assert(d == &descriptor); hw.submit++; return hw.submit_fail ? -EIO : 1; }")
     # The real dispatch in internals.h is included, not a command-level mock.
     header += '\n' + (HERE / "tests/transport.h").read_text()
-    code, proto, added_hashes = bodies(src, FUNCTIONS)
+    functions = dict(FUNCTIONS, **{"sunxi_nand.c": chunk_functions(source) + LOW})
+    code, proto, added_hashes = bodies(src, functions)
     hashes.update(added_hashes)
     start = source.index("static const struct nand_op_parser sunxi_nfc_op_parser")
     end = source.index("static int sunxi_nfc_exec_op", start)

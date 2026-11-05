@@ -7,6 +7,12 @@ The candidate driver has SHA-256
 `f22a4d77dfdad49266529f459a9a14ffbdf4ded6159517e4f663d02c83f682e6`.
 The pinned posted v9 source remains unchanged and is checked separately.
 
+This is the original investigation record. The subsequent
+[reviewability update](REVIEWABLE-V10.md) fixes the vendor-tail decoder,
+separates stop from bus-reset retirement assumptions, and expands the matrix
+to larger pages and later DMA batches. The counts and pre-fix descriptions
+below remain specific to the earlier snapshot.
+
 ## Added coverage
 
 | Area | New checks | Boundary retained |

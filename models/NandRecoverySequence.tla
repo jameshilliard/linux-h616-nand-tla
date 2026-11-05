@@ -7,7 +7,7 @@
 \* draining or the successful finite hardware experiment.
 EXTENDS Integers, Sequences
 CONSTANTS Backend, Policy, Faults, RecoveryFailure, FailureAt, StopRetires,
-          RetireEvents, HiddenFault, BusClears, NextChip, Mutation
+          BusRetires, RetireEvents, HiddenFault, BusClears, NextChip, Mutation
 VARIABLE s
 vars == <<s>>
 Internal == Backend \in {"register", "descriptor"}
@@ -73,8 +73,8 @@ AssertReset == /\ s.pc = "assert"
     /\ s' = IF Fails("assert") THEN
         [s EXCEPT !.failed = TRUE, !.pc = "quarantine"]
         ELSE [s EXCEPT !.resetHeld = TRUE, !.context = 0,
-            !.producer = IF StopRetires THEN FALSE ELSE @,
-            !.pendingBus = IF StopRetires THEN FALSE ELSE @,
+            !.producer = IF BusRetires THEN FALSE ELSE @,
+            !.pendingBus = IF BusRetires THEN FALSE ELSE @,
             !.pc = "deassert"]
 DeassertReset == /\ s.pc = "deassert"
     /\ s' = IF Fails("deassert") THEN
@@ -82,8 +82,8 @@ DeassertReset == /\ s.pc = "deassert"
         ELSE [s EXCEPT !.resetHeld = FALSE, !.dirty = ~BusClears,
             !.oldEvent = IF RetireEvents THEN FALSE ELSE @,
             !.event = IF RetireEvents THEN 0 ELSE @,
-            !.failed = ~StopRetires, !.recovered = TRUE,
-            !.pc = IF StopRetires THEN "cleanup" ELSE "quarantine"]
+            !.failed = s.producer \/ s.pendingBus, !.recovered = TRUE,
+            !.pc = IF ~s.producer /\ ~s.pendingBus THEN "cleanup" ELSE "quarantine"]
 Cleanup == /\ s.pc = "cleanup"
     /\ s' = [s EXCEPT
         !.unsafe = @ \/ (s.mapped /\ (s.producer \/ s.pendingBus)),

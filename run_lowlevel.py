@@ -9,7 +9,7 @@ import re
 import subprocess
 import tempfile
 
-from run_c import HERE, extract_function
+from run_c import HERE, extract_function, chunk_functions
 
 FUNCTIONS = [
     "sunxi_nfc_interrupt", "sunxi_nfc_wait_events", "sunxi_nfc_wait_cmd_fifo_empty",
@@ -77,7 +77,8 @@ def main():
         generated.append("{ " + ", ".join(values) + " },")
     generated.append("};")
     hashes = {}
-    for name in FUNCTIONS:
+    functions = chunk_functions(source) + FUNCTIONS
+    for name in functions:
         if name == "sunxi_nfc_exec_op":
             start = source.index("static const struct nand_op_parser sunxi_nfc_op_parser")
             end = source.index("static int sunxi_nfc_exec_op", start)
@@ -118,7 +119,7 @@ def main():
     passed = run.returncode == 0 and "ALL LOWLEVEL CHECKS PASSED" in run.stdout and not run.stderr
     traces = (out / "recovery-traces.jsonl").read_bytes() if passed and args.recovery_traces else None
     from source_coverage import build_and_collect
-    coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
+    coverage = build_and_collect(out, command, source, functions) if passed else None
     if traces is not None and (out / "recovery-traces.jsonl").read_bytes() != traces:
         raise RuntimeError("sanitized and coverage builds produced different recovery traces")
     (out / "summary.json").write_text(json.dumps(dict(

@@ -14,6 +14,7 @@ static void oob_pipeline(void);
 static struct caps caps(bool variable)
 {
     return (struct caps) {
+        .sram_size = variable ? 8192 : 1024,
         .reg_user_data_len = variable ? 0x70 : 0,
         .reg_user_data = variable ? 0x80 : 0x50,
         .reg_pat_id = variable ? 0x118 : 0xa4,

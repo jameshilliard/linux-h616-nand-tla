@@ -14,6 +14,9 @@ baseline's scope: [post-abort data ordering](POST-ABORT-DATAPATH.md) and
 [large-tail stream composition](RECOVERY-COMPOSITION.md). The latter has an
 actual-candidate-source reproducer on a synthetic admitted geometry, not a
 claimed large-OOB physical-device reproduction.
+The [reviewable v10 update](REVIEWABLE-V10.md) fixes that software-tail
+mismatch while preserving the writer and stored format. Post-abort recovery
+and the separate native non-word read-tail behavior remain unresolved.
 
 ## 1. Split address instructions lose the trailing address cycles
 

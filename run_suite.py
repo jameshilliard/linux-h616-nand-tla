@@ -65,7 +65,7 @@ def main():
           ("provider-boundary","run_provider_boundary.py",[]),
           ("historical","run_historical.py",[]),
           ("mtd","run_mtd_boundary.py",shared)]
-    jobs.append(("measured-request","run_measured_requests.py",shared))
+    jobs.append(("measured-request","run_measured_requests.py",shared+["--expect-tail-fixed"]))
     followups={}
     if not args.source_only:
         for name,script,options in jobs:

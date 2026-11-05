@@ -6,7 +6,8 @@
 \* bit level by the capture and actual-source runners. Chunk=8 represents a
 \* scaled command limit; byte-count modulo four is deliberately preserved.
 EXTENDS Integers, Sequences
-CONSTANTS Size, WriteChunk, ReadChunk, FormatChunk, PageMode, SoftwareRead, Fault, Mutation
+CONSTANTS Size, WriteChunk, ReadChunk, FormatChunk, PageMode, SoftwareRead,
+          SoftwareChunk, Fault, Mutation
 VARIABLE s
 vars == <<s>>
 Min(a,b) == IF a < b THEN a ELSE b
@@ -44,9 +45,14 @@ ReadProtected == /\ s.pc = "read-prefix"
                     !.pc = "read"]
 ReadTail == /\ s.pc = "read" /\ s.pos < Size
     /\ LET n == Min(ReadChunk,Size-s.pos)
-           phase == IF PageMode \/ SoftwareRead THEN s.pos ELSE 0
-           keys == [i \in 1..n |-> IF ~SoftwareRead /\ n%4 # 0 /\ i=n /\ Mutation # "xor-read-tail"
-                                   THEN 0 ELSE phase+i]
+           phase == IF PageMode THEN s.pos ELSE 0
+           origin == IF Mutation = "decode-from-raw-column" THEN 1 ELSE 0
+           keys == [i \in 1..n |->
+               IF SoftwareRead THEN
+                   IF SoftwareChunk > 0 /\ Mutation # "decode-continuously"
+                   THEN ((s.pos+i-1+origin)%SoftwareChunk)+1 ELSE s.pos+i
+               ELSE IF n%4 # 0 /\ i=n /\ Mutation # "xor-read-tail"
+                    THEN 0 ELSE phase+i]
            observed == [i \in 1..n |-> IF ~SoftwareRead /\ n%4 # 0 /\ i=n THEN 0 ELSE phase+i]
            decoded == [i \in 1..n |-> IF s.media[s.pos+i][3]=keys[i]
                         THEN <<s.media[s.pos+i][1],s.media[s.pos+i][2]>> ELSE <<0,0>>]
@@ -54,7 +60,7 @@ ReadTail == /\ s.pc = "read" /\ s.pos < Size
            s' = [s EXCEPT !.error = TRUE, !.pc = "finish",
                !.badCopy = Mutation = "copy-failed-tail"]
           ELSE s' = [s EXCEPT !.returned = @ \o decoded, !.pos = @+n,
-               !.measured = @ /\ keys=observed]
+               !.measured = @ /\ (SoftwareRead \/ keys=observed)]
 Finish == /\ ((s.pc = "read" /\ s.pos=Size) \/ s.pc="finish")
     /\ LET success == ~s.error
        IN s' = [s EXCEPT !.result = IF success THEN "ok" ELSE "error",

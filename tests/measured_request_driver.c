@@ -5,6 +5,7 @@ void measured_options(bool dirty, unsigned fault)
 {
     measured_dirty=false; measured_inject_dirty=dirty;
     measured_write_fault=fault; measured_confirms=0;
+    measured_counts=false;
     media_wire_fault(0,0);
 }
 
@@ -30,12 +31,13 @@ static void measured_normal(u8 *buf, unsigned len, bool write)
 }
 
 unsigned measured_confirm_count(void) { return measured_confirms; }
+void measured_corrections(void) { measured_counts=true; }
 
 void measured_layout(unsigned *first,unsigned *second,unsigned *tail)
 {
     *first=sunxi_nfc_user_data_sz(&persistent_chip,0);
     *second=sunxi_nfc_user_data_sz(&persistent_chip,1);
-    *tail=sunxi_get_oob_offset(&persistent_chip,&persistent_chip.ecc,2);
+    *tail=sunxi_get_oob_offset(&persistent_chip,&persistent_chip.ecc,persistent_chip.ecc.steps);
 }
 
 void measured_store(FILE *output)

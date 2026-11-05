@@ -39,7 +39,9 @@ def collect(directory, source, names):
             else:
                 files[entry["file"]] = entry
     # Existing driver runners pass a list; the core runner supplies per-file
-    # names. Never count fixture branches or accidentally merge same-name code.
+    # names. Never count fixture branches. Identical source helpers can be
+    # extracted into both page and transport translation units; merge their
+    # executions only when their source coordinates and branch shapes agree.
     by_file = names if isinstance(names, dict) else {"sunxi_nand.c": names}
     result = {}
     for filename, function_names in by_file.items():
@@ -48,13 +50,34 @@ def collect(directory, source, names):
         data = files[filename]
         for name in function_names:
             functions = [f for f in data["functions"] if f["name"] == name]
-            if len(functions) != 1:
+            if not functions:
                 raise RuntimeError("missing source function coverage: " + name)
+            locations = {tuple(f[k] for k in ("start_line", "start_column", "end_line", "end_column"))
+                         for f in functions}
+            if len(locations) != 1:
+                raise RuntimeError("ambiguous source function coverage: " + name)
             function = functions[0]
             lines = [line for line in data["lines"] if line.get("function_name") == name]
+            merged = {}
+            for line in lines:
+                number = line["line_number"]
+                if number not in merged:
+                    merged[number] = dict(line, branches=[dict(b) for b in line.get("branches", [])])
+                    continue
+                previous = merged[number]
+                incoming = line.get("branches", [])
+                if len(previous["branches"]) != len(incoming):
+                    raise RuntimeError("inconsistent branch shape: " + name)
+                previous["count"] += line["count"]
+                for a, b in zip(previous["branches"], incoming):
+                    if {k:v for k,v in a.items() if k != "count"} != {k:v for k,v in b.items() if k != "count"}:
+                        raise RuntimeError("inconsistent branch identity: " + name)
+                    a["count"] += b["count"]
+            lines = list(merged.values())
             branches = [b for line in lines for b in line.get("branches", [])]
             key = f"{filename}:{name}" if isinstance(names, dict) else name
-            result[key] = dict(calls=function["execution_count"],
+            result[key] = dict(calls=sum(f["execution_count"] for f in functions),
+                extracted_copies=len(functions),
                 lines=len(lines), lines_hit=sum(line["count"] > 0 for line in lines),
                 branches=len(branches), branches_hit=sum(b["count"] > 0 for b in branches),
                 missed_lines=[line["line_number"] for line in lines if not line["count"]],

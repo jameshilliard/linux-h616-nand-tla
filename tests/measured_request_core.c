@@ -4,6 +4,7 @@ extern void measured_options(bool,unsigned),measured_layout(unsigned *,unsigned 
 extern void measured_store(FILE *);
 extern bool measured_erased(void);
 extern unsigned measured_confirm_count(void);
+extern void measured_corrections(void);
 
 int main(void)
 {
@@ -52,8 +53,8 @@ int main(void)
         assert(!memcmp(out+1,data,PAGE));
         assert(out[0]==0xa5 && out[PAGE+1]==0xa5 && got[0]==0xa5 && got[SPARE+1]==0xa5);
         assert(fwrite(got+1+tail,SPARE-tail,1,binary)==1 || SPARE==tail);
-        fprintf(report,"{\"kind\":\"roundtrip\",\"format\":%u,\"writer\":%u,\"reader\":%u,\"spare\":%u,\"user\":[%u,%u],\"tail\":%u,\"free\":%u}\n",
-                fmt,writer,reader,SPARE,first,second,tail,chip.mtd.oobavail);
+        fprintf(report,"{\"kind\":\"roundtrip\",\"format\":%u,\"writer\":%u,\"reader\":%u,\"spare\":%u,\"user\":[%u,%u],\"tail\":%u,\"free\":%u,\"steps\":%u}\n",
+                fmt,writer,reader,SPARE,first,second,tail,chip.mtd.oobavail,PAGE/1024);
     }
 
     /* Keep actual MMIO reset + whole-page DMA-to-PIO retry. Only the hardware
@@ -110,6 +111,42 @@ int main(void)
         ret=nand_do_write_ops(&chip,18*PAGE,&op);
         request_driver_end(ret,op.retlen,op.oobretlen);
         assert(!ret && op.retlen==PAGE && measured_confirm_count()==1);
+    }
+    /* The standard layout fills the 128-byte USER_DATA bank after four
+     * 32-byte slots. Inject prepare/wait failures in EVERY later batch.
+     * DMA reads retry the whole page and must roll back earlier ECC counts;
+     * writes must never replay a partly transferred program. */
+    for (unsigned nth=2;nth+3<=PAGE/1024;nth++)
+    for (unsigned fault=1;fault<=2;fault++)
+    for (unsigned write=0;write<2;write++) {
+        setup(0,true); measured_options(false,0); request_config(2,0,0); use_dma=true;
+        for (unsigned i=0;i<PAGE;i++) data[i]=(i*19+(i>>8)*7)&255;
+        struct mtd_oob_ops op={.mode=MTD_OPS_AUTO_OOB,.len=PAGE,.datbuf=data};
+        int ret;
+        if (!write) {
+            request_driver_begin(id++,0,2,0,PAGE,0);
+            ret=nand_do_write_ops(&chip,17*PAGE,&op);
+            request_driver_end(ret,op.retlen,op.oobretlen); assert(!ret);
+            measured_corrections();
+            chip.mtd.ecc_stats.corrected=7; chip.mtd.ecc_stats.failed=3;
+        }
+        request_config(2,fault,nth);
+        op=(struct mtd_oob_ops){.mode=MTD_OPS_AUTO_OOB,.len=PAGE,.datbuf=write?data:out+1};
+        request_driver_begin(id++,0,2,fault,PAGE,0);
+        ret=write?nand_do_write_ops(&chip,17*PAGE,&op):nand_do_read_ops(&chip,17*PAGE,&op);
+        request_driver_end(ret,op.retlen,op.oobretlen);
+        if (write) {
+            assert(ret<0 && !op.retlen && !measured_confirm_count() && measured_erased());
+            request_config(2,0,0); op.retlen=0;
+            request_driver_begin(id++,0,2,0,PAGE,0);
+            ret=nand_do_write_ops(&chip,18*PAGE,&op);
+            request_driver_end(ret,op.retlen,op.oobretlen);
+            assert(!ret && op.retlen==PAGE && measured_confirm_count()==1);
+        } else {
+            assert(ret==1 && op.retlen==PAGE && !memcmp(out+1,data,PAGE));
+            assert(chip.mtd.ecc_stats.corrected==7+PAGE/1024 && chip.mtd.ecc_stats.failed==3);
+        }
+        fprintf(report,"{\"kind\":\"late-batch\",\"write\":%u,\"fault\":%u,\"batch\":%u}\n",write,fault,nth);
     }
     assert(!fclose(binary) && !fclose(report)); request_finish();
     printf("Measured request composition: %u actual core calls, spare=%u\n",id,SPARE);

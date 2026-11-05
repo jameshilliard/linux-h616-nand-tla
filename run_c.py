@@ -63,6 +63,16 @@ def extract_function(source, name):
     return source[match.start():source.index("\n}\n", match.end()) + 3]
 
 
+def chunk_functions(source):
+    """Include the candidate refactor without changing the pinned v9 source."""
+    return ["sunxi_nfc_buf_chunk_size"] if "sunxi_nfc_buf_chunk_size" in source else []
+
+
+def chunk_defines(source):
+    match = re.search(r"^#define NFC_MAX_BYTE_COUNT[^\n]*", source, re.M)
+    return match[0] + "\n" if match else ""
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
@@ -80,7 +90,9 @@ def main():
     binding = (HERE / "reference/allwinner,sun4i-a10-nand.yaml").read_bytes()
     if hashlib.sha256(binding).hexdigest() != pin["binding_sha256"]:
         parser.error("binding hash mismatch")
-    generated = ["struct sunxi_nfc_ecc_read;\nstruct sunxi_nfc_ecc_snapshot;\n"]
+    generated = [chunk_defines(source),
+                 "struct sunxi_nfc_ecc_read;\nstruct sunxi_nfc_ecc_snapshot;\n"]
+    functions = chunk_functions(source) + FUNCTIONS
     hashes = {}
     for name in STRUCTURES:
         start = source.index("struct " + name + " {")
@@ -91,7 +103,7 @@ def main():
         if not match:
             raise ValueError(name)
         generated.append(match[0])
-    for name in FUNCTIONS:
+    for name in functions:
         if name == "sunxi_nfc_allwinner_oob_attach_chip":
             for ops in ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops",
                         "sunxi_nfc_allwinner_oob_ops"):
@@ -141,7 +153,7 @@ def main():
     passed = run.returncode == 0 and "ALL C CHECKS PASSED" in run.stdout and not run.stderr
     traces = (out / "oob-traces.jsonl").read_bytes() if passed and args.oob_vectors else None
     from source_coverage import build_and_collect
-    coverage = build_and_collect(out, command, source, FUNCTIONS) if passed else None
+    coverage = build_and_collect(out, command, source, functions) if passed else None
     if traces is not None and (out / "oob-traces.jsonl").read_bytes() != traces:
         raise RuntimeError("ASan/UBSan and GCOV builds produced different OOB traces")
     (out / "summary.json").write_text(json.dumps(

@@ -1,6 +1,17 @@
 # Current sunxi driver verification
 
-## Current integration (2026-11-04)
+## Current integration (2026-11-04, reviewability update)
+
+The 24-patch v10 draft now ends at `8a14d3e441eb`. Its driver digest is
+`932f8d879868b5e80fd2441b8873a4c79d4182dc239b99e72c8937b53e996aaa`.
+Preparation comes first, correctness fixes next, optimizations after them,
+and binding/format support last. The vendor-tail decoder now follows the
+writer's command-local randomizer boundaries. See the
+[review map and stronger checks](REVIEWABLE-V10.md) and
+[validation record](../VALIDATION.md). The earlier source/coverage results
+below retain their original snapshot and must not be attributed to this one.
+
+## Previous integration (2026-11-04)
 
 `submit/sunxi-nand-fixes-v10` now ends at
 `c95239dadd36c5d4c012c228ed4a95971c89b65a` on the same NAND base. The

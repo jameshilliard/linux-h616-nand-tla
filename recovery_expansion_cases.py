@@ -14,7 +14,7 @@ def extend_recovery_expansion(modules, add, mutation):
                  'Error', 'NextRequest', 'Quarantine'])
     base = dict(Backend='descriptor', Policy='bus-reset',
                 Faults=('timeout', 'double-timeout', 'ok'),
-                RecoveryFailure='none', FailureAt=1, StopRetires=True,
+                RecoveryFailure='none', FailureAt=1, StopRetires=True, BusRetires=True,
                 RetireEvents=True, HiddenFault=True, BusClears=True, NextChip=1)
     for chip in (1, 2):
         for failure in ('none', 'assert', 'deassert', 'clock', 'context'):
@@ -48,7 +48,14 @@ def extend_recovery_expansion(modules, add, mutation):
         expected='SoundSuccess', kind='assumption')
     add(module, 'recovery-old-event-survives', dict(base, RetireEvents=False),
         expected='FreshCompletion', kind='assumption')
-    add(module, 'recovery-unproven-retirement-keeps-memory', dict(base, StopRetires=False))
+    add(module, 'recovery-unproven-retirement-keeps-memory',
+        dict(base, StopRetires=False, BusRetires=False))
+    for backend in ('pio', 'external', 'register', 'descriptor'):
+        for stop in (False, True):
+            for bus in (False, True):
+                add(module, f'recovery-independent-retirement-{backend}-{stop}-{bus}',
+                    dict(base, Backend=backend, StopRetires=stop, BusRetires=bus),
+                    kind='candidate-policy')
     mutation(module, base, 'skip-context', 'ContextRestored')
     mutation(module, dict(base, RecoveryFailure='deassert'),
              'reopen-failed-reset', 'FailedRecoveryClosed')
@@ -108,7 +115,7 @@ def extend_recovery_expansion(modules, add, mutation):
         actions=['StageProtected', 'WriteTail', 'Confirm', 'ReadProtected',
                  'ReadTail', 'Finish', 'Reuse'])
     base = dict(Size=20, WriteChunk=8, ReadChunk=8, FormatChunk=8,
-                PageMode=False, SoftwareRead=False, Fault='none')
+                PageMode=False, SoftwareRead=False, SoftwareChunk=0, Fault='none')
     for size in (0, 4, 8, 12, 20):
         for fault in ('none', 'write-tail', 'read-tail', 'confirm-timeout'):
             add(module, f'measured-page-{size}-{fault}', dict(base, Size=size, Fault=fault))
@@ -125,6 +132,18 @@ def extend_recovery_expansion(modules, add, mutation):
         add(module, f'measured-page-vendor-software-{size}', dict(base, SoftwareRead=True, Size=size),
             expected='RoundTrip' if size>8 else None,
             kind='source-contract' if size>8 else 'positive')
+    # Decode relative to the start of the written tail, not raw-read chunks
+    # (which can also contain parity). Keep the old failure cases above.
+    fixed = dict(base, SoftwareRead=True, SoftwareChunk=8)
+    for size in (0, 1, 3, 7, 8, 9, 12, 16, 19, 20):
+        for read in (3, 8, 11):
+            for fault in ('none', 'read-tail', 'write-tail'):
+                add(module, f'measured-page-fixed-software-{size}-{read}-{fault}',
+                    dict(fixed, Size=size, ReadChunk=read, Fault=fault))
+    mutation(module, fixed, 'decode-continuously', 'RoundTrip')
+    mutation(module, fixed, 'decode-from-raw-column', 'RoundTrip')
+    add(module, 'measured-page-wrong-software-chunk', dict(fixed, SoftwareChunk=4),
+        expected='RoundTrip', kind='mutation')
     mutation(module, base, 'writer-continuous', 'MeasuredContract')
     mutation(module, dict(base, Size=3), 'xor-read-tail', 'MeasuredContract')
     mutation(module, dict(base, Fault='read-tail'), 'copy-failed-tail', 'FailedReadNotCopied')
