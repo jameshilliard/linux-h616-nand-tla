@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Test-only appendix to sunxi_nand.c. Never install in a production kernel. */
 #include "sunxi_nand_lab_api.h"
+#ifdef SUNXI_NFC_LAB_ABORT_RECOVERY
+#include "sunxi_nand_lab_direct.h"
+#endif
 
 int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r);
 int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r)
@@ -17,6 +20,10 @@ int sunxi_nfc_lab_native(struct nand_chip *nand, struct probe_request *r)
 
 	lockdep_assert_held(&nand->lock);
 	lockdep_assert_held(&nand->controller->lock);
+#ifdef SUNXI_NFC_LAB_ABORT_RECOVERY
+	if (r->op == PROBE_NATIVE_DIRECT_READ)
+		return sunxi_nfc_lab_direct_read(nand, r);
+#endif
 	if (!nfc->caps->has_mdma_desc || !nfc->use_mdma ||
 	    mtd->writesize != 2048 || mtd->oobsize != 128 ||
 	    nand->ecc.size != 1024 || nand->ecc.strength != 32 ||

@@ -107,6 +107,14 @@ error checks and sanitized capture replay retain explicit limits on failed
 silicon reset, older controllers and performance. Earlier reports remain
 historical records, including their original unresolved findings.
 
+The subsequent [streaming-DMA investigation](docs/H616-DIRECT-DMA.md) tests
+whether the full-size private coherent data buffer is necessary. Read-only
+H616 measurements cover immediate buffer reuse, observable late-write controls,
+actual ECC abort/retry, and a corrected-ECC outlier with follow-up stress.
+The kernel draft is unchanged. Nine added model configurations distinguish
+safe direct DMA after retirement from missing/failed-reset lifetime failures;
+the reset's physical retirement contract remains explicit.
+
 The reference is the [posted v9 series, 18 patches](https://lore.kernel.org/r/20261017-submit-sunxi-nand-vendor-oob-layout-v1-v9-0-b624c09e3ee5@gmail.com).
 The v10 draft inspected when this repository was created has the same driver
 implementation. This repository validates that pinned implementation, **not

@@ -1645,3 +1645,49 @@ retirement remain unproved hardware contracts. The private coherent buffer
 adds a copy per DMA batch; initial reads were slower than the older normal
 image, but this was not a controlled patch-only comparison. Neither full
 silicon proof nor unchanged performance is claimed.
+
+## H616 direct-buffer hardware investigation, 2026-11-04
+
+The production v10 driver and submission branches are unchanged. Diagnostic
+code exercises streaming mappings instead of the private coherent data buffer,
+with NAND programming disabled throughout. The public report is
+[H616-DIRECT-DMA.md](docs/H616-DIRECT-DMA.md).
+
+- **392 raw retirement/control trials**: 128 completed-transfer controls,
+  256 delayed aborts (224 observed busy), and eight deliberate test-RAM writes
+  proving poison-check sensitivity. Data, guards and cache-synchronized
+  post-reset reuse checks met their expected outcomes.
+- **128 actual-driver direct-DMA abort/PIO-retry trials**, with 112 observed
+  busy, plus **152 native controls/follow-up reads**. All compared bytes
+  matched the appropriate PIO/DMA parity representation and remained stable.
+- One programmed-page trial reported eight corrected bits and matching data,
+  with no failed ECC. **400 additional reads**, including 100 repeats of the
+  same 5-us abort profile, did not reproduce that correction. Its cause remains
+  unresolved; it is retained in the capture rather than discarded.
+- The initial rejected PIO/DMA preflight was traced to the pre-existing
+  112-byte decoded/raw parity distinction. The corrected checker verifies
+  it against private raw backups and the independent bit-level LFSR oracle,
+  then compares complete buffers against path-specific baselines.
+- `NandPrivateRecovery`: **50/50 expected outcomes**, including eight added
+  positive direct-DMA retirement configurations and a missing-reset lifetime
+  counterexample. Existing weaker-contract and assertion-failure witnesses
+  remain; the model itself is unchanged.
+- `run_hardware.py`: all historical and new captures replay successfully;
+  **16 unit tests** pass, including **20 deliberate mutations** of the new
+  capture. Replay validates recorded observations, not a new hardware run.
+- The diagnostic kernel and module build successfully. Instrumentation was
+  removed from the host build and the ordinary kernel rebuilt; the restored
+  driver hash is `7f93090564302e65e251c48d7a700ec4d20b1b46e2a29d4f777e747f638348cc`.
+
+Independent raw dumps confirm all four SPL copies and the selected UBI block
+unchanged. The probe unloaded normally, an ordinary 32 MiB MTD read passed,
+and the board returned to its normal image. No erase/program was required.
+Private data, flash hashes, addresses of test hosts, credentials and boot
+artifacts stay outside the public repository. The capture exporter allowlists
+fields and rejects incomplete profiles/final checks.
+
+These results support direct streaming DMA under the tested H616 reset
+contract. They do not settle physical reset failure, permanently wedged bus
+transactions, interrupted NAND programming, other geometries or older NFCs.
+Removing the private data allocation still requires a production error-path
+audit; the small coherent descriptor is a separate allocation.

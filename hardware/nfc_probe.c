@@ -202,11 +202,21 @@ static int validate(const struct probe_request *r)
 {
 	if (poisoned)
 		return -EIO;
-	if (r->op > PROBE_ABORT_NATIVE_READ || r->op == 22 || r->op == 23 ||
+	if (r->op > PROBE_NATIVE_DIRECT_READ || r->op == 22 || r->op == 23 ||
 	    r->flags & ~127U || r->seed > 0x7fff)
 		return -EINVAL;
 	if (r->op == PROBE_INFO || r->op == PROBE_BANKS)
 		return 0;
+	/* Read-only ECC tests on one bounded, already-populated UBI block.
+	 * No program/erase operation gains access to this additional range.
+	 */
+	if (r->op == PROBE_NATIVE_DIRECT_READ) {
+		if (!allow_recovery || r->page < 2688 || r->page >= 2752 ||
+		    r->column || r->length != 2048 || r->chunk > 10000 ||
+		    r->flags || r->seed > 3)
+			return -EPERM;
+		return no_attached_ubi();
+	}
 	if (r->page >= END_PAGE || r->column > PROBE_RAW_SIZE ||
 	    r->length > PROBE_RAW_SIZE - r->column)
 		return -EINVAL;
@@ -254,6 +264,13 @@ static int validate(const struct probe_request *r)
 	if (r->op == PROBE_ABORT_NATIVE_READ) {
 		if (!allow_recovery || r->page < FIRST_PAGE || r->column ||
 		    r->length != 2048 || r->chunk > 10000 || r->flags || r->seed)
+			return -EPERM;
+		return no_attached_ubi();
+	}
+	if (r->op == PROBE_DIRECT_RETIRE) {
+		if (!allow_recovery || r->page < FIRST_PAGE || r->column ||
+		    r->length != 2048 || r->chunk > 10000 || r->flags > 3 ||
+		    r->seed < FIRST_PAGE || r->seed >= END_PAGE)
 			return -EPERM;
 		return no_attached_ubi();
 	}
@@ -508,6 +525,8 @@ restore_context:
 	return ret;
 }
 
+#include "direct_dma.h"
+
 static long probe_ioctl(struct file *file, unsigned int command, unsigned long arg)
 {
 	struct probe_request *r;
@@ -532,6 +551,11 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 		goto unlock_chip;
 	}
 	mutex_lock(&chip->controller->lock);
+	/* Recheck after exclusion: an earlier diagnostic can poison the engine. */
+	if (poisoned) {
+		ret = -EIO;
+		goto unlock_controller;
+	}
 	nand_select_target(chip, 0);
 	ret = idle();
 	if (ret)
@@ -604,6 +628,7 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 		break;
 	case PROBE_NATIVE_READ ... PROBE_NATIVE_RAW_WRITE:
 	case PROBE_ABORT_NATIVE_READ:
+	case PROBE_NATIVE_DIRECT_READ:
 		ret = native_request(r);
 		if (r->regs[15] & BIT(31)) {
 			poisoned = true;
@@ -612,6 +637,9 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 		break;
 	case PROBE_RECOVERY:
 		ret = recovery_test(r);
+		break;
+	case PROBE_DIRECT_RETIRE:
+		ret = direct_retire_test(r);
 		break;
 	case PROBE_MASKED_NATIVE_READ:
 		/* Real driver wait-for-completion expires; its status recheck runs. */
@@ -703,6 +731,7 @@ static long probe_ioctl(struct file *file, unsigned int command, unsigned long a
 	writel(int_en, regs + INT_EN);
 unlock:
 	nand_deselect_target(chip);
+unlock_controller:
 	mutex_unlock(&chip->controller->lock);
 unlock_chip:
 	mutex_unlock(&chip->lock);

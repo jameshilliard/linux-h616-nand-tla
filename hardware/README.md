@@ -226,3 +226,45 @@ update-only policy.
 output before publication. The recorded capture uses the pre-indentation
 hash documented in the report; a new source revision needs its own provenance
 and immutable capture, not a silent replacement of this run.
+
+## Read-only direct-buffer investigation
+
+Operations 28/29 and [their report](../docs/H616-DIRECT-DMA.md) examine whether
+the private coherent data buffer can be replaced by streaming mappings.
+Use an independently booted RAM image, UBI detached, `allow_recovery=1`, and
+**`allow_write=0`**. Preserve fresh off-board raw backups of all four SPL
+copies. Operation 29 additionally admits read-only access to physical pages
+2688-2751 on this fixed test geometry: the first block of the existing UBI
+partition. Back it up with OOB as `nfc-ubi-block.before` (64 * 2176 bytes).
+No erase/program command is granted access to this extended range. Do not
+reuse that range blindly on another board or partition layout.
+
+Install the current `--abort-recovery` bridge and rebuild the diagnostic
+kernel/module together. The two runners issue only read/test requests:
+
+```sh
+python3 hardware/run_direct_retire.py --ram-only-confirmed --repeat 8 \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+python3 hardware/run_native_direct.py --ram-only-confirmed --repeat 8 \
+    --directory /path/to/private-evidence ssh root@TEST_BOARD /tmp/probe_stdio
+```
+
+The first runner has 392 raw trials, including eight deliberate writes to
+the *test RAM* poison buffer as detector controls. The second compares PIO,
+private-buffer DMA and direct streaming DMA, then performs 128 injected
+read aborts. The bridge temporarily bypasses the private buffer only inside
+locked diagnostic reads. It retains allocations and poisons further access
+if stop/ownership verification fails. Never force-unload a poisoned module.
+
+After success, compare fresh independent raw dumps of all protected ranges
+with their pre-test backups, unload the module, check ordinary MTD reads and
+return to the normal image. Record these checks in private `direct-final.json`.
+`export_direct.py` allowlists public fields and refuses incomplete matrices
+or restoration checks. It exports no flash bytes, their hashes, transport
+commands or private file paths. Review the export before publication.
+
+`run_direct_ecc_stress.py` repeats the native matrix's isolated corrected-ECC
+profile: 100 rounds of PIO, private DMA, direct DMA and a 5-us direct-DMA
+abort. It has the same read-only/RAM-only preconditions and validates the
+existing PIO/DMA parity-representation difference with the bit-level oracle.
+The original observation remains in the capture even when repetitions pass.

@@ -33,12 +33,16 @@ include = '\n#include "sunxi_nand_lab.h"\n'
 fault_decl = '''#define SUNXI_NFC_LAB_ABORT_RECOVERY
 static bool sunxi_nfc_lab_timeout_armed;
 static unsigned int sunxi_nfc_lab_timeout_delay;
+static u32 sunxi_nfc_lab_timeout_regs[3];
 
 '''
 fault_hook = '''\tif (sunxi_nfc_lab_timeout_armed &&
 \t    events == (NFC_CMD_INT_FLAG | NFC_DMA_INT_FLAG)) {
 \t\tsunxi_nfc_lab_timeout_armed = false;
 \t\tudelay(sunxi_nfc_lab_timeout_delay);
+\t\tsunxi_nfc_lab_timeout_regs[0] = readl(nfc->regs + NFC_REG_ST);
+\t\tsunxi_nfc_lab_timeout_regs[1] = readl(nfc->regs + NFC_REG_H6_MDMA_STA);
+\t\tsunxi_nfc_lab_timeout_regs[2] = readl(nfc->regs + 0x214);
 \t\treturn -ETIMEDOUT;
 \t}
 
@@ -88,4 +92,5 @@ source.write_text(text)
 here = Path(__file__).resolve().parent
 shutil.copyfile(here / 'native_bridge.h', source.parent / 'sunxi_nand_lab.h')
 shutil.copyfile(here / 'probe.h', source.parent / 'sunxi_nand_lab_api.h')
+shutil.copyfile(here / 'native_direct.h', source.parent / 'sunxi_nand_lab_direct.h')
 print('Installed test-only bridge and four observation counters.')

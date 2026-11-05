@@ -30,3 +30,15 @@ def extend_private_recovery(modules, add, mutation):
     mutation(module, base, 'skip-context', 'ContextRestored')
     mutation(module, base, 'copy-timeout', 'SoundRead')
     mutation(module, dict(base, Direction='write'), 'replay-write', 'NoWriteReplay')
+    # Alternative ownership policy, not a change to the submitted driver.
+    # Direct caller DMA is safe in this abstraction only after retirement;
+    # the reset API succeeding remains an explicit hardware assumption.
+    for fault in ('none', 'deassert'):
+        for soft in (False, True):
+            for chip in (1, 2):
+                add(module, f'direct-retired-read-{fault}-{soft}-{chip}',
+                    dict(base, Fault=fault, SoftRetires=soft, NextChip=chip,
+                         Mutation='direct-caller-dma'))
+    add(module, 'direct-missing-reset-caller-lifetime',
+        dict(base, Fault='missing', Mutation='direct-caller-dma'),
+        expected='NoFreedDMATarget', kind='assumption')
