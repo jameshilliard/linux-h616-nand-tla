@@ -52,6 +52,10 @@ page/OOB callers to DMA, interrupt recovery and persistent-media observations,
 including compound read failures and subsequent controller reuse. The
 [file-lifetime checks](docs/FD-LIFETIME-CONFORMANCE.md) follow actual MTD
 open/close into NAND locks and expose close/sync within the known unbind issue.
+The independent lifetime RFC now has pinned candidate-source checks and a
+disconnect/reference model, including suspended waiters and nested partition
+ownership. Real kernel unbind/rebind and full registration fault injection
+remain outstanding; the model is not a proof of all MTD backend lifetimes.
 
 The [2026-11-04 real H616 measurements](docs/HARDWARE-MEASUREMENTS-20261104.md)
 add a restricted diagnostic module, sanitized captures and offline replay.
@@ -144,6 +148,8 @@ python3 run_ordering.py
 python3 run_request_refinement.py
 python3 run_fd_locking.py
 python3 run_fd_lifetime.py
+python3 run_retained_lifetime.py
+python3 run_retained_model.py
 python3 run_hardware.py
 python3 run_measured_requests.py
 ```

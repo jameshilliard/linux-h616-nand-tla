@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Execute a candidate retained-handle implementation, not a policy surrogate."""
+import argparse
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+from boundary_common import HERE, bodies, check
+from run_core import extract
+
+FILES = {
+    "mtd.h": "include/linux/mtd/mtd.h",
+    "mtdcore.c": "drivers/mtd/mtdcore.c",
+    "mtdpart.c": "drivers/mtd/mtdpart.c",
+    "mtdchar.c": "drivers/mtd/mtdchar.c",
+    "nand_base.c": "drivers/mtd/nand/raw/nand_base.c",
+    "sunxi_nand.c": "drivers/mtd/nand/raw/sunxi_nand.c",
+}
+FUNCTIONS = {
+    "mtd.h": ["mtd_get_master", "mtd_sync"],
+    "mtdcore.c": ["__mtd_next_device", "mtd_master_release", "mtd_get_lifetime",
+                  "mtd_put_lifetime", "mtd_set_release", "mtd_put_master",
+                  "mtd_release", "mtd_device_release", "del_mtd_device",
+                  "get_mtd_device", "__get_mtd_device", "__put_mtd_device",
+                  "put_mtd_device", "mtd_device_unregister", "mtd_dev_release_done"],
+    "mtdpart.c": ["__del_mtd_partitions", "del_mtd_partitions"],
+    "mtdchar.c": ["mtdchar_open", "mtdchar_close"],
+    "nand_base.c": ["nand_get_device", "nand_release_device", "nand_disconnect",
+                    "nand_sync", "nand_suspend", "nand_resume"],
+    "sunxi_nand.c": ["sunxi_nfc_release", "sunxi_nfc_put", "sunxi_nand_get_device",
+                     "sunxi_nand_release", "sunxi_nand_chips_cleanup"],
+}
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--kernel-tree", type=Path)
+    parser.add_argument("--update-reference", action="store_true",
+                        help="snapshot the candidate's exact function bodies")
+    args = parser.parse_args()
+    reference = HERE / "reference/retained-lifetime.json"
+    if args.update_reference and not args.kernel_tree:
+        parser.error("--update-reference requires --kernel-tree")
+    if args.kernel_tree:
+        src = {name: (args.kernel_tree / path).read_text() for name, path in FILES.items()}
+        if args.update_reference:
+            if subprocess.check_output(["git", "status", "--porcelain"], cwd=args.kernel_tree):
+                parser.error("commit the candidate before snapshotting it")
+            payload = dict(commit=subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=args.kernel_tree, text=True).strip(), files={})
+            for name, names in FUNCTIONS.items():
+                functions = {fn: extract(src[name], fn) for fn in names}
+                payload["files"][name] = dict(path=FILES[name],
+                    source_sha256=hashlib.sha256(src[name].encode()).hexdigest(),
+                    functions=functions, functions_sha256={fn:hashlib.sha256(body.encode()).hexdigest()
+                                                          for fn,body in functions.items()})
+            reference.write_text(json.dumps(payload, indent=2) + "\n")
+    else:
+        payload = json.loads(reference.read_text())
+        src = {}
+        for name, names in FUNCTIONS.items():
+            entry = payload["files"][name]
+            assert set(entry["functions"]) == set(names)
+            for fn, body in entry["functions"].items():
+                assert hashlib.sha256(body.encode()).hexdigest() == entry["functions_sha256"][fn]
+            src[name] = "\n\n".join(entry["functions"].values())
+    code, proto, hashes = bodies(src, FUNCTIONS)
+    check("retained-lifetime", {"check.c":
+        (HERE / "tests/boundary_list.h").read_text() +
+        (HERE / "tests/retained_lifetime.h").read_text() + proto + "\n" + code +
+        '\n#line 1 "retained_lifetime.c"\n' +
+        (HERE / "tests/retained_lifetime.c").read_text()}, hashes,
+        coverage=(src, FUNCTIONS), require_all_called=True, limits=[
+            "Actual candidate get/put, close/sync, disconnect and release function bodies",
+            "Heap objects are freed, so ASan detects premature object access",
+            "Registration, device refs, module refs and devres are explicit host shims",
+            "Sequential schedules; SMP lock/disconnect interleavings checked separately by TLC",
+            "Does not cover virtual concatenation, real sysfs unbind or hardware execution"])
