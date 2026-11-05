@@ -3,7 +3,8 @@
 \* Public MTD admission, nested translation and result/statistics projection.
 \* Source policy keeps the unsigned arithmetic in pinned mtd_check_oob_ops.
 \* Eof-fixed adds only the nonempty-OOB starting-page check.
-\* Bounded policy is a specification alternative, not an implemented fix.
+\* Data-fixed uses subtraction for data bounds; both-fixed combines the fixes.
+\* Bounded is the mathematical contract, including partial-page OOB bounds.
 \* The callback outcome is an explicit input; no analog NAND/ECC simulation.
 EXTENDS Integers, Sequences
 CONSTANTS Requests, Size, PageSize, SpareSize, FreeSize, Offsets, WordMod,
@@ -21,10 +22,13 @@ Within(q) == /\ q.off >= 0 /\ q.off <= Size /\ q.len <= Size - q.off
         (q.off < Size /\ q.ooboff < Avail(q) /\
          q.ooblen + q.ooboff <= (Size \div PageSize - q.off \div PageSize) * Avail(q)))
 Admit(q) ==
-    IF Policy \in {"source", "eof-fixed"} THEN
-        /\ q.off >= 0 /\ (q.off + q.len) % WordMod <= Size
+    IF Policy # "bounded" THEN
+        /\ IF Policy \in {"data-fixed", "both-fixed"}
+           THEN /\ q.off >= 0 /\ q.off <= Size /\ q.len <= Size - q.off
+           ELSE /\ q.off >= 0 /\ (q.off + q.len) % WordMod <= Size
         /\ (q.ooblen = 0 \/
-            ((Policy = "source" \/ q.off < Size) /\ q.ooboff < Avail(q) /\ q.ooblen <=
+            ((Policy \notin {"eof-fixed", "both-fixed"} \/ q.off < Size) /\
+             q.ooboff < Avail(q) /\ q.ooblen <=
              ((Size \div PageSize - q.off \div PageSize) * Avail(q) - q.ooboff) % WordMod))
     ELSE Within(q)
 Init == \E q \in {Requests[i] : i \in 1..Len(Requests)} :

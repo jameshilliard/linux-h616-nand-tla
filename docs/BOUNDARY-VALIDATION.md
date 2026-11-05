@@ -191,3 +191,57 @@ Local evidence: `results/mtd-boundary-eeh6r72i` (baseline),
 `results/tlc-56hxqw4o` (20 TLC expectations), and `results/tlc-ymk67y2m`
 (seven mutation controls). Candidate `mtdcore.c` SHA-256:
 `0b0416cc886e3c64799b1d75be73ac3b3ad48ce450745f0b325bc36e11745651`.
+
+## Independent data-range overflow fix
+
+The separate `submit/mtd-oob-bounds-v1` branch contains kernel commit
+`c84f69c96780078e22744f6e1242dc820bd9bdde`, based directly on the same
+`mtd/fixes` base. It validates the starting offset before comparing the data
+length with `mtd->size - offs`. It does not depend on the EOF OOB patch or
+the sunxi series. The introducing commit is `5cdd929da53d` (the original
+shared OOB sanity checks), rather than the later EOF comparison change.
+
+```sh
+python3 run_mtd_boundary.py --candidate-mtd-core /path/to/linux/drivers/mtd/mtdcore.c --expect-data-bounds
+python3 run.py --case mtd-
+```
+
+The candidate passes ASan/UBSan and source-coverage execution with 784 public
+requests and 1,285,340 admission combinations. These include real 64-bit
+`SIZE_MAX`/`INT64_MAX` edges, missing-buffer normalization, and read/write
+wrapper rejection before a driver callback. The baseline still reproduces
+the overflow, and asking it to satisfy `--expect-data-bounds` fails at the
+specific arithmetic assertion. These are API-admission tests, not evidence
+of a userspace exploit or a live NAND fault. No 32-bit build is claimed.
+
+The model now distinguishes `data-fixed`, `eof-fixed`, and `both-fixed`.
+All 35 selected TLC expectations match, including the independent fixes'
+remaining counterexamples. The candidate kernel `mtdcore.o` builds with
+`W=1` on x86-64; strict checkpatch and b4's local checks pass. b4 exports
+one patch message, with no external prerequisite or separate cover message.
+
+Review checked Sashiko's general, callstack, false-positive, allocation,
+syscall and build guidance against the actual wrappers and normalization
+order. The lifetime work additionally used the locking, sysfs and VFS
+guidance; its implementation is still pending.
+
+Evidence: `results/mtd-boundary-b9iggzot` (candidate),
+`results/mtd-boundary-r9i31sy9` (baseline),
+`results/mtd-boundary-votpb6v3` (expected baseline failure),
+`results/tlc-h_gzjs9a` (35 TLC expectations), and
+`results/tlc-dnykit5q` (seven mutation controls).
+
+### Partial-page OOB review finding
+
+[Sashiko's review](https://lore.kernel.org/r/sashiko-outbox-197995@kernel.org)
+identified another case: a read-only partition may end inside a page.
+An offset in that last partial page is below `mtd->size`, but both floor
+divisions in the OOB-capacity calculation produce the same page number.
+Subtracting a nonzero OOB offset still underflows.
+
+The source-extracted admission check reproduces this with an eight-page
+device plus one trailing byte, starting at the final partial page. The TLC
+counterexample persists with either independent fix and with both combined.
+The mathematical bounded policy rejects it. Neither existing patch is
+claimed to fix this additional boundary case; it needs a follow-up to the
+EOF OOB submission. The executable witness stops before any hardware access.

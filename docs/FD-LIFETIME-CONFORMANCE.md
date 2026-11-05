@@ -71,3 +71,44 @@ Saved source observations can be checked with `--results results/fd-lifetime-RUN
 An expected counterexample passes only when its specifically named invariant
 fails; parser errors, sanitizer failures and unrelated violations are failures.
 No live unbind, flash write or production kernel change is performed.
+
+## Independent fix preparation
+
+`submit/rawnand-retained-handle-lifetime-v1` is an independent, b4-managed
+RFC draft based on NAND `next` at
+`30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85`. It currently contains tracking
+metadata only, not an implemented or validated kernel fix. It does not
+depend on the sunxi OOB submission or the generic data-range patch.
+
+The intended lifetime contract separates three events:
+
+1. Unpublish the device and reject new clients, while allowing removal
+   notifiers to finish any required flushes.
+2. Serialize hardware disconnection with operations already admitted,
+   including close-time sync and suspend/resume, before releasing controller
+   resources.
+3. Retain the chip, parent/controller lock storage and metadata reachable
+   through existing handles until their final references are released.
+
+Waiting for every open file in the remove callback is not a substitute for
+this contract: the process requesting unbind can itself hold such a file.
+Pinning a module or a parent `struct device` also does not prevent driver
+unbind or defer devres cleanup. Merely setting a lockless removed flag does
+not drain an operation that already passed its admission check.
+
+The implementation must account for successful and partially failed
+registration, nested partitions, both values of `MTD_PARTITIONED_MASTER`,
+multi-chip controllers, rejected new opens, and metadata/device references
+outside ordinary read/write calls. A generic lookup-only change would not
+repair the retained-handle witness reproduced here.
+
+Related [SPI-NOR v3 work](https://lore.kernel.org/r/20261022035352.52129-1-tze.yee.ng@altera.com)
+uses provider-specific refcounting and removal gating. It includes a generic
+module-reference ordering fix, but its driver conversion does not cover raw
+NAND or sunxi. Its discussion also leaves device/sysfs lifetime questions
+open. This work should be coordinated with that submission rather than
+reposting the generic fix as a new independently authored change.
+
+The existing positive lifetime models remain proposed contracts, not proof
+that this draft branch fixes the kernel. Candidate source conformance,
+concurrent fault-injection tests and removal/rebind testing remain required.

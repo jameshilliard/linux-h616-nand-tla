@@ -19,7 +19,8 @@ FUNCTIONS = {
 }
 
 
-def units(candidate_source=None, candidate_mtd_core=None, expect_eof_rejection=False):
+def units(candidate_source=None, candidate_mtd_core=None, expect_eof_rejection=False,
+          expect_data_bounds=False):
     unit, hashes, src = transport_units(candidate_source)
     if candidate_mtd_core:
         src["mtdcore.c"] = candidate_mtd_core.read_text()
@@ -53,7 +54,8 @@ def units(candidate_source=None, candidate_mtd_core=None, expect_eof_rejection=F
     core = replace_once(core,
         "int main(void) { composed_main(); core_retry_tests(); core_copy_tests(); wire_tests(); return 0; }",
         '#line 1 "mtd_boundary.c"\n' + (HERE / "tests/mtd_boundary.c").read_text())
-    unit["check.c"] = f"#define EXPECT_EOF_REJECTION {int(expect_eof_rejection)}\n" + core
+    unit["check.c"] = (f"#define EXPECT_EOF_REJECTION {int(expect_eof_rejection)}\n"
+                       f"#define EXPECT_DATA_BOUNDS {int(expect_data_bounds)}\n" + core)
     # Inject a simulated hardware ECC count at the existing MMIO boundary.
     # No kernel ECC or accounting implementation is replaced.
     driver = "static unsigned boundary_bitflips;\n" + unit["driver.c"]
@@ -75,9 +77,11 @@ def main():
                         help="extract the public MTD wrappers from this mtdcore.c")
     parser.add_argument("--expect-eof-rejection", action="store_true",
                         help="require rejection of nonempty OOB at EOF, independently of source")
+    parser.add_argument("--expect-data-bounds", action="store_true",
+                        help="require overflow-safe data bounds, independently of source")
     args = parser.parse_args()
     unit, hashes, src = units(args.candidate_source, args.candidate_mtd_core,
-                             args.expect_eof_rejection)
+                             args.expect_eof_rejection, args.expect_data_bounds)
     names = {}
     for key in hashes:
         filename, name = key.split(":", 1)
@@ -87,7 +91,8 @@ def main():
               "Actual pinned OOB ioctl helpers, public MTD, partition translation and NAND entries",
               "Actual sunxi page/ECC/OOB/randomizer and SDR command/parser/IRQ bodies",
               "EOF OOB expectation: " + ("reject" if args.expect_eof_rejection else "baseline witness"),
-              "The separate data-addition-overflow witness remains expected",
+              "Data bounds expectation: " + ("overflow-safe" if args.expect_data_bounds
+                                             else "baseline addition-overflow witness"),
               "Host fixture structures/value adapters, not kernel ABI or concurrent locking",
               "Page-aligned nested partitions; SLC-on-MLC dispatch is an assertion, not modeled",
               "ECC status and DMA/memory transport are emulated, not hardware verification",

@@ -69,6 +69,11 @@ static void public_requests(void)
         rejected(m, m->size, op, false, -EINVAL);
         rejected(m, m->size + PAGE, op, false, -EINVAL);
         rejected(m, m->size, op, true, -EINVAL);
+        if (EXPECT_DATA_BOUNDS) {
+            op = (struct mtd_oob_ops){.datbuf=output, .len=SIZE_MAX};
+            rejected(m, 1, op, false, -EINVAL);
+            rejected(m, 1, op, true, -EINVAL);
+        }
         op = (struct mtd_oob_ops){.mode=MTD_OPS_AUTO_OOB, .oobbuf=got, .ooblen=1, .ooboffs=avail};
         rejected(m, start, op, false, -EINVAL);
         op.ooboffs = 0;
@@ -192,9 +197,31 @@ static void admission_arithmetic(void)
     u8 byte;
     struct mtd_oob_ops op = {.datbuf=&byte, .len=SIZE_MAX};
     assert(sizeof(size_t) == 8);
-    assert(!mtd_check_oob_ops(m, 1, &op)); /* 1 + SIZE_MAX wraps to zero */
+    assert(mtd_check_oob_ops(m, 1, &op) == (EXPECT_DATA_BOUNDS ? -EINVAL : 0));
     assert(op.len > m->size - 1);
-    mtd_witnesses++;
+    mtd_witnesses += !EXPECT_DATA_BOUNDS;
+    /* Exercise real 64-bit extremes without ever passing buffers to a driver. */
+    const loff_t offsets[] = {-1, 0, 1, 8 * PAGE - 1, 8 * PAGE,
+                              8 * PAGE + 1, INT64_MAX};
+    const size_t lengths[] = {0, 1, 8 * PAGE - 1, 8 * PAGE,
+                             8 * PAGE + 1, UINT32_MAX, INT64_MAX,
+                             (size_t)INT64_MAX + 1, SIZE_MAX - 1, SIZE_MAX};
+    for (unsigned i = 0; i < sizeof(offsets) / sizeof(offsets[0]); i++)
+    for (unsigned j = 0; j < sizeof(lengths) / sizeof(lengths[0]); j++)
+    for (unsigned buffer = 0; buffer < 2; buffer++) {
+        loff_t off = offsets[i];
+        size_t length = buffer ? lengths[j] : 0;
+        op = (struct mtd_oob_ops){.datbuf=buffer ? &byte : NULL, .len=lengths[j]};
+        bool valid = off >= 0 && (u64)off <= m->size && length <= m->size - off;
+        int ret = mtd_check_oob_ops(m, off, &op);
+        assert(op.len == length);
+        if ((ret == 0) != valid) {
+            assert(!EXPECT_DATA_BOUNDS && !ret && !valid);
+            assert(off >= 0 && length > SIZE_MAX - (size_t)off);
+            mtd_witnesses++;
+        }
+        admission_checks++;
+    }
     /* EOF has zero pages remaining; subtracting a nonzero OOB offset wraps. */
     op = (struct mtd_oob_ops){.mode=MTD_OPS_RAW, .oobbuf=&byte, .ooblen=1, .ooboffs=1};
     assert(mtd_check_oob_ops(m, m->size, &op) == (EXPECT_EOF_REJECTION ? -EINVAL : 0));
@@ -202,6 +229,13 @@ static void admission_arithmetic(void)
     assert(mtd_check_oob_ops(m, m->size, &op) == -EINVAL);
     op.ooblen = 0;
     assert(!mtd_check_oob_ops(m, m->size, &op));
+
+    /* A read-only partition may end inside a page (Sashiko's v1 review). */
+    device.size++;
+    op = (struct mtd_oob_ops){.mode=MTD_OPS_RAW, .oobbuf=&byte, .ooblen=1, .ooboffs=1};
+    assert(!mtd_check_oob_ops(m, 8 * PAGE, &op));
+    assert(mtd_div_by_ws(m->size, m) == mtd_div_by_ws(8 * PAGE, m));
+    mtd_witnesses++;
 
     /* Small exhaustive admission matrix; no callbacks touch these buffers. */
     device = (struct mtd_info){.writesize=8, .writesize_shift=3,
@@ -331,11 +365,12 @@ static void eof_oob_witness(void)
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
+    /* Reject an unfixed candidate before exercising extreme public requests. */
+    admission_arithmetic();
     /* Existing end-to-end request/BBT tests now also use public MTD wrappers. */
     composed_main();
     public_requests();
     ecc_accounting();
-    admission_arithmetic();
     eof_oob_witness();
     fallback_dispatch();
     assert(boundary_warnings == 0);

@@ -69,6 +69,28 @@ def extend_mtd(modules, add, mutation):
     add("NandMtdBoundary", "mtd-eof-fixed-data-addition-overflow",
         dict(base, Policy="eof-fixed", Requests=(overflow,)),
         expected="PartitionBounds", kind="known-bug")
+    add("NandMtdBoundary", "mtd-data-fixed-addition-overflow",
+        dict(base, Policy="data-fixed", Requests=(overflow,)))
+    add("NandMtdBoundary", "mtd-data-fixed-still-eof-underflow",
+        dict(base, Policy="data-fixed", Requests=(eof,)),
+        expected="PartitionBounds", kind="known-bug")
+    # Check the independent subtraction fix across the complete reduced word.
+    # With no spare request, a rejection cannot be hidden by the OOB checks.
+    for off in (-1, 0, 1, 31, 32, 33, 127):
+        add("NandMtdBoundary", f"mtd-data-fixed-lengths-offset{off}",
+            dict(base, Policy="data-fixed", Requests=tuple(
+                request(off=off, len=length, data=present, dataret=0)
+                for length, present in product(range(256), (False, True)))))
+    add("NandMtdBoundary", "mtd-both-fixed-independent-arithmetic",
+        dict(base, Policy="both-fixed", Requests=(overflow, eof)))
+    # The separate partial-page review finding is not fixed by either patch.
+    partial = request(off=32, data=False, len=0, dataret=0,
+                      oob=True, ooboff=1, ooblen=1, oobret=1)
+    for policy in ("source", "eof-fixed", "data-fixed", "both-fixed", "bounded"):
+        add("NandMtdBoundary", "mtd-partial-page-" + policy,
+            dict(base, Size=33, Policy=policy, Requests=(partial,)),
+            expected=None if policy == "bounded" else "PartitionBounds",
+            kind="positive" if policy == "bounded" else "known-bug")
     good = dict(base, Requests=(request(flips=4, corrected=8),))
     for name, invariant, q in (
             ("skip-parent", "Translation", request()),
