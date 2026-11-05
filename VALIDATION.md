@@ -1,4 +1,21 @@
-# Current-source provider-owned reset pulse
+# Current-source reset-pulse hardware validation
+
+The [fresh read-only reset-pulse report](docs/H616-RESET-PULSE-HARDWARE.md)
+records v10 at `522614916748`, driver digest
+`3d5176b4266d14a79782e6bbcb3e7cfea39ff347b6772db85112f600c4f103f7`.
+All 128 native abort/retry trials and 152 control/follow-up reads passed.
+There were 108 busy-at-fault observations, no failed ECC, no changed memory
+guards or delayed buffer writes, and no changes to the raw flash snapshots.
+Three 32 MiB MTD reads passed after the probe was unloaded. The test hooks
+were removed, the plain Image rebuilt, and normal boot restored.
+
+The capture has a separate source identity and checker with 21 negative
+evidence mutations. All 16 source-regression jobs and 26 streaming-recovery
+expectations pass; failed-reset retirement remains an explicit assumption
+boundary. The measurements do not repeat the earlier write-abort/PIO-timeout
+tests and do not establish a hardware-independent DMA retirement guarantee.
+
+# Earlier source/model validation of the provider-owned reset pulse
 
 The [reset-pulse report](docs/H616-RESET-PULSE.md) records v10 at
 `dfc9d0414859`, driver digest

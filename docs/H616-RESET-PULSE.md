@@ -70,8 +70,10 @@ assumption above remains unresolved outside the supported provider contract.
 
 ## Hardware status
 
-No fresh board run was performed for the provider-owned pulse change. The
+At the time of the source/model validation above, no fresh board run had
+been performed for the provider-owned pulse change. The
 [previous request-fault measurements](H616-REQUEST-FAULTS-20261105.md) used
 the explicit 2 microsecond sequence and retain their original source digest.
-They are not relabeled as tests of this revision. A fresh abort/reuse smoke
-test is the remaining hardware check for the 10 microsecond provider pulse.
+They are not relabeled as tests of this revision. The subsequent
+[fresh read-abort/reuse test](H616-RESET-PULSE-HARDWARE.md) checks the
+10 microsecond provider pulse with its own source identity and capture.
