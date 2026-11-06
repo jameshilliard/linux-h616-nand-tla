@@ -30,6 +30,11 @@ and [generation-specific geometry checks](docs/GENERATION-OOB-POLICY.md)
 remain as historical validation of the larger refactor, not descriptions
 of the current submission. First-patch and final-tree checks are recorded
 separately.
+The [complete timing calculation checks](docs/TIMING-PROOFS.md) add an
+exhaustive finite-domain proof of the 19-constraint minimum-period fold and
+connect the register/clock/EDO calculation to 1,186 actual C observations.
+Both controller timing-table generations, check-only behavior and deliberate
+arithmetic/clock-contract failures are covered, with explicit bounds.
 The [bit-accurate randomizer checks](docs/RANDOMIZER-BIT-CONFORMANCE.md) connect
 format behavior to actual source-helper register/marker observations, an exact
 15-bit LFSR model, and all 128 entries of both ECC seed tables. Independent
@@ -201,6 +206,7 @@ python3 run_randomizer_hardware.py --download
 python3 tests/test_randomizer_controller.py
 python3 run_c.py
 python3 run_lowlevel.py
+python3 run_timing.py --download
 python3 run_core.py
 python3 run_lifecycle.py
 python3 run_providers.py
@@ -264,6 +270,8 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandLifecycle` | Two chips sharing a controller; chip context, users/IRQ draining and resource lifetime |
 | `NandProbe` | Probe/scan/register failures, managed/manual ownership, DMA fallback/defer and chip-select allocation |
 | `NandTiming` | Timing lookup, ceiling arithmetic, minimal encodings, check-only and clock-rounding contracts |
+| `NandTimingFold` | Full minimum-period fold over every 19-element vector in the configured finite domains; zero-hold-time read-access constraint |
+| `NandTimingProgram` | C-connected full timing calculation, minimal LUT encodings, field packing, ns rounding, EDO, check-only and clock failures |
 | `NandRequest` | Core data/OOB copy ordering, read retry, ECC statistics, return lengths and transport-error prefixes |
 | `NandBbt` | Factory-marker scan, RAM/flash tables, runtime markbad, optional OOB markers, mirrored updates and remount |
 | `NandFormat` | Page-local PIO/DMA batching, seed selection, stored segment identity and reader compatibility |

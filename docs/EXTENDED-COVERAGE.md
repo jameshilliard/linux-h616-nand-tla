@@ -5,6 +5,10 @@ supersedes its extraction gaps: all 90 driver bodies now execute, with kernel
 services and hardware boundaries still explicit. Earlier counts below are
 retained to make the progression auditable.
 
+The later [timing proof extension](TIMING-PROOFS.md) adds the complete
+19-constraint fold and C-connected register/clock calculation; the original
+lookup-only timing model and its results below remain historical.
+
 All seven follow-up areas have executable models and corresponding source-level
 checks or an explicit boundary. These are bounded models of contracts, not a
 claim that every execution of every driver function has been proved correct.

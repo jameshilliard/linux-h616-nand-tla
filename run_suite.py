@@ -72,6 +72,8 @@ def main():
                  (["--source-only"] if args.source_only else [])))
     jobs.append(("randomizer-hardware","run_randomizer_hardware.py",
                  ["--source-only"] if args.source_only else []))
+    jobs.append(("timing","run_timing.py",shared +
+                 (["--source-only"] if args.source_only else [])))
     followups={}
     if not args.source_only:
         for name,script,options in jobs:

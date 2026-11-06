@@ -8,6 +8,13 @@ has driver SHA-256
 It returns to the previously checked minimal correction, keeping the
 26-patch organization and base of the sent v10.
 
+The subsequent message-only amendment is
+`ed091dc67b8d2bdfa2e1c236c279b857fce2b07b`, with the same driver digest.
+It clarifies normal-I/O versus abort-recovery behavior in the reset-binding
+commit and cover notes. The [timing extension](TIMING-PROOFS.md) records
+additional validation against that source; the original results below are
+retained as recorded.
+
 The final tree differs from sent v10 only in `sunxi_nand.c`: eight added
 and fourteen removed lines. Patch 1 uses a single ordinary-format ops
 table and checks `NAND_NEED_SCRAMBLING` inside the marker transform.
