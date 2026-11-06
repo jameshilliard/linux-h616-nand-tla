@@ -192,6 +192,65 @@ Local evidence: `results/mtd-boundary-eeh6r72i` (baseline),
 (seven mutation controls). Candidate `mtdcore.c` SHA-256:
 `0b0416cc886e3c64799b1d75be73ac3b3ad48ce450745f0b325bc36e11745651`.
 
+## OOB-end v2: trailing partial pages
+
+The v1 byte-offset guard did not cover read-only partitions whose size is
+not a multiple of `writesize`. For example, a size of 16,385 bytes and a
+2,048-byte page size admit offset 16,384 through the data bounds check,
+but both page indices are eight. Subtracting a nonzero OOB offset from
+the resulting zero capacity underflows. Partition allocation permits
+this size while clearing write permission; reads can still reach it.
+
+The v2 candidate compares the starting page index with the number of
+complete pages before the OOB-capacity subtraction. Its base remains
+`mtd/fixes` at `1c1a342aceec79528b3ba51f376eca2be5928fe7`. The exact
+candidate `mtdcore.c` SHA-256 is
+`fe2ddf9e89e4b4d3f5ffd7a17cf09f8bbcf586f260be8a7cae0a8c16393495b8`.
+
+Run the candidate check with both independent expectations enabled:
+
+```sh
+python3 run_mtd_boundary.py \
+    --candidate-mtd-core "$KERNEL/drivers/mtd/mtdcore.c" \
+    --expect-eof-rejection --expect-partial-page-rejection
+```
+
+The expanded host suite checks 3,075,980 admission combinations against
+an integer-arithmetic oracle. The additional matrix includes zero-size
+devices, sub-page partitions, trailing partial pages, all OOB modes,
+missing buffers and empty requests. Page sizes of 1, 3 and 8 exercise the
+division path; the composed ioctl tests use the normal 2,048-byte shift
+path. These small synthetic page sizes exercise generic arithmetic, not
+claimed sunxi hardware configurations.
+
+Eight additional ioctl-path cases cover read-only nested partitions,
+RAW/PLACE mode, fixed/variable user-data layouts and PIO/DMA fixtures.
+With v2, each rejects the trailing-page OOB request before a driver
+callback, returns zero OOB bytes and leaves the destination unchanged.
+A data-only read of the partition's final byte remains valid. The final
+suite executes 728 public requests across 36 profiles. ASan/UBSan and
+GCOV runs produce identical output, and all required MTD helpers run.
+
+The pinned baseline still reproduces the known defects. The v1 candidate
+passes only when trailing-page acceptance is explicitly expected; asking
+it to satisfy the v2 contract fails the specific partial-page assertion.
+The v2 candidate removes the EOF/partial-page witnesses while retaining
+eight witnesses for the separate data-range addition overflow. It does
+not incorporate that independent fix.
+
+Local results are `results/mtd-boundary-vrrsosb9` (pinned baseline),
+`results/mtd-boundary-oxyxqo5j` (v1 partial-page witness),
+`results/mtd-boundary-3uc3i2y8` (expected v1 negative-control failure), and
+`results/mtd-boundary-i952bsbe` (v2). The older v1 result predates a request
+counter correction; its 712 count omits the 16 newly added public calls.
+
+These are source-extracted C checks, not a new exhaustive TLA+ proof or
+hardware measurements. The existing TLA+ admission configurations retain
+their page-aligned geometries; the partial-page cases added here are
+covered by the C matrix and ioctl fixtures. Large-device capacity
+arithmetic, SLC-on-MLC dispatch and concurrent locking are not proved by
+these tests.
+
 ## Independent data-range overflow fix
 
 The separate `submit/mtd-oob-bounds-v1` branch contains kernel commit

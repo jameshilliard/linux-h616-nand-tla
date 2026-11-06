@@ -233,9 +233,10 @@ static void admission_arithmetic(void)
     /* A read-only partition may end inside a page (Sashiko's v1 review). */
     device.size++;
     op = (struct mtd_oob_ops){.mode=MTD_OPS_RAW, .oobbuf=&byte, .ooblen=1, .ooboffs=1};
-    assert(!mtd_check_oob_ops(m, 8 * PAGE, &op));
+    assert(mtd_check_oob_ops(m, 8 * PAGE, &op) ==
+           (EXPECT_PARTIAL_PAGE_REJECTION ? -EINVAL : 0));
     assert(mtd_div_by_ws(m->size, m) == mtd_div_by_ws(8 * PAGE, m));
-    mtd_witnesses++;
+    mtd_witnesses += !EXPECT_PARTIAL_PAGE_REJECTION;
 
     /* Small exhaustive admission matrix; no callbacks touch these buffers. */
     device = (struct mtd_info){.writesize=8, .writesize_shift=3,
@@ -264,6 +265,51 @@ static void admission_arithmetic(void)
         admission_checks++;
     }
     assert(EXPECT_EOF_REJECTION ? admission_eof == 0 : admission_eof > 0);
+}
+
+static void partial_page_admission(void)
+{
+    u8 byte;
+    unsigned witnesses = 0;
+    /* Also exercise the non-power-of-two divider, without the ioctl's mask. */
+    const unsigned page_sizes[] = {1, 3, 8};
+    for (unsigned p = 0; p < sizeof(page_sizes) / sizeof(page_sizes[0]); p++)
+    for (unsigned size = 0; size <= 4 * page_sizes[p] + 1; size++)
+    for (unsigned mode = 0; mode < 3; mode++)
+    for (unsigned pointers = 0; pointers < 4; pointers++)
+    for (int off = -1; off <= (int)size + 1; off++)
+    for (unsigned length = 0; length <= 1; length++)
+    for (unsigned olen = 0; olen <= 17; olen++)
+    for (unsigned ooff = 0; ooff <= 4; ooff++) {
+        struct mtd_info m = {.writesize=page_sizes[p], .size=size,
+                            .oobsize=4, .oobavail=2};
+        struct mtd_oob_ops op = {.mode=mode, .datbuf=(pointers & 1) ? &byte : NULL,
+            .oobbuf=(pointers & 2) ? &byte : NULL, .len=length, .ooblen=olen, .ooboffs=ooff};
+        unsigned n = op.datbuf ? length : 0, on = op.oobbuf ? olen : 0;
+        unsigned capacity = mode == MTD_OPS_AUTO_OOB ? 2 : 4;
+        bool valid = off >= 0 && (unsigned)off <= size && n <= size - off;
+        if (valid && on) {
+            unsigned page = (unsigned)off / m.writesize, pages = size / m.writesize;
+            valid = page < pages && ooff < capacity &&
+                    on + ooff <= (pages - page) * capacity;
+        }
+        int ret = mtd_check_oob_ops(&m, off, &op);
+        assert(op.len == n && op.ooblen == on);
+        if ((ret == 0) != valid) {
+            assert(!valid && !ret && off >= 0 && (unsigned)off <= size);
+            assert((unsigned)off / m.writesize == size / m.writesize);
+            assert(on && ooff && ooff < capacity);
+            if ((unsigned)off == size)
+                assert(!EXPECT_EOF_REJECTION);
+            else {
+                assert(!EXPECT_PARTIAL_PAGE_REJECTION);
+                witnesses++;
+            }
+        }
+        admission_checks++;
+    }
+    assert(EXPECT_PARTIAL_PAGE_REJECTION ? witnesses == 0 : witnesses > 0);
+    mtd_witnesses += witnesses;
 }
 
 static unsigned fallback_calls;
@@ -362,16 +408,53 @@ static void eof_oob_witness(void)
     }
 }
 
+static void partial_page_oob_witness(void)
+{
+    for (unsigned variable = 0; variable < 2; variable++)
+    for (unsigned dma = 0; dma < 2; dma++)
+    for (unsigned raw = 0; raw < 2; raw++) {
+        setup(0, variable);
+        use_dma = dma;
+        struct mtd_info *m = partitions(2);
+        loff_t last_page = m->size;
+        m->size++;
+        m->flags &= ~MTD_WRITEABLE;
+        u8 data = 0xa5;
+        size_t returned;
+        /* Data-only access to the final byte is still valid. */
+        assert(!mtd_read(m, last_page, 1, &returned, &data) && returned == 1);
+        struct mtd_file_info info = {.mtd=m, .mode=raw ? MTD_FILE_MODE_RAW : 0};
+        struct file file = {.private_data=&info};
+        u32 oob_returned = 123;
+        unsigned before = callbacks;
+        u8 readback = 0xa5;
+        /* The ioctl rounds start down to the trailing partial page. */
+        int ret = mtdchar_readoob(&file, m, last_page + 1, 1, &readback, &oob_returned);
+        assert(ret == (EXPECT_PARTIAL_PAGE_REJECTION ? -EINVAL : 0));
+        assert(oob_returned == (EXPECT_PARTIAL_PAGE_REJECTION ? 0 : 1));
+        assert(callbacks == before + (EXPECT_PARTIAL_PAGE_REJECTION ? 0 : 1));
+        if (EXPECT_PARTIAL_PAGE_REJECTION)
+            assert(readback == 0xa5);
+        else
+            mtd_witnesses++;
+        mtd_requests += 2;
+        assert_idle();
+        driver_finish();
+    }
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
     /* Reject an unfixed candidate before exercising extreme public requests. */
     admission_arithmetic();
+    partial_page_admission();
     /* Existing end-to-end request/BBT tests now also use public MTD wrappers. */
     composed_main();
     public_requests();
     ecc_accounting();
     eof_oob_witness();
+    partial_page_oob_witness();
     fallback_dispatch();
     assert(boundary_warnings == 0);
     printf("MTD boundary: %u profiles, %u public requests, %u expected baseline witnesses\n",

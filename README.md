@@ -15,6 +15,9 @@ read/BBT failures.
 Boundary checks connect real core requests to persistent sunxi page operations,
 decode ONFI/ID values into attach decisions, execute MTD reference/partition
 removal and provider IRQ/tasklet paths, and detect historical bug patterns.
+The [OOB-end v2 checks](docs/BOUNDARY-VALIDATION.md#oob-end-v2-trailing-partial-pages)
+also exercise read-only partitions ending inside a page, with independent
+baseline, v1 and corrected-candidate expectations.
 The [refinement checks](docs/REFINEMENT-VALIDATION.md) connect requests to real
 command helpers and `exec_op()`, execute Hynix/Micron retry callbacks, and
 separate reset/stop, MTD lifetime and byte/cache-line ownership contracts.
