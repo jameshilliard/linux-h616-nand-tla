@@ -82,6 +82,7 @@ def main():
         f'#define FILTERED_CHILDREN {int(args.expect_available_children)}\n' +
         f'#define DEFERRED_PUBLICATION {int(args.expect_deferred_publication)}\n' +
         f'#define DEFERRED_SELECTION {int("sunxi_nfc_select_oob_ops(" in sources["sunxi_nand.c"])}\n' +
+        f'#define HAS_VENDOR {int("sunxi_nfc_allwinner_oob_attach_chip(" in sources["sunxi_nand.c"])}\n' +
         fixture + "\n" + "\n".join(bodies) +
         '\n#line 1 "lifecycle-tests.c"\n' + tests)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
@@ -112,6 +113,7 @@ def main():
         candidate=bool(args.candidate_nand_base or args.candidate_source),
         filtered_children=args.expect_available_children,
         deferred_publication=args.expect_deferred_publication,
+        has_vendor="sunxi_nfc_allwinner_oob_attach_chip(" in sources["sunxi_nand.c"],
         probe_traces_sha256=hashlib.sha256(trace_bytes).hexdigest() if trace_bytes is not None else None,
         probe_trace_count=len(trace_bytes.splitlines()) if trace_bytes is not None else 0,
         source_sha256={n: hashlib.sha256(s.encode()).hexdigest() for n, s in sources.items()},

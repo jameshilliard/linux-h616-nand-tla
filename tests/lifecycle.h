@@ -370,7 +370,13 @@ static int nand_create_bbt(struct nand_chip *c)
 #if DEFERRED_SELECTION
     struct sunxi_nand_chip *s=to_sunxi_nand(c);
     CHECK(s->oob_ops->randomized==!!(c->options & NAND_NEED_SCRAMBLING));
+#if HAS_VENDOR
     CHECK((s->oob_ops==&sunxi_nfc_allwinner_oob_ops)==c->flash_node->vendor);
+#else
+    CHECK(!c->flash_node->vendor);
+    CHECK(s->oob_ops==(s->oob_ops->randomized ?
+          &sunxi_nfc_scrambled_plain_bbm_oob_ops : &sunxi_nfc_plain_oob_ops));
+#endif
     if (!slc || (c->options & NAND_NO_SUBPAGE_WRITE))
         CHECK(!c->mtd.subpage_sft && c->subpagesize==c->mtd.writesize);
 #endif
@@ -388,11 +394,13 @@ static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *c,struct nand_ecc_ctrl 
     if (with_calc) e->calculate=io_stub;
     c->mtd.ooblayout=&layout; return fail("attach-after-alloc")?-EINVAL:0;
 }
+#if HAS_VENDOR
 static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c,struct device_node *n)
 { if (c->ecc.engine_type!=NAND_ECC_ENGINE_TYPE_ON_HOST) return -EINVAL;
   c->options|=NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE;
   to_sunxi_nand(c)->oob_ops=&sunxi_nfc_allwinner_oob_ops;
   return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,n); }
+#endif
 static const struct nand_controller_ops sunxi_nand_controller_ops={
     .attach_chip=sunxi_nand_attach_chip,.detach_chip=sunxi_nand_detach_chip,.setup_interface=setup_interface};
 static int nand_scan(struct nand_chip *c,unsigned n)

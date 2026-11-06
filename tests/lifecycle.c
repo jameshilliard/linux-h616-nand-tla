@@ -130,7 +130,7 @@ static unsigned probe_case(unsigned failpoint, int variant)
     if (variant==2) engine=NAND_ECC_ENGINE_TYPE_SOFT;
     if (variant==3) engine=NAND_ECC_ENGINE_TYPE_NONE;
     if (variant==4) options=NAND_SKIP_BBTSCAN|NAND_ROM;
-    if (variant==5) { nodes[0].vendor=nodes[1].vendor=true; no_features=true; }
+    if (variant==5) { nodes[0].vendor=nodes[1].vendor=HAS_VENDOR; no_features=true; }
     if (variant==6) { nodes[1].cs[0]=0; }
     if (variant==7) { req_step=req_strength=0; }
     if (variant==8) { nodes[1].count=0; }
@@ -211,7 +211,7 @@ static void deferred_bbt_cases(void)
     unsigned before=cases_run;
     for (unsigned early=0;early<2;early++)
     for (unsigned late=0;late<2;late++)
-    for (unsigned vendor=0;vendor<2;vendor++)
+    for (unsigned vendor=0;vendor<=HAS_VENDOR;vendor++)
     for (unsigned fault=0;fault<3;fault++) {
         struct device_node nodes[2]={{.count=1,.cs={0},.vendor=vendor},{0}};
         struct platform_device p={.dev.of_node=&nodes[1]};
@@ -228,12 +228,17 @@ static void deferred_bbt_cases(void)
             struct sunxi_nfc *nfc=p.data;
             struct sunxi_nand_chip *chip=list_first_entry(&nfc->chips,struct sunxi_nand_chip,node);
             CHECK(chip->oob_ops->randomized==!!(early || late || vendor));
+#if HAS_VENDOR
             CHECK((chip->oob_ops==&sunxi_nfc_allwinner_oob_ops)==!!vendor);
+#else
+            CHECK(chip->oob_ops==(early || late ?
+                  &sunxi_nfc_scrambled_plain_bbm_oob_ops : &sunxi_nfc_plain_oob_ops));
+#endif
             sunxi_nfc_remove(&p);
         }
         release_devres(); cases_run++;
     }
-    printf("Deferred BBT: %u source-driven probe cases, early/late/vendor policy, pre/post-allocation BBT failures\n",
+    printf("Deferred BBT: %u source-driven probe cases, early/late/available-format policy, pre/post-allocation BBT failures\n",
            cases_run-before);
 #endif
 }

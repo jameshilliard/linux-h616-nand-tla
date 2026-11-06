@@ -183,6 +183,40 @@ to a probed chip's scrambling requirements. The pinned historical sources and
 negative controls remain unchanged. These are host checks and replay of older
 hardware captures, not a fresh H616 or physical Toshiba test.
 
+### Opening refactor in isolation
+
+The v11 draft folds deferred BBT creation and policy finalization into the
+opening OOB refactor. Plain and scrambled/plain-BBM operations are therefore
+separate from their introduction, without an intermediate attach-only policy
+that misses late manufacturer requirements. The completed series' driver
+remains byte-for-byte identical to the candidate above.
+
+The lifecycle runner detects whether the candidate includes the later
+Allwinner-format attachment helper. For the opening refactor it tests only the
+two existing formats, checking the exact selected table at BBT entry. The
+full-series run still checks that final selection preserves the explicit
+Allwinner table. This changes the fixture's supported inputs, not the kernel
+code or the model's assumptions.
+
+The standalone refactor's driver SHA-256 is
+`00cf0e224a8c4c62bf2fdbeaebc385e95556f9fc56d926191ccc8361a8db8b67`.
+It passes 768 marker cases and 1,227 lifecycle cases under ASan/UBSan,
+including 12 focused early/late-selection and BBT-allocation failure cases.
+The arm64 driver object builds with `W=1`, and strict checkpatch reports no
+findings. All 71 deferred-initialization model expectations also match,
+including the six mutation controls and the documented late-SLC limitation.
+
+```sh
+python3 run_bbm_init.py --candidate-source /path/to/refactor/sunxi_nand.c
+python3 run_lifecycle.py --candidate-source /path/to/refactor/sunxi_nand.c
+```
+
+Do not pass `--expect-available-children` or `--expect-deferred-publication`
+for this prefix: those fixes follow in separate patches. The lifecycle runner
+retains its witnesses for the pre-existing behavior at that point. The
+randomizer stream runner also needs later format helpers and is run against
+the completed series, not this prefix. No new hardware run is implied.
+
 ## Teardown, provider findings and false-positive checks
 
 The new observations are documented as findings 8–10 in [FINDINGS.md](FINDINGS.md):
