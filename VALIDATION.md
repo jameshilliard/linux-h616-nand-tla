@@ -1,4 +1,29 @@
-# Current v11 generation-specific policy validation
+# Current v11 early generation-selection validation
+
+The [generation-specific OOB report](docs/GENERATION-OOB-POLICY.md) records
+the controller-selection infrastructure introduced in patch 1 and the format
+extension retained in patch 26. Driver digest
+`02a11014ed40efaa47b77f7e383644b8a6036f910914a61e6357f5dbac48161a`
+passes all 19 source/capture-replay jobs in `results/suite-h2yk5qw0`.
+All 154 initialization-model expectations match in `results/tlc-q5b8l3um`.
+Both first-patch and final-tree ARM32/ARM64 object builds pass. The opening
+patch independently passes marker and lifecycle checks in
+`results/bbm-init-5a9npnru` and `results/lifecycle-bzmc02z6`.
+
+The ordinary geometry callbacks exercised by the final matrix are identical
+to their first-patch bodies. The matrix now includes 274 direct ordinary and
+vendor generation cases; ECC selection retains the same accepted/rejected
+geometries and 56 older-controller core-fallback cases. A temporary fixture
+change read controller data before setup; ASan caught it and the fixture was
+corrected before the successful full rerun. This was not a driver failure.
+Pinned-source C, marker and lifecycle checks also pass with their historical
+expectations, including the deliberate late-manufacturer marker failure.
+The OOB pipeline passes 430 source traces in `results/oob-pipeline-ttysjazv`
+and all 119 TLC expectations in `results/tlc-ege3xlf6`.
+Historical source/capture identities remain unchanged; no fresh board run is
+claimed.
+
+# Earlier v11 generation-specific policy validation
 
 The [generation-specific OOB report](docs/GENERATION-OOB-POLICY.md) records the
 fixed-layout and packed-layout split in the final format-support patch. Driver

@@ -23,7 +23,7 @@ static void attach_geometry(void)
         controller.use_mdma = true;
         controller.mdma_desc = variable ? controller.regs : NULL;
         struct sunxi_nfc_oob_ops ops = vendor ? *TEST_VENDOR_OOB_OPS(variable) :
-            *TEST_NORMAL_OOB_OPS(false);
+            *TEST_NORMAL_OOB_OPS(variable, false);
         struct nand_chip nand = chip(1, 0, spares[o]);
         nand.oob_ops = &ops;
         nand.mtd.writesize = pages[p];
@@ -91,8 +91,7 @@ static void attach_geometry(void)
         controller.use_mdma=backend==2;
         controller.mdma_desc=NULL;
         struct nand_chip nand=chip(small ? 1 : 2,28,small ? 64 : 256);
-        struct sunxi_nfc_oob_ops ops={.min_user_data=sunxi_nfc_oob_min_user_data,
-                                     .init_user_data=sunxi_nfc_oob_init_user_data};
+        struct sunxi_nfc_oob_ops ops=*TEST_NORMAL_OOB_OPS(variable, false);
         nand.oob_ops=&ops;
         nand.mtd.writesize=small ? 512 : 2048;
         nand.ecc.size=small ? 512 : 1024;
@@ -124,7 +123,11 @@ static void generation_policy(void)
     for (unsigned variant = 0; variant < 3; variant++) {
         bool variable = variant == 2;
         struct caps c = caps(variable);
-        if (variant == 1) c.allwinner_oob_ops = TEST_A23_VENDOR_OPS;
+        if (variant == 1) {
+            c.allwinner_oob_ops = TEST_A23_VENDOR_OPS;
+            c.plain_oob_ops = TEST_A23_PLAIN_OPS;
+            c.scrambled_oob_ops = TEST_A23_SCRAMBLED_OPS;
+        }
         controller.caps = &c;
         for (unsigned vendor = 0; vendor < 2; vendor++)
         for (unsigned scrambled = 0; scrambled < 2; scrambled++) {
@@ -135,8 +138,33 @@ static void generation_policy(void)
             const struct sunxi_nfc_oob_ops *ops = sunxi_nfc_get_oob_ops(&n);
             assert(!n.oob_ops);
             assert(ops == (vendor ? TEST_VENDOR_OOB_OPS(variable) :
-                          TEST_NORMAL_OOB_OPS(scrambled)));
-            if (!vendor) continue;
+                          TEST_NORMAL_OOB_OPS(variable, scrambled)));
+            if (!vendor) {
+                assert(ops->use_randomizer == !!scrambled);
+                assert(!!ops->transform_bbm == !!scrambled);
+                assert(ops->read_batch == sunxi_nfc_oob_read_batch);
+                assert(ops->finish_read == sunxi_nfc_oob_finish_read);
+                for (int steps = 0; steps <= (int)c.max_ecc_steps; steps++) {
+                    assert(!n.user_data_bytes);
+                    assert(ops->min_user_data(&n, steps) ==
+                           (variable ? 4U : steps * 4U + 2));
+                    n.mtd.oobsize = steps * 56U + 36U;
+                    int ret = ops->init_user_data(&n, steps);
+                    assert(ret == (variable && !steps ? -EINVAL : 0));
+                    if (!ret)
+                        for (int i = 0; i < steps; i++)
+                            assert(sunxi_nfc_user_data_sz(&n, i) ==
+                                   (variable ? (i == 0 ? 32U : i == 1 ? 4U : 0U) : 4U));
+                    free(n.user_data_bytes);
+                    n.user_data_bytes = NULL;
+                    runs++;
+                }
+                allocation_failure = true;
+                assert(ops->init_user_data(&n, 2) == (variable ? -ENOMEM : 0));
+                assert(!n.user_data_bytes);
+                allocation_failure = false;
+                continue;
+            }
             assert(ops->use_randomizer && !ops->transform_bbm);
             assert(ops->read_batch == sunxi_nfc_allwinner_oob_read_batch);
             assert(ops->finish_read == sunxi_nfc_allwinner_oob_finish_read);
@@ -221,7 +249,7 @@ static void attach_policy(void)
                     (NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE));
                 assert(n.ecc.read_subpage==sunxi_nfc_allwinner_oob_read_subpage);
             } else {
-                assert(n.oob_ops==TEST_NORMAL_OOB_OPS(scrambled));
+                assert(n.oob_ops==TEST_NORMAL_OOB_OPS(variable, scrambled));
             }
         }
         free(n.user_data_bytes); runs++;
@@ -253,7 +281,7 @@ static void metadata_identity(void)
         u8 user[6]={32,16,4,0,0,0};
         if(vendor) { memset(user,0,sizeof(user)); user[0]=16; }
         n.user_data_bytes=variable ? user : NULL;
-        n.oob_ops=vendor ? TEST_VENDOR_OOB_OPS(variable) : TEST_NORMAL_OOB_OPS(scrambled);
+        n.oob_ops=vendor ? TEST_VENDOR_OOB_OPS(variable) : TEST_NORMAL_OOB_OPS(variable, scrambled);
         n.options=(vendor || scrambled) ? NAND_NEED_SCRAMBLING : 0;
         u8 original[1024],decoded[1024],flash[1024];
         memset(flash,0xff,sizeof(flash)); memset(decoded,0xa5,sizeof(decoded));

@@ -44,6 +44,8 @@ def generation_cases(module, generation, add):
     mutate(base, 'change-after-install', 'FinalBeforeBBT')
     mutate(base, 'wrong-geometry', 'GeometryCompatible')
     mutate(dict(base, Vendor=True), 'wrong-generation', 'GenerationMatches')
+    add_case('deferred-init-wrong-ordinary-generation', dict(base, Mutation='wrong-generation'),
+        expected='GenerationMatches', kind='mutation')
     # No current late-setting Toshiba/Hynix part is SLC. Finalizing OOB ops
     # after scan would NOT recompute the core's already-selected subpagesize.
     add_case('deferred-init-assumption-late-slc', dict(base, SLC=True),

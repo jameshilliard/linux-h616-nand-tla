@@ -1,19 +1,25 @@
 --------------------- MODULE NandDeferredInitialization ---------------------
 \* SPDX-License-Identifier: GPL-2.0-or-later
 \* Probe lifecycle abstraction, paired with source-executed lifecycle tests.
-\* ECC geometry is unchanged between the two ordinary-format ops tables.
+\* Each generation's plain and scrambled policies share ordinary ECC geometry.
 EXTENDS Integers, FiniteSets
 CONSTANTS EarlyScramble, LateScramble, Vendor, SLC, FailAt, Mutation, Generation
 VARIABLE s
 vars == <<s>>
-VendorPolicy == IF Generation = "h6" THEN "vendor-h6" ELSE "vendor-legacy"
-Policy(scramble) == IF Vendor THEN VendorPolicy
-                   ELSE IF scramble THEN "scrambled" ELSE "plain"
+OrdinaryPolicy(generation, scramble) ==
+    IF generation = "h6"
+    THEN IF scramble THEN "scrambled-h6" ELSE "plain-h6"
+    ELSE IF scramble THEN "scrambled-legacy" ELSE "plain-legacy"
+PolicyFor(generation, scramble) ==
+    IF Vendor THEN IF generation = "h6" THEN "vendor-h6" ELSE "vendor-legacy"
+    ELSE OrdinaryPolicy(generation, scramble)
+Policy(scramble) == PolicyFor(Generation, scramble)
 Geometry(ops) == IF ops = "vendor-h6" THEN "packed"
-                ELSE IF ops = "vendor-legacy" \/ Generation = "legacy" THEN "fixed"
+                ELSE IF ops \in {"vendor-legacy", "plain-legacy", "scrambled-legacy"}
+                     THEN "fixed"
                 ELSE "variable"
 FinalPolicy == IF Mutation = "wrong-generation"
-               THEN IF Generation = "h6" THEN "vendor-legacy" ELSE "vendor-h6"
+               THEN PolicyFor(IF Generation = "h6" THEN "legacy" ELSE "h6", s.scramble)
                ELSE Policy(s.scramble)
 Init == s = [pc |-> "identify", scramble |-> FALSE, ops |-> "unset",
              geometry |-> "unset", installs |-> 0, installedOps |-> "unset",
@@ -52,14 +58,14 @@ Finalize ==
         !.installs = IF Mutation = "omit-final-selection" THEN @ ELSE @ + 1,
         !.installedOps = FinalPolicy,
         !.ops = IF Mutation = "omit-final-selection" THEN @
-                ELSE IF Mutation = "replace-vendor" THEN "scrambled"
+                ELSE IF Mutation = "replace-vendor" THEN OrdinaryPolicy(Generation, TRUE)
                 ELSE FinalPolicy,
         !.pc = IF Mutation = "publish-before-bbt" THEN "publish" ELSE "bbt"]
 BBT ==
     /\ s.pc = "bbt"
     /\ s' = [s EXCEPT !.bbtCalls = @ + 1,
         !.installs = IF Mutation = "reinstall-before-bbt" THEN @ + 1 ELSE @,
-        !.ops = IF Mutation = "change-after-install" THEN "plain" ELSE @,
+        !.ops = IF Mutation = "change-after-install" THEN OrdinaryPolicy(Generation, FALSE) ELSE @,
         !.resources = IF FailAt = "bbt" THEN @ ELSE @ \cup {"bbt"},
         !.bbtOK = FailAt \notin {"bbt", "bbt-after-alloc"},
         !.pc = IF FailAt \in {"bbt", "bbt-after-alloc"} THEN "cleanup"
@@ -80,9 +86,10 @@ Done == s.pc = "done" /\ UNCHANGED vars
 Next == Identify \/ Attach \/ Manufacturer \/ Tail \/ Finalize \/ BBT \/
         Publish \/ Remove \/ Cleanup \/ Done
 Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
+Ops == {"unset", "plain-legacy", "scrambled-legacy", "plain-h6", "scrambled-h6",
+        "vendor-legacy", "vendor-h6"}
 TypeOK == Generation \in {"legacy", "h6"} /\
-          s.ops \in {"unset", "plain", "scrambled", "vendor-legacy", "vendor-h6"} /\
-          s.installedOps \in {"unset", "plain", "scrambled", "vendor-legacy", "vendor-h6"} /\
+          s.ops \in Ops /\ s.installedOps \in Ops /\
           s.geometry \in {"unset", "fixed", "variable", "packed"} /\ s.installs \in 0..2 /\
           s.resources \subseteq {"ident", "attach", "manufacturer", "core", "bbt"} /\
           s.scramble \in BOOLEAN /\ s.finalized \in BOOLEAN /\
@@ -92,7 +99,8 @@ InstallOnce == s.installs <= 1 /\
                (~s.finalized => s.installs = 0 /\ s.ops = "unset") /\
                (s.finalized => s.installs = 1)
 StablePolicy == s.finalized => s.ops = s.installedOps
-GenerationMatches == s.finalized /\ Vendor /\ s.ops # "unset" => s.ops = VendorPolicy
+GenerationMatches == s.finalized /\ s.ops # "unset" =>
+                     s.ops \in {Policy(FALSE), Policy(TRUE)}
 GeometryCompatible == s.finalized => s.geometry = Geometry(s.ops)
 OneBBT == s.bbtCalls <= 1
 PublishReady == s.published => s.finalized /\ s.bbtOK /\ s.bbtCalls = 1

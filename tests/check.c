@@ -30,6 +30,8 @@ static struct caps caps(bool variable)
         .legacy_max_strength = !variable,
         .spare_is_erased = variable ? sun50i_h6_nfc_spare_is_erased : sun4i_a10_nfc_spare_is_erased,
         .allwinner_oob_ops = variable ? TEST_H6_VENDOR_OPS : TEST_A10_VENDOR_OPS,
+        .plain_oob_ops = variable ? TEST_H6_PLAIN_OPS : TEST_A10_PLAIN_OPS,
+        .scrambled_oob_ops = variable ? TEST_H6_SCRAMBLED_OPS : TEST_A10_SCRAMBLED_OPS,
     };
 }
 
@@ -40,7 +42,7 @@ static struct nand_chip chip(unsigned steps, unsigned bytes, unsigned spare)
         .mtd = {.writesize = steps * 1024, .oobsize = spare,
                 .erasesize = steps * 1024 * 64, .ecc_step_size = 1024},
         .controller = &controller, .oob_poi = oob_data,
-        .oob_ops = TEST_NORMAL_OOB_OPS(false),
+        .oob_ops = TEST_NORMAL_OOB_OPS(false, false),
     };
 }
 
@@ -229,7 +231,7 @@ static void randomizer(void)
     }
     struct nand_chip nand = chip(2, 56, 128);
     nand.options = NAND_NEED_SCRAMBLING;
-    nand.oob_ops = TEST_NORMAL_OOB_OPS(true);
+    nand.oob_ops = TEST_NORMAL_OOB_OPS(false, true);
     for (unsigned size = 512; size <= 1024; size *= 2)
     for (unsigned ppb = 32; ppb <= 256; ppb *= 2) {
         nand.mtd.erasesize = nand.mtd.writesize * ppb;
@@ -399,7 +401,7 @@ static void columns_and_faults(void)
     assert(raw_calls == 2);
     for (unsigned failure = 1; failure <= 3; failure++) {
         nand.options = NAND_NEED_SCRAMBLING;
-        nand.oob_ops = TEST_NORMAL_OOB_OPS(true);
+        nand.oob_ops = TEST_NORMAL_OOB_OPS(false, true);
         unsigned maxflips = 0;
         nand.mtd.ecc_stats.corrected = nand.mtd.ecc_stats.failed = 0;
         raw_calls = 0; fail_raw_at = failure;

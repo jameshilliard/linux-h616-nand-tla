@@ -10,8 +10,10 @@ int main(void)
     assert(f);
     struct caps caps[2] = {
         { .reg_user_data = 0x50, .random_en = 1U << 9,
+          .plain_oob_ops = TEST_A10_PLAIN_OPS, .scrambled_oob_ops = TEST_A10_SCRAMBLED_OPS,
           .allwinner_oob_ops = TEST_A10_VENDOR_OPS },
         { .reg_user_data = 0x80, .reg_user_data_len = 0x70, .random_en = 1U << 5,
+          .plain_oob_ops = TEST_H6_PLAIN_OPS, .scrambled_oob_ops = TEST_H6_SCRAMBLED_OPS,
           .allwinner_oob_ops = TEST_H6_VENDOR_OPS },
     };
     /* Preserve each controller's register state across differently configured chips. */

@@ -27,8 +27,11 @@ also distinguish attach-time geometry from the final immutable per-chip policy,
 with source checks and mutation controls for premature or repeated installation.
 The [generation-specific geometry checks](docs/GENERATION-OOB-POLICY.md)
 exercise the actual controller-to-ops assignments and distinguish fixed older
-user-data fields from H6/H616 packed vendor geometry without duplicating the
-shared read callbacks.
+user-data fields, ordinary H6/H616 variable lengths and packed vendor geometry
+without duplicating the shared read callbacks. The v11 draft establishes
+ordinary generation selection in its opening refactor, then adds the vendor
+format in the final patch. First-patch and final-tree checks are recorded
+separately.
 The [bit-accurate randomizer checks](docs/RANDOMIZER-BIT-CONFORMANCE.md) connect
 that policy to actual source-helper register/marker observations, an exact
 15-bit LFSR model, and all 128 entries of both ECC seed tables. Independent
@@ -337,7 +340,7 @@ hardware parameter effects remain explicit fixtures.
 `run_historical.py` requires seven adapted historical regressions to fail their
 specific checks, after first passing the unmodified baseline.
 
-The standard suite has 1144 TLC configurations across 50 models, including positive checks,
+The standard suite defines 1525 TLC configurations across 55 models, including positive checks,
 deliberate mutations, hardware/core assumption tests and source-contract
 counterexamples. The dedicated probe trace runner additionally checks captured
 C executions, with input-specific counts. Other dedicated trace and ordering

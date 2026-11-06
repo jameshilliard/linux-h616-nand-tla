@@ -16,7 +16,7 @@ FUNCTIONS = [
     "sunxi_nfc_user_data_sz", "sunxi_nfc_dma_batch_steps",
     "sunxi_get_oob_offset", "sunxi_get_ecc_offset",
     "sunxi_nand_ooblayout_ecc", "sunxi_nand_ooblayout_free",
-    "sunxi_nfc_maximize_user_data", "sunxi_nfc_oob_min_user_data",
+    "sunxi_nfc_maximize_user_data",
     "sunxi_nfc_h6_allwinner_oob_user_data_sz",
     "sunxi_nfc_user_data_len_code", "sunxi_nfc_reset_user_data_len",
     "sunxi_nfc_set_user_data_len_pio", "sunxi_nfc_set_user_data_len_dma",
@@ -41,7 +41,7 @@ FUNCTIONS = [
     "sunxi_nfc_hw_ecc_write_page", "sunxi_nfc_hw_ecc_write_subpage",
     "sunxi_nfc_hw_ecc_write_page_dma", "sunxi_nfc_hw_ecc_read_oob",
     "sunxi_nfc_hw_ecc_write_oob",
-    "sunxi_nfc_oob_init_user_data", "sunxi_nand_hw_ecc_ctrl_init",
+    "sunxi_nand_hw_ecc_ctrl_init",
     "sunxi_nfc_allwinner_oob_read_subpage",
     "sunxi_nfc_allwinner_oob_attach_chip", "sunxi_nand_attach_chip",
 ]
@@ -82,26 +82,45 @@ def oob_policy_defines(source):
     single = "oob_ops = sunxi_nfc_get_oob_ops(nand);" in source
     member = "use_randomizer" if "bool use_randomizer;" in source else "randomized"
     split = "sun50i_h6_nfc_allwinner_oob_ops" in source
+    normal_split = "sun50i_h6_nfc_plain_oob_ops" in source
     vendor = "sunxi_nfc_allwinner_oob_attach_chip(" in source
     selector = ("((variable) ? &sun50i_h6_nfc_allwinner_oob_ops : "
                 "&sun4i_a10_nfc_allwinner_oob_ops)" if split else
                 "&sunxi_nfc_allwinner_oob_ops" if vendor else "NULL")
     definitions = [f"#define SINGLE_INSTALL {int(single)}",
                    f"#define SPLIT_VENDOR_OPS {int(split)}",
+                   f"#define SPLIT_NORMAL_OPS {int(normal_split)}",
                    f"#define TEST_RANDOMIZER_MEMBER {member}",
-                   f"#define TEST_VENDOR_OOB_OPS(variable) {selector}"]
+                   f"#define TEST_VENDOR_OOB_OPS(variable) ({selector})"]
+    normal = "&sunxi_nfc_plain_oob_ops"
+    if normal_split:
+        normal = ("((variable) ? ((scrambled) ? &sun50i_h6_nfc_scrambled_plain_bbm_oob_ops : "
+                  "&sun50i_h6_nfc_plain_oob_ops) : ((scrambled) ? "
+                  "&sun4i_a10_nfc_scrambled_plain_bbm_oob_ops : &sun4i_a10_nfc_plain_oob_ops))")
+    elif "sunxi_nfc_scrambled_plain_bbm_oob_ops" in source and (single or "sunxi_nfc_get_oob_ops(" not in source):
+        normal = "((scrambled) ? &sunxi_nfc_scrambled_plain_bbm_oob_ops : " + normal + ")"
+    definitions.append(f"#define TEST_NORMAL_OOB_OPS(variable, scrambled) ({normal})")
     for variant, macro in (("a10", "A10"), ("a23", "A23"), ("h616", "H6")):
         value = selector
-        if split:
+        if split or normal_split:
             caps = re.search(r"^static const struct sunxi_nfc_caps sunxi_nfc_" +
                              variant + r"_caps = \{(.*?)\n};", source, re.M | re.S)
             if not caps:
                 raise ValueError("missing controller capabilities: " + variant)
+        if split:
             field = re.search(r"^\s*\.allwinner_oob_ops\s*=\s*(.*),$", caps[1], re.M)
             if not field:
                 raise ValueError("missing Allwinner policy: " + variant)
             value = field[1]
         definitions.append(f"#define TEST_{macro}_VENDOR_OPS {value}")
+        for field_name, suffix in (("plain_oob_ops", "PLAIN"), ("scrambled_oob_ops", "SCRAMBLED")):
+            value = "NULL"
+            if normal_split:
+                field = re.search(r"^\s*\." + field_name + r"\s*=\s*(.*),$", caps[1], re.M)
+                if not field:
+                    raise ValueError(f"missing {field_name}: {variant}")
+                value = field[1]
+            definitions.append(f"#define TEST_{macro}_{suffix}_OPS {value}")
     return "\n".join(definitions) + "\n"
 
 
@@ -117,8 +136,18 @@ def oob_geometry_functions(source):
     return ["sunxi_nfc_allwinner_oob_min_user_data", "sunxi_nfc_allwinner_oob_init_user_data"]
 
 
+def ordinary_geometry_functions(source):
+    if "sun50i_h6_nfc_plain_oob_ops" in source:
+        return [f"{generation}_nfc_oob_{operation}_user_data"
+                for generation in ("sun4i_a10", "sun50i_h6")
+                for operation in ("min", "init")]
+    return ["sunxi_nfc_oob_min_user_data", "sunxi_nfc_oob_init_user_data"]
+
+
 def driver_functions(source):
     functions = chunk_functions(source) + FUNCTIONS + oob_policy_functions(source)
+    ordinary_index = functions.index("sunxi_nfc_maximize_user_data") + 1
+    functions[ordinary_index:ordinary_index] = ordinary_geometry_functions(source)
     geometry_index = functions.index("sunxi_nfc_h6_allwinner_oob_user_data_sz") + 1
     functions[geometry_index:geometry_index] = oob_geometry_functions(source)
     return functions
@@ -151,7 +180,7 @@ def oob_policy_tables(source):
 def oob_ops_definitions(source):
     """Execute pinned tables and candidate variants without changing their bodies."""
     names = oob_table_names(source)
-    if "sunxi_nfc_plain_oob_ops" not in names or len(names) < 2:
+    if not any(name.endswith("_plain_oob_ops") for name in names) or len(names) < 2:
         raise ValueError("missing OOB policies")
     definitions = []
     for name in names:
@@ -161,11 +190,6 @@ def oob_ops_definitions(source):
             definitions.append(match[0])
         elif name != "sunxi_nfc_scrambled_plain_bbm_oob_ops":
             raise ValueError("missing OOB table: " + name)
-    selector = "&sunxi_nfc_plain_oob_ops"
-    single = "oob_ops = sunxi_nfc_get_oob_ops(nand);" in source
-    if "sunxi_nfc_scrambled_plain_bbm_oob_ops" in source and (single or "sunxi_nfc_get_oob_ops(" not in source):
-        selector = "((scrambled) ? &sunxi_nfc_scrambled_plain_bbm_oob_ops : " + selector + ")"
-    definitions.append("#define TEST_NORMAL_OOB_OPS(scrambled) " + selector)
     # Custom callbacks isolate transport/error paths; their format policy must
     # match the test input just as the real tables do after actual attach.
     field = ".use_randomizer = (value)," if "bool use_randomizer;" in source else (

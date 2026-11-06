@@ -231,8 +231,7 @@ static void deferred_bbt_cases(void)
 #if HAS_VENDOR
             CHECK((chip->oob_ops==TEST_VENDOR_OOB_OPS(true))==!!vendor);
 #else
-            CHECK(chip->oob_ops==(early || late ?
-                  &sunxi_nfc_scrambled_plain_bbm_oob_ops : &sunxi_nfc_plain_oob_ops));
+            CHECK(chip->oob_ops==TEST_NORMAL_OOB_OPS(true,early || late));
 #endif
             sunxi_nfc_remove(&p);
         }

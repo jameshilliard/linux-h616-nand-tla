@@ -1,5 +1,62 @@
 # Generation-specific Allwinner OOB geometry
 
+## Current draft: establish generation selection in the first refactor
+
+The 26-patch v11 draft ends at `18524bbd6021`, with driver SHA-256
+`02a11014ed40efaa47b77f7e383644b8a6036f910914a61e6357f5dbac48161a`.
+The opening `centralize OOB handling` patch, `5b72dc03d9c3`, now introduces
+controller-selected ordinary operations for A10/A23 and H6/H616. Each
+generation has plain and scrambled-with-plain-BBM tables, with shared read
+and completion callbacks. The fixed and variable geometry functions no
+longer branch on the register layout to choose a generation.
+
+The final patch adds the two Allwinner-format tables to that structure.
+Packed firmware geometry and firmware-specific erased-page interpretation
+remain with the format feature, so the opening refactor has no dependency on
+later feature callbacks or the new binding. The first 24 patches continue to
+apply independently of the format extension. Patches 2-25 preserve their
+added/deleted lines and commit messages; historical cover notes are unchanged.
+
+| Stage | A10/A23 | H6/H616 |
+| --- | --- | --- |
+| Opening refactor, ordinary plain or scrambled format | Fixed four bytes per step; preserve the extra two-byte ECC-strength reservation | Reserve the first word when choosing ECC strength; maximize variable user-data lengths afterward |
+| Final Allwinner-format feature | Fixed four bytes per step, randomized marker | Pack `min(4 * steps, 16)` bytes in step zero, randomized marker |
+
+### Checks for this draft
+
+- All 19 source/capture-replay jobs pass. The direct generation matrix now
+  covers 274 ordinary/vendor geometry and error cases, including the actual
+  A10, A23 and H616 caps-table assignments. Existing geometry totals remain
+  4,872 accepted, 11,200 rejected and 56 ordinary core-fallback cases.
+- The opening patch independently passes 768 marker cases and 1,227
+  lifecycle cases. Its four ordinary geometry helper bodies are byte-for-byte
+  identical to the functions executed by the final-tree geometry matrix.
+  The zero-step older-controller fallback and H6 allocation failures retain
+  their existing behavior.
+- The initialization model now distinguishes all six generation/format
+  policies. All 154 expectations match: 128 positive cases, 24 deliberate
+  mutation counterexamples and two explicit late-SLC assumption
+  counterexamples. Wrong-generation selection is checked for ordinary as
+  well as vendor formats.
+- The unchanged format callbacks pass 430 source OOB-pipeline traces and
+  all 119 associated TLC expectations (108 observed trace projections and
+  11 deliberate mutation counterexamples).
+- ARM32 LLVM and ARM64 GCC `W=1` object builds pass for the opening patch
+  and final tree. All 26 b4 checks pass; strict checkpatch reports no errors,
+  warnings or checks for either changed patch. Export preserves all patch
+  sign-offs and historical cover-letter changelogs.
+- Review used Sashiko's general technical-pattern, callstack and
+  false-positive guidance, together with OF and allocation guidance. The
+  prompt snapshot has no MTD-specific checklist. No new confirmed driver
+  defect was identified in this rearrangement.
+
+This is a submission refactor and host/model validation, not a new board
+deployment. Historical hardware observations keep their own source hashes.
+The marker-only fixture stubs geometry; the full geometry runner executes
+the actual functions. Existing model/hardware limits below still apply.
+
+## Previous draft: generation split confined to the final patch
+
 The v11 draft at `60b1bc96cc0b` separates the Allwinner format's geometry
 callbacks by controller generation. Its driver SHA-256 is
 `6e2f9e7d696a6be37f0ad40a6787d8aaf31e526bfe63ed2bff051819108e8e4d`.

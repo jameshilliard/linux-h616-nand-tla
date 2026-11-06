@@ -136,7 +136,7 @@ static void reset_fixture(unsigned backend)
     memset(registers,0,sizeof(registers)); memset(&desc,0xa5,sizeof(desc));
     memset(&chip,0,sizeof(chip)); memset(media,0xff,sizeof(media));
 #if OPS_POLICY
-    chip.oob_ops=&sunxi_nfc_plain_oob_ops;
+    chip.oob_ops=TEST_NORMAL_OOB_OPS(backend==2,false);
 #endif
     assert(backend<ARRAY_SIZE(source_caps));
     hw.backend=backend;

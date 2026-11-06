@@ -1,6 +1,17 @@
 # Current sunxi driver verification
 
-## Current submission draft: generation-specific OOB geometry
+## Current submission draft: generation selection in the opening refactor
+
+The 26-patch v11 draft ends at `18524bbd6021`, with driver digest
+`02a11014ed40efaa47b77f7e383644b8a6036f910914a61e6357f5dbac48161a`.
+The [generation-specific policy checks](GENERATION-OOB-POLICY.md) now cover
+controller-selected ordinary geometry introduced in patch 1 and the vendor
+format added in patch 26. All 19 source/capture-replay jobs and 154
+initialization-model expectations match. The opening patch also passes its
+marker/lifecycle checks; both it and the final tree build on ARM32 and ARM64.
+No new hardware deployment or measurement is implied.
+
+## Earlier submission draft: generation-specific OOB geometry
 
 The 26-patch v11 draft ends at `60b1bc96cc0b`, with driver digest
 `6e2f9e7d696a6be37f0ad40a6787d8aaf31e526bfe63ed2bff051819108e8e4d`.

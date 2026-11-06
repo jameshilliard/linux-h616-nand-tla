@@ -42,6 +42,7 @@ struct nand_ecc_ctrl {
 struct caps {
     unsigned reg_user_data, reg_user_data_len, random_en;
     const struct sunxi_nfc_oob_ops *allwinner_oob_ops;
+    const struct sunxi_nfc_oob_ops *plain_oob_ops, *scrambled_oob_ops;
 };
 struct sunxi_nfc { u8 regs[0x1000]; struct caps *caps; void *dev; };
 struct nand_chip {
@@ -77,6 +78,10 @@ static u32 readl(const void *p) { u32 v; memcpy(&v, p, 4); return v; }
 static void writel(u32 v, void *p) { memcpy(p, &v, 4); }
 static unsigned sunxi_nfc_oob_min_user_data(struct nand_chip *n, int steps) { return steps * 4; }
 static int sunxi_nfc_oob_init_user_data(struct nand_chip *n, int steps) { return 0; }
+static unsigned sun4i_a10_nfc_oob_min_user_data(struct nand_chip *n, int steps) { return steps * 4; }
+static int sun4i_a10_nfc_oob_init_user_data(struct nand_chip *n, int steps) { return 0; }
+static unsigned sun50i_h6_nfc_oob_min_user_data(struct nand_chip *n, int steps) { return 4; }
+static int sun50i_h6_nfc_oob_init_user_data(struct nand_chip *n, int steps) { return 0; }
 #if HAS_VENDOR
 static int sunxi_nfc_oob_read_batch(struct nand_chip *n, struct sunxi_nfc_ecc_read *r, struct sunxi_nfc_ecc_snapshot *s, int f, int count) { return 0; }
 #else
