@@ -217,6 +217,45 @@ retains its witnesses for the pre-existing behavior at that point. The
 randomizer stream runner also needs later format helpers and is run against
 the completed series, not this prefix. No new hardware run is implied.
 
+### Single-install OOB policy
+
+The current v11 cleanup names the format field `use_randomizer` and replaces
+the mutating selector with a pure `sunxi_nfc_get_oob_ops()` lookup. Attach uses
+local operations for geometry and the early subpage-write restriction. The
+chip's stored `oob_ops` remains NULL throughout `nand_scan()` and is installed
+once afterward, before `nand_create_bbt()`. The final format patch adds DT
+property precedence to the lookup; the opening refactor contains only the two
+existing plain-BBM formats.
+
+The source-executed lifecycle fixture checks NULL policy during geometry setup,
+manufacturer initialization, and on both sides of the actual scan call. BBT
+entry requires the finalized policy, and the source audit requires one stored
+assignment site. Marker tests separately check that lookup changes neither the
+stored pointer nor the NAND options, and that the early and final selections
+have the same geometry callbacks. Historical sources remain unchanged and use
+their original fixture contracts.
+
+`NandDeferredInitialization` now distinguishes local geometry from the stored
+policy and counts installations. Its 75 expectations pass: 64 positive
+configurations, ten mutation controls and the explicit late-SLC assumption
+counterexample. New controls cover early installation, repeated installation,
+post-install policy changes and incompatible geometry. The model abstracts
+lookup as a pure expression; source checks independently exercise its body.
+
+The opening refactor at `1d48f756db39` has driver SHA-256
+`4b5b55b2c7358b002f5045b2b44ea82c3c7aca7b063213edf0bff1b82a1b6fd8`.
+It passes 768 marker and 1,227 lifecycle cases. The completed 26-patch draft
+at `2c9dee1e8416` has driver SHA-256
+`b213779ff1c567213095c70004b788df83419abc205cdfc9b61f9b4a81867df6`.
+All 19 source/capture-replay jobs pass for this candidate, including the full
+geometry, randomizer, persistent-I/O and fault-injection checks. Both prefix
+and final ARM64 `W=1` object builds pass, as do all 26 b4 style checks.
+
+These checks do not constitute an unbounded proof or a new hardware run. Raw
+manufacturer commands still run during scan, and the documented hypothetical
+late-SLC subpage limitation remains unchanged. The earlier results above retain
+their original source digests and should not be attributed to this cleanup.
+
 ## Teardown, provider findings and false-positive checks
 
 The new observations are documented as findings 8–10 in [FINDINGS.md](FINDINGS.md):

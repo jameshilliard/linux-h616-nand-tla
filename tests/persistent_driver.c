@@ -143,7 +143,14 @@ void driver_reset(unsigned format,bool variable)
     persistent_chip.base.requirements=(struct nand_ecc_props){1024,32};
     persistent_chip.options=format?NAND_NEED_SCRAMBLING:0;
     vendor_property=format==2;
+#if SINGLE_INSTALL
+    persistent_chip.oob_ops=NULL;
+#endif
     assert(!sunxi_nand_attach_chip(&persistent_chip)); persistent_chip.ecc.steps=2;
+#if SINGLE_INSTALL
+    assert(!persistent_chip.oob_ops);
+    persistent_chip.oob_ops=sunxi_nfc_get_oob_ops(&persistent_chip);
+#endif
     assert(persistent_chip.ecc.write_subpage==sunxi_nfc_hw_ecc_write_subpage);
     fail_page=ecc_error_page=-1; command_count=operation_count=0;
 }

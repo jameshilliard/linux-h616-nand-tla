@@ -30,7 +30,10 @@ int main(void)
         assert(!sunxi_nand_attach_chip(&n));
         if (t->mode == 2)
             assert(!tc58teg5dclta00_init(&n));
-#if DEFERRED_SELECTION
+#if SINGLE_INSTALL
+        assert(!n.oob_ops);
+        n.oob_ops = sunxi_nfc_get_oob_ops(&n);
+#elif DEFERRED_SELECTION
         sunxi_nfc_select_oob_ops(&n);
 #endif
 #if HAS_OPS_POLICY
@@ -39,7 +42,7 @@ int main(void)
         const struct sunxi_nfc_oob_ops *ops = n.oob_ops;
 #endif
 #if HAS_RANDOMIZED_FIELD
-        bool randomized = ops->randomized;
+        bool randomized = ops->TEST_RANDOMIZER_MEMBER;
 #else
         bool randomized = n.options & NAND_NEED_SCRAMBLING;
 #endif

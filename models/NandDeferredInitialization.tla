@@ -8,7 +8,9 @@ VARIABLE s
 vars == <<s>>
 Policy(scramble) == IF Vendor THEN "vendor"
                    ELSE IF scramble THEN "scrambled" ELSE "plain"
-Init == s = [pc |-> "identify", scramble |-> FALSE, ops |-> "plain",
+Geometry(ops) == IF ops = "vendor" THEN "packed" ELSE "ordinary"
+Init == s = [pc |-> "identify", scramble |-> FALSE, ops |-> "unset",
+             geometry |-> "unset", installs |-> 0, installedOps |-> "unset",
              resources |-> {}, finalized |-> FALSE, bbtCalls |-> 0,
              bbtOK |-> FALSE, published |-> FALSE, subpages |-> FALSE]
 Identify ==
@@ -19,7 +21,11 @@ Identify ==
 Attach ==
     /\ s.pc = "attach"
     /\ s' = [s EXCEPT !.scramble = @ \/ Vendor,
-        !.ops = Policy(s.scramble), !.resources = @ \cup {"attach"},
+        !.geometry = IF Mutation = "wrong-geometry" THEN "packed"
+                     ELSE Geometry(Policy(s.scramble)),
+        !.ops = IF Mutation = "install-during-attach" THEN Policy(s.scramble) ELSE @,
+        !.installs = IF Mutation = "install-during-attach" THEN @ + 1 ELSE @,
+        !.resources = @ \cup {"attach"},
         !.pc = IF FailAt = "attach" THEN "cleanup" ELSE "manufacturer"]
 Manufacturer ==
     /\ s.pc = "manufacturer"
@@ -37,6 +43,8 @@ Tail ==
 Finalize ==
     /\ s.pc = "finalize"
     /\ s' = [s EXCEPT !.finalized = TRUE,
+        !.installs = IF Mutation = "omit-final-selection" THEN @ ELSE @ + 1,
+        !.installedOps = Policy(s.scramble),
         !.ops = IF Mutation = "omit-final-selection" THEN @
                 ELSE IF Mutation = "replace-vendor" THEN "scrambled"
                 ELSE Policy(s.scramble),
@@ -44,6 +52,8 @@ Finalize ==
 BBT ==
     /\ s.pc = "bbt"
     /\ s' = [s EXCEPT !.bbtCalls = @ + 1,
+        !.installs = IF Mutation = "reinstall-before-bbt" THEN @ + 1 ELSE @,
+        !.ops = IF Mutation = "change-after-install" THEN "plain" ELSE @,
         !.resources = IF FailAt = "bbt" THEN @ ELSE @ \cup {"bbt"},
         !.bbtOK = FailAt \notin {"bbt", "bbt-after-alloc"},
         !.pc = IF FailAt \in {"bbt", "bbt-after-alloc"} THEN "cleanup"
@@ -64,11 +74,18 @@ Done == s.pc = "done" /\ UNCHANGED vars
 Next == Identify \/ Attach \/ Manufacturer \/ Tail \/ Finalize \/ BBT \/
         Publish \/ Remove \/ Cleanup \/ Done
 Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
-TypeOK == s.ops \in {"plain", "scrambled", "vendor"} /\
+TypeOK == s.ops \in {"unset", "plain", "scrambled", "vendor"} /\
+          s.installedOps \in {"unset", "plain", "scrambled", "vendor"} /\
+          s.geometry \in {"unset", "ordinary", "packed"} /\ s.installs \in 0..2 /\
           s.resources \subseteq {"ident", "attach", "manufacturer", "core", "bbt"} /\
           s.scramble \in BOOLEAN /\ s.finalized \in BOOLEAN /\
           s.bbtOK \in BOOLEAN /\ s.published \in BOOLEAN /\ s.bbtCalls \in 0..2
 FinalBeforeBBT == s.bbtCalls > 0 => s.finalized /\ s.ops = Policy(s.scramble)
+InstallOnce == s.installs <= 1 /\
+               (~s.finalized => s.installs = 0 /\ s.ops = "unset") /\
+               (s.finalized => s.installs = 1)
+StablePolicy == s.finalized => s.ops = s.installedOps
+GeometryCompatible == s.finalized => s.geometry = Geometry(s.ops)
 OneBBT == s.bbtCalls <= 1
 PublishReady == s.published => s.finalized /\ s.bbtOK /\ s.bbtCalls = 1
 NoLeak == s.pc = "done" => s.resources = {} /\ ~s.published

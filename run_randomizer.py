@@ -153,7 +153,7 @@ def main():
         'sunxi_nfc_randomize_buf'))
     generated.insert(2, (HERE / 'tests/randomizer_trace.h').read_text())
     definition = source.split('struct sunxi_nfc_oob_ops {', 1)[1].split('\n};', 1)[0]
-    has_randomized = bool(re.search(r'bool\s+randomized;', definition))
+    has_randomized = bool(re.search(r'bool\s+(?:randomized|use_randomizer);', definition))
     generated += [f'#define HAS_RANDOMIZED_FIELD {int(has_randomized)}',
                   header(records), '#line 1 "randomizer_trace.c"',
                   (HERE / 'tests/randomizer_trace.c').read_text()]

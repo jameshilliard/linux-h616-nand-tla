@@ -1,6 +1,17 @@
 # Current sunxi driver verification
 
-## Current integration: provider-owned reset pulse
+## Current submission draft: single-install OOB policy
+
+The 26-patch v11 draft ends at `2c9dee1e8416`, with driver digest
+`b213779ff1c567213095c70004b788df83419abc205cdfc9b61f9b4a81867df6`.
+The [single-install policy checks](BOUNDARY-VALIDATION.md#single-install-oob-policy)
+separate local attach-time geometry from the stored operations installed after
+manufacturer initialization. All 19 source/capture-replay jobs and 75 lifecycle
+model expectations pass. The first refactor is also tested independently.
+This record describes the submission draft; it does not imply a new integration
+build, board deployment or hardware measurement.
+
+## Earlier integration: provider-owned reset pulse
 
 The 26-patch v10 draft ends at `dfc9d0414859`. H616 probe and DMA-abort
 recovery use `reset_control_reset()`, leaving the assertion interval to the

@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 from boundary_common import HERE, check
-from run_c import extract_function, oob_policy_functions, oob_policy_prototype
+from run_c import extract_function, oob_policy_defines, oob_policy_functions, oob_policy_prototype
 
 
 def fixture(source, *, fixed, extra_functions=()):
@@ -26,7 +26,7 @@ def fixture(source, *, fixed, extra_functions=()):
     deferred = 'sunxi_nfc_select_oob_ops(' in source
     generated = [f'#define HAS_VENDOR {int(has_vendor)}\n#define EXPECT_FIXED {int(fixed)}\n'
                  f'#define HAS_OPS_POLICY {int(has_policy)}\n'
-                 f'#define DEFERRED_SELECTION {int(deferred)}',
+                 f'#define DEFERRED_SELECTION {int(deferred)}\n' + oob_policy_defines(source),
                  (HERE / 'tests/bbm_init.h').read_text()]
     hashes = {}
     if has_ops:

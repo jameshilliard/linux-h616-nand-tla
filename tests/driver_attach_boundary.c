@@ -15,7 +15,14 @@ int driver_attach_check(unsigned page, unsigned spare, unsigned step,
     n.ecc.engine_type=NAND_ECC_ENGINE_TYPE_ON_HOST;
     n.base.requirements=(struct nand_ecc_props){.step_size=step,.strength=strength};
     vendor_property=vendor; device_config.ecc.user_conf.flags=0;
+#if SINGLE_INSTALL
+    n.oob_ops=NULL;
+#endif
     int ret=sunxi_nand_attach_chip(&n);
+#if SINGLE_INSTALL
+    assert(!n.oob_ops);
+    if (!ret) n.oob_ops=sunxi_nfc_get_oob_ops(&n);
+#endif
     if (!ret && n.ecc.size<=page) {
         unsigned expected_strength=step==512 && page>512?strength*2:strength;
         unsigned mode=0;

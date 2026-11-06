@@ -88,7 +88,12 @@ struct nand_chip {
 };
 struct sunxi_nand_chip_sel { u8 cs; s8 rb; };
 /* OOB callbacks are outside this runner; policy values come from source. */
-struct sunxi_nfc_oob_ops { bool randomized; };
+struct sunxi_nfc_oob_ops { bool TEST_RANDOMIZER_MEMBER; };
+#if SINGLE_INSTALL
+struct device_node;
+static struct device_node *nand_get_flash_node(struct nand_chip *n) { return NULL; }
+static bool of_property_read_bool(struct device_node *n, const char *s) { return false; }
+#endif
 struct sunxi_nand_chip {
     struct nand_chip nand;
     const struct sunxi_nfc_oob_ops *oob_ops;

@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 from run_c import HERE, extract_function, chunk_functions
-from run_c import oob_policy_functions, oob_policy_prototype, oob_policy_tables
+from run_c import oob_policy_defines, oob_policy_functions, oob_policy_prototype, oob_policy_tables
 
 FUNCTIONS = [
     "sunxi_nfc_interrupt", "sunxi_nfc_wait_events", "sunxi_nfc_wait_cmd_fifo_empty",
@@ -117,7 +117,7 @@ def main():
                 f'#define PULSE_RESET {int(pulse_reset)}\n' +
                 f'#define FIXED_COUNT {int(args.expect_count_fixed)}\n' +
                 f'#define RECOVERY_TRACES {int(args.recovery_traces)}\n' +
-                '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +
+                oob_policy_defines(source) + '#line 1 "lowlevel.h"\n' + fixture + '\n#line 1 "nand_parser.c"\n' + core + "\n" +
                 "\n".join(generated) + '\n#line 1 "lowlevel.c"\n' +
                 tests)
     (out / "check.c").write_text(combined)

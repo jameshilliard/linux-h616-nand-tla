@@ -177,7 +177,9 @@ static void reset_fixture(unsigned backend)
 static void set_scrambling(bool enabled)
 {
     chip.nand.options=enabled ? NAND_NEED_SCRAMBLING : 0;
-#if DEFERRED_SELECTION
+#if SINGLE_INSTALL
+    chip.oob_ops=sunxi_nfc_get_oob_ops(&chip.nand);
+#elif DEFERRED_SELECTION
     chip.oob_ops=&sunxi_nfc_plain_oob_ops;
     sunxi_nfc_select_oob_ops(&chip.nand);
 #endif

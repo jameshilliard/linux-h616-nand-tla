@@ -1,4 +1,15 @@
-# Current-source reset-pulse hardware validation
+# Current v11 single-install policy validation
+
+The [single-install policy report](docs/BOUNDARY-VALIDATION.md#single-install-oob-policy)
+records the opening refactor and completed draft separately. The final driver
+digest is `b213779ff1c567213095c70004b788df83419abc205cdfc9b61f9b4a81867df6`.
+All 19 source/capture-replay jobs pass; the initialization model meets all 75
+expectations, including ten mutation controls and one documented assumption
+counterexample. The first refactor independently passes 768 marker cases and
+1,227 lifecycle cases. Both ARM64 object builds and all 26 b4 style checks pass.
+No fresh hardware test was performed for this naming/initialization cleanup.
+
+# Earlier-source reset-pulse hardware validation
 
 The [fresh read-only reset-pulse report](docs/H616-RESET-PULSE-HARDWARE.md)
 records v10 at `522614916748`, driver digest

@@ -207,7 +207,7 @@ static void timing_cases(void)
 }
 static void deferred_bbt_cases(void)
 {
-#if DEFERRED_SELECTION
+#if DEFERRED_SELECTION || SINGLE_INSTALL
     unsigned before=cases_run;
     for (unsigned early=0;early<2;early++)
     for (unsigned late=0;late<2;late++)
@@ -227,7 +227,7 @@ static void deferred_bbt_cases(void)
             CHECK(!ret && registered==1);
             struct sunxi_nfc *nfc=p.data;
             struct sunxi_nand_chip *chip=list_first_entry(&nfc->chips,struct sunxi_nand_chip,node);
-            CHECK(chip->oob_ops->randomized==!!(early || late || vendor));
+            CHECK(chip->oob_ops->TEST_RANDOMIZER_MEMBER==!!(early || late || vendor));
 #if HAS_VENDOR
             CHECK((chip->oob_ops==&sunxi_nfc_allwinner_oob_ops)==!!vendor);
 #else

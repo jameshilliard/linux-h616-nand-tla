@@ -59,7 +59,14 @@ static const struct nand_ecc_props *nanddev_get_ecc_requirements(const struct na
 static struct device_node *nand_get_flash_node(struct nand_chip *n) { return NULL; }
 static bool vendor_property;
 static bool of_property_read_bool(struct device_node *n, const char *s) { return vendor_property; }
+#if SINGLE_INSTALL
+static const struct sunxi_nfc_oob_ops *geometry_ops;
+static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *n, struct nand_ecc_ctrl *e,
+                                     const struct sunxi_nfc_oob_ops *ops)
+{ assert(!n->oob_ops && ops); geometry_ops = ops; return 0; }
+#else
 static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *n, struct nand_ecc_ctrl *e, struct device_node *d) { return 0; }
+#endif
 static void tc58teg5dclta00_choose_interface_config(void) { }
 static const int dist3_pairing_scheme;
 static void mtd_set_pairing_scheme(struct mtd_info *m, const int *s) { }

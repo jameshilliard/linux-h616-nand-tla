@@ -6,7 +6,8 @@ def extend_deferred_init(modules, add, mutation):
     module = 'NandDeferredInitialization'
     modules[module] = dict(
         invariants=['TypeOK', 'FinalBeforeBBT', 'OneBBT', 'PublishReady',
-                    'NoLeak', 'SubpagePolicy'],
+                    'NoLeak', 'SubpagePolicy', 'InstallOnce', 'StablePolicy',
+                    'GeometryCompatible'],
         actions=['Identify', 'Attach', 'Manufacturer', 'Tail', 'Finalize',
                  'BBT', 'Publish', 'Remove', 'Cleanup'])
     for early in (False, True):
@@ -21,11 +22,15 @@ def extend_deferred_init(modules, add, mutation):
     base = dict(EarlyScramble=False, LateScramble=True, Vendor=False,
                 SLC=False, FailAt='none')
     mutation(module, base, 'scan-bbt-too-early', 'FinalBeforeBBT')
-    mutation(module, base, 'omit-final-selection', 'FinalBeforeBBT')
-    mutation(module, dict(base, Vendor=True), 'replace-vendor', 'FinalBeforeBBT')
+    mutation(module, base, 'omit-final-selection', 'InstallOnce')
+    mutation(module, dict(base, Vendor=True), 'replace-vendor', 'StablePolicy')
     mutation(module, base, 'publish-before-bbt', 'PublishReady')
     mutation(module, base, 'duplicate-bbt', 'OneBBT')
     mutation(module, dict(base, FailAt='bbt-after-alloc'), 'leak-partial-bbt', 'NoLeak')
+    mutation(module, base, 'install-during-attach', 'InstallOnce')
+    mutation(module, base, 'reinstall-before-bbt', 'InstallOnce')
+    mutation(module, base, 'change-after-install', 'FinalBeforeBBT')
+    mutation(module, base, 'wrong-geometry', 'GeometryCompatible')
     # No current late-setting Toshiba/Hynix part is SLC. Finalizing OOB ops
     # after scan would NOT recompute the core's already-selected subpagesize.
     add(module, 'deferred-init-assumption-late-slc', dict(base, SLC=True),

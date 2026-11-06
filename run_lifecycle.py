@@ -5,11 +5,12 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
 from run_core import extract
-from run_c import oob_policy_functions, oob_policy_tables
+from run_c import oob_policy_defines, oob_policy_functions, oob_policy_tables
 from source_coverage import build_and_collect
 
 HERE = Path(__file__).resolve().parent
@@ -69,6 +70,9 @@ def main():
     results = HERE / "results"
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="lifecycle-", dir=results))
+    if "bool use_randomizer;" in sources["sunxi_nand.c"]:
+        assignments = re.findall(r"\boob_ops\s*=(?!=)", sources["sunxi_nand.c"])
+        assert len(assignments) == 1, "runtime OOB policy must be installed at one source site"
     fixture = (HERE / "tests/lifecycle.h").read_text()
     fixture = fixture.replace("/* @oob-policy-tables@ */", oob_policy_tables(sources["sunxi_nand.c"]))
     fixture = fixture.replace("/* @prototypes@ */", "\n".join(prototypes))
@@ -83,7 +87,7 @@ def main():
         f'#define DEFERRED_PUBLICATION {int(args.expect_deferred_publication)}\n' +
         f'#define DEFERRED_SELECTION {int("sunxi_nfc_select_oob_ops(" in sources["sunxi_nand.c"])}\n' +
         f'#define HAS_VENDOR {int("sunxi_nfc_allwinner_oob_attach_chip(" in sources["sunxi_nand.c"])}\n' +
-        fixture + "\n" + "\n".join(bodies) +
+        oob_policy_defines(sources["sunxi_nand.c"]) + fixture + "\n" + "\n".join(bodies) +
         '\n#line 1 "lifecycle-tests.c"\n' + tests)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-sign-compare",

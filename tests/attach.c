@@ -32,7 +32,13 @@ static void attach_geometry(void)
         nand.ecc.size = sizes[e];
         nand.ecc.strength = strengths[s];
         device_config.ecc.user_conf.flags = maximize ? NAND_ECC_MAXIMIZE_STRENGTH : 0;
+#if SINGLE_INSTALL
+        nand.oob_ops = NULL;
+        int ret = sunxi_nand_hw_ecc_ctrl_init(&nand, &nand.ecc, &ops);
+        assert(!nand.oob_ops);
+#else
         int ret = sunxi_nand_hw_ecc_ctrl_init(&nand, &nand.ecc, NULL);
+#endif
         unsigned normalized_size = maximize ? 1024 :
             sizes[e] == 512 && pages[p] > 512 ? 1024 : sizes[e];
         if (pages[p] / normalized_size > c.max_ecc_steps) {
@@ -94,7 +100,13 @@ static void attach_geometry(void)
         nand.ecc.size=small ? 512 : 1024;
         nand.ecc.strength=16;
         device_config.ecc.user_conf.flags=0;
+#if SINGLE_INSTALL
+        nand.oob_ops=NULL;
+        assert(!sunxi_nand_hw_ecc_ctrl_init(&nand,&nand.ecc,&ops));
+        assert(!nand.oob_ops);
+#else
         assert(!sunxi_nand_hw_ecc_ctrl_init(&nand,&nand.ecc,NULL));
+#endif
         bool dma=backend && !small;
         assert(!!(nand.options&NAND_USES_DMA)==dma);
         assert(nand.ecc.read_page==(dma ? sunxi_nfc_hw_ecc_read_page_dma : sunxi_nfc_hw_ecc_read_page));
@@ -139,7 +151,14 @@ static void attach_policy(void)
         if(inherit) n.ecc.size=0;
         if(inherit==2) n.base.requirements.strength=0;
         vendor_property=vendor; allocation_failure=allocfail;
+#if SINGLE_INSTALL
+        n.oob_ops=NULL;
+#endif
         int ret=sunxi_nand_attach_chip(&n);
+#if SINGLE_INSTALL
+        assert(!n.oob_ops);
+        if (!ret) n.oob_ops=sunxi_nfc_get_oob_ops(&n);
+#endif
         bool allowed=inherit!=2 && (vendor ? engine==0 : engine<3) &&
             !(variable && engine==0 && allocfail);
         assert((ret==0)==allowed);

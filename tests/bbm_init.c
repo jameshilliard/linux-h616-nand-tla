@@ -23,7 +23,19 @@ int main(void)
         assert(!sunxi_nand_attach_chip(&n));
         if (mode == 2)
             assert(!tc58teg5dclta00_init(&n));
-#if DEFERRED_SELECTION
+#if SINGLE_INSTALL
+        assert(!n.oob_ops);
+        unsigned final_options = n.options;
+        const struct sunxi_nfc_oob_ops *ops = sunxi_nfc_get_oob_ops(&n);
+        assert(!n.oob_ops); /* Lookup is pure, including after manufacturer init. */
+        assert(n.options == final_options);
+        assert(ops->use_randomizer == (mode != 0));
+        assert(!!ops->transform_bbm == (mode == 1 || mode == 2));
+        assert(geometry_ops->min_user_data == ops->min_user_data);
+        assert(geometry_ops->init_user_data == ops->init_user_data);
+        n.oob_ops = ops;
+        assert(sunxi_nfc_get_oob_ops(&n) == ops && n.oob_ops == ops);
+#elif DEFERRED_SELECTION
         /* Full probe ordering is executed independently by run_lifecycle.py. */
         sunxi_nfc_select_oob_ops(&n);
         const struct sunxi_nfc_oob_ops *ops = n.oob_ops;
@@ -32,8 +44,7 @@ int main(void)
         const struct sunxi_nfc_oob_ops *final = ops;
         sunxi_nfc_select_oob_ops(&n);
         assert(n.oob_ops == final);
-#endif
-#if HAS_OPS_POLICY
+#elif HAS_OPS_POLICY
         const struct sunxi_nfc_oob_ops *ops = sunxi_nfc_get_oob_ops(&n);
         assert(ops->randomized == (mode != 0));
         assert(!!ops->transform_bbm == (mode == 1 || mode == 2));

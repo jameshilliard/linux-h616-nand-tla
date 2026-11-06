@@ -132,7 +132,7 @@ struct nand_chip {
 struct nand_flash_dev { int unused; };
 struct sunxi_nand_chip_sel { u8 cs; int rb; };
 /* OOB callbacks are outside this runner; policy values come from source. */
-struct sunxi_nfc_oob_ops { bool randomized; };
+struct sunxi_nfc_oob_ops { bool TEST_RANDOMIZER_MEMBER; };
 struct sunxi_nand_chip {
     struct list_head node;
     struct nand_chip nand;
@@ -337,6 +337,9 @@ static int nand_detect(struct nand_chip *c,struct nand_flash_dev *t)
 }
 static int nand_manufacturer_init(struct nand_chip *c)
 {
+#if SINGLE_INSTALL
+    CHECK(!to_sunxi_nand(c)->oob_ops);
+#endif
     c->fixture_manuf=allocate(4,false);
     if (!c->fixture_manuf) return -ENOMEM;
     if (late_scrambling) c->options|=NAND_NEED_SCRAMBLING;
@@ -367,14 +370,15 @@ static int nand_create_bbt(struct nand_chip *c)
     CHECK(c->fixture_manuf && !c->fixture_registered);
     CHECK(++c->fixture_bbt_calls==1);
     bbt_calls++;
-#if DEFERRED_SELECTION
+#if DEFERRED_SELECTION || SINGLE_INSTALL
     struct sunxi_nand_chip *s=to_sunxi_nand(c);
-    CHECK(s->oob_ops->randomized==!!(c->options & NAND_NEED_SCRAMBLING));
+    CHECK(s->oob_ops);
+    CHECK(s->oob_ops->TEST_RANDOMIZER_MEMBER==!!(c->options & NAND_NEED_SCRAMBLING));
 #if HAS_VENDOR
     CHECK((s->oob_ops==&sunxi_nfc_allwinner_oob_ops)==c->flash_node->vendor);
 #else
     CHECK(!c->flash_node->vendor);
-    CHECK(s->oob_ops==(s->oob_ops->randomized ?
+    CHECK(s->oob_ops==(s->oob_ops->TEST_RANDOMIZER_MEMBER ?
           &sunxi_nfc_scrambled_plain_bbm_oob_ops : &sunxi_nfc_plain_oob_ops));
 #endif
     if (!slc || (c->options & NAND_NO_SUBPAGE_WRITE))
@@ -386,27 +390,52 @@ static int nand_create_bbt(struct nand_chip *c)
     return bbt_fail_stage==2 ? -EIO : 0;
 }
 /* Real ECC geometry/attachment is executed by run_c.py; this fixture owns its resources. */
-static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *c,struct nand_ecc_ctrl *e,struct device_node *n)
+static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *c,struct nand_ecc_ctrl *e,
+#if SINGLE_INSTALL
+                                     const struct sunxi_nfc_oob_ops *ops)
+#else
+                                     struct device_node *n)
+#endif
 {
     struct sunxi_nand_chip *s=to_sunxi_nand(c);
+#if SINGLE_INSTALL
+    CHECK(!s->oob_ops && ops);
+    CHECK(ops==sunxi_nfc_get_oob_ops(c));
+#endif
     s->user_data_bytes=allocate(writesize/e->size,true); if (!s->user_data_bytes) return -ENOMEM;
     e->bytes=28; e->read_page=e->write_page=e->read_oob=e->write_oob=io_stub;
     if (with_calc) e->calculate=io_stub;
     c->mtd.ooblayout=&layout; return fail("attach-after-alloc")?-EINVAL:0;
 }
 #if HAS_VENDOR
-static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c,struct device_node *n)
+static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c,
+#if SINGLE_INSTALL
+                                             const struct sunxi_nfc_oob_ops *ops)
+#else
+                                             struct device_node *n)
+#endif
 { if (c->ecc.engine_type!=NAND_ECC_ENGINE_TYPE_ON_HOST) return -EINVAL;
   c->options|=NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE;
+#if SINGLE_INSTALL
+  CHECK(ops==&sunxi_nfc_allwinner_oob_ops && !to_sunxi_nand(c)->oob_ops);
+  return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,ops); }
+#else
   to_sunxi_nand(c)->oob_ops=&sunxi_nfc_allwinner_oob_ops;
   return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,n); }
+#endif
 #endif
 static const struct nand_controller_ops sunxi_nand_controller_ops={
     .attach_chip=sunxi_nand_attach_chip,.detach_chip=sunxi_nand_detach_chip,.setup_interface=setup_interface};
 static int nand_scan(struct nand_chip *c,unsigned n)
 {
+#if SINGLE_INSTALL
+    CHECK(!to_sunxi_nand(c)->oob_ops);
+#endif
     probe_trace_event("scan-start",c);
     int ret=nand_scan_with_ids(c,n,NULL);
+#if SINGLE_INSTALL
+    CHECK(!to_sunxi_nand(c)->oob_ops);
+#endif
     if (!ret) scanned++;
     probe_trace_event(ret?"scan-error":"scan-ok",c);
     return ret;
@@ -415,7 +444,7 @@ static int mtd_device_register(struct mtd_info *m,const void *p,int n)
 {
     register_calls++;
     if (DEFERRED_PUBLICATION) CHECK(scanned==expected_scans);
-#if DEFERRED_SELECTION
+#if DEFERRED_SELECTION || SINGLE_INSTALL
     CHECK(mtd_to_nand(m)->fixture_bbt_calls==1 && mtd_to_nand(m)->bbt);
 #endif
     if (fail("register")) { probe_trace_event("register-error",mtd_to_nand(m)); return -EIO; }

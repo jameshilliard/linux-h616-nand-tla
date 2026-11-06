@@ -4,7 +4,7 @@ import hashlib
 import re
 from boundary_common import HERE
 from run_c import FUNCTIONS, STRUCTURES, ARRAYS, extract_function, chunk_functions, chunk_defines, oob_ops_definitions
-from run_c import oob_policy_functions, oob_policy_prototype
+from run_c import oob_policy_defines, oob_policy_functions, oob_policy_prototype
 from run_core import extract
 
 
@@ -41,7 +41,7 @@ def generate(src, *, persistent=False):
         header = header.replace("static unsigned plain_read_calls, random_read_calls;", "static unsigned plain_read_calls;")
         header = header.replace("static const u8 *format_image;\nstatic size_t format_image_len;", "")
         header += "\n" + (HERE/"tests/persistent_driver.h").read_text()
-    generated = [header, chunk_defines(source), oob_policy_prototype(source),
+    generated = [oob_policy_defines(source), header, chunk_defines(source), oob_policy_prototype(source),
                  "struct sunxi_nfc_ecc_read; struct sunxi_nfc_ecc_snapshot;"]
     hashes = {}
     for name in STRUCTURES:
