@@ -172,6 +172,16 @@ static void reset_fixture(unsigned backend)
     chip.sels[1]=(struct sunxi_nand_chip_sel){2,1};
     chip.clk_rate=24000000; chip.timing_ctl=0x100; chip.timing_cfg=0x777;
 }
+/* Transport tests start after probe. Rebuild that initial policy explicitly
+ * when a test switches input profiles; this is not a runtime driver action. */
+static void set_scrambling(bool enabled)
+{
+    chip.nand.options=enabled ? NAND_NEED_SCRAMBLING : 0;
+#if DEFERRED_SELECTION
+    chip.oob_ops=&sunxi_nfc_plain_oob_ops;
+    sunxi_nfc_select_oob_ops(&chip.nand);
+#endif
+}
 static void dma_checks(void)
 {
     unsigned runs=0;
@@ -389,7 +399,7 @@ static void raw_media_checks(void)
         if(!FIXED_COUNT && backend==2 && len>1024) continue;
         for(unsigned i=0;i<sizeof(input);i++) input[i]=(i*13+(i>>8)*71+page*101)&255;
         memset(output,0xa5,sizeof(output));
-        chip.nand.options=scramble ? NAND_NEED_SCRAMBLING : 0;
+        set_scrambling(scramble);
         assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,len,false,page));
         assert(hw.commands==DIV_ROUND_UP(len,1024));
         assert(hw.column==len && !hw.bank_overruns && !hw.count_overruns);
@@ -416,7 +426,7 @@ static void raw_media_checks(void)
     for(unsigned write=0;write<2;write++)
     for(unsigned fail=1;fail<=3;fail++) {
         if(!FIXED_COUNT && backend==2) continue;
-        reset_fixture(backend); chip.nand.options=NAND_NEED_SCRAMBLING;
+        reset_fixture(backend); set_scrambling(true);
         hw.fail_command=fail; hw.partial_bytes=17;
         memset(output,0xa5,sizeof(output)); memset(input,0x33,sizeof(input));
         int ret=write ? sunxi_nfc_randomizer_write_buf(&chip.nand,input,2500,false,0) :
@@ -499,7 +509,7 @@ static void randomizer_stream_checks(void)
         reset_fixture(backend);
         if(!FIXED_COUNT && backend==2) continue;
         const unsigned len=2057;
-        chip.nand.options=random ? NAND_NEED_SCRAMBLING : 0;
+        set_scrambling(random);
         hw.row=page; hw.fail_command=fail; hw.partial_bytes=17;
         encode_stream(encoded,input,len,page,random);
         if(!write) memcpy(media[page],encoded,len);
@@ -521,7 +531,7 @@ static void randomizer_stream_checks(void)
         /* Without resetting the controller, switch seed/page, then plain I/O.
          * Failed commands must not leave a phase or enable-bit dependency. */
         hw.fail_command=0; hw.row=!page; hw.column=0;
-        chip.nand.options=NAND_NEED_SCRAMBLING;
+        set_scrambling(true);
         encode_stream(encoded,input,len,!page,true);
         assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,len,false,!page));
         assert(!memcmp(media[!page],encoded,len));
@@ -529,7 +539,7 @@ static void randomizer_stream_checks(void)
         unsigned commands=hw.commands;
         assert(!sunxi_nfc_randomizer_read_buf(&chip.nand,output,0,false,!page));
         assert(hw.commands==commands && !(load(NFC_REG_ECC_CTL)&caps.random_en_mask));
-        hw.column=4096; chip.nand.options=0;
+        hw.column=4096; set_scrambling(false);
         assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,63,false,!page));
         assert(!memcmp(media[!page]+4096,input,63));
         assert(!hw.bank_overruns && !hw.count_overruns);
@@ -538,7 +548,7 @@ static void randomizer_stream_checks(void)
     for(unsigned backend=0;backend<3;backend++) {
         if(!FIXED_COUNT && backend==2) continue;
         reset_fixture(backend); hw.reload_each_command=true;
-        chip.nand.options=NAND_NEED_SCRAMBLING;
+        set_scrambling(true);
         assert(!sunxi_nfc_randomizer_write_buf(&chip.nand,input,2057,false,0));
         encode_stream(encoded,input,2057,0,true);
         assert(!memcmp(media[0],encoded,1024) && memcmp(media[0]+1024,encoded+1024,1033));
@@ -562,7 +572,7 @@ static void measured_h616_checks(void)
         unsigned len=sizes[j];
         if(!FIXED_COUNT && len>1024) continue;
         reset_fixture(2); hw.measured_h616=true; hw.row=page;
-        chip.nand.options=NAND_NEED_SCRAMBLING;
+        set_scrambling(true);
         for(unsigned off=0;off<len;off+=1024) {
             unsigned n=min(1024,len-off);
             encode_stream(expected+off,input+off,n,page,true);

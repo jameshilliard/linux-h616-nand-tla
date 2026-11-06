@@ -111,6 +111,7 @@ def main():
         tests = tests.replace('/* @abort-recovery@ */', fixture_inputs[recovery_test])
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
                 f'#define OPS_POLICY {int(bool(oob_policy_functions(source)))}\n' +
+                f'#define DEFERRED_SELECTION {int("sunxi_nfc_select_oob_ops(" in source)}\n' +
                 f'#define FIXED_ABORT {int(recovery_fixed)}\n' +
                 f'#define STREAMING_RECOVERY {int(streaming_recovery)}\n' +
                 f'#define PULSE_RESET {int(pulse_reset)}\n' +

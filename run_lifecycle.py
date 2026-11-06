@@ -81,6 +81,7 @@ def main():
         f'#define PULSE_RESET {int("reset_control_reset(nfc->reset)" in sources["sunxi_nand.c"])}\n' +
         f'#define FILTERED_CHILDREN {int(args.expect_available_children)}\n' +
         f'#define DEFERRED_PUBLICATION {int(args.expect_deferred_publication)}\n' +
+        f'#define DEFERRED_SELECTION {int("sunxi_nfc_select_oob_ops(" in sources["sunxi_nand.c"])}\n' +
         fixture + "\n" + "\n".join(bodies) +
         '\n#line 1 "lifecycle-tests.c"\n' + tests)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",

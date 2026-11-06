@@ -6,6 +6,7 @@ static void defaults(void)
     hold_first_user=false;
     detects=unavailable_detects=scan_with_busy_controller=0;
     scanned=register_calls=unregister_calls=0; expected_scans=2;
+    late_scrambling=false; bbt_calls=bbt_fail_stage=0;
     for (unsigned i=0;i<nalloc;i++) CHECK(!allocations[i].live);
     memset(allocations,0,sizeof(allocations)); nalloc=events=fail_at=0;
     have_caps=slc=external_dma=true; with_calc=no_features=nvddr=false;
@@ -204,6 +205,38 @@ static void timing_cases(void)
     CHECK(nand_scan_with_ids(&c,0,NULL)==-EINVAL);
     cases_run++;
 }
+static void deferred_bbt_cases(void)
+{
+#if DEFERRED_SELECTION
+    unsigned before=cases_run;
+    for (unsigned early=0;early<2;early++)
+    for (unsigned late=0;late<2;late++)
+    for (unsigned vendor=0;vendor<2;vendor++)
+    for (unsigned fault=0;fault<3;fault++) {
+        struct device_node nodes[2]={{.count=1,.cs={0},.vendor=vendor},{0}};
+        struct platform_device p={.dev.of_node=&nodes[1]};
+        defaults(); expected_scans=1; nodes[1].child=nodes;
+        options=early ? NAND_NEED_SCRAMBLING : 0;
+        /* The known late Toshiba/Hynix requirements are for MLC devices. */
+        late_scrambling=late; slc=!late; bbt_fail_stage=fault;
+        int ret=sunxi_nfc_probe(&p);
+        CHECK(scanned==1 && bbt_calls==1);
+        if (fault) {
+            CHECK(ret==-EIO && !registered && !register_calls);
+        } else {
+            CHECK(!ret && registered==1);
+            struct sunxi_nfc *nfc=p.data;
+            struct sunxi_nand_chip *chip=list_first_entry(&nfc->chips,struct sunxi_nand_chip,node);
+            CHECK(chip->oob_ops->randomized==!!(early || late || vendor));
+            CHECK((chip->oob_ops==&sunxi_nfc_allwinner_oob_ops)==!!vendor);
+            sunxi_nfc_remove(&p);
+        }
+        release_devres(); cases_run++;
+    }
+    printf("Deferred BBT: %u source-driven probe cases, early/late/vendor policy, pre/post-allocation BBT failures\n",
+           cases_run-before);
+#endif
+}
 int main(void)
 {
     /* Fault every event observed on each successful/invalid input path; later
@@ -215,6 +248,7 @@ int main(void)
     timing_cases();
     visibility_cases();
     publication_cases();
+    deferred_bbt_cases();
     printf("Lifecycle/ONFI cases: %u; assertions: %u\n",cases_run,assertions);
     if (FIXED_TIMING)
         puts("FIX VERIFIED: timing mismatch recovery propagates controller and RESET failures");

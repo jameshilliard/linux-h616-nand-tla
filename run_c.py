@@ -74,14 +74,13 @@ def chunk_defines(source):
 
 
 def oob_policy_functions(source):
-    return ["sunxi_nfc_get_oob_ops"] if "sunxi_nfc_get_oob_ops(" in source else []
+    return [name for name in ("sunxi_nfc_get_oob_ops", "sunxi_nfc_select_oob_ops")
+            if name + "(" in source]
 
 
 def oob_policy_prototype(source):
-    if oob_policy_functions(source):
-        return ("static const struct sunxi_nfc_oob_ops *"
-                "sunxi_nfc_get_oob_ops(struct nand_chip *nand);\n")
-    return ""
+    return "\n".join(extract_function(source, name).split("\n{")[0] + ";"
+                     for name in oob_policy_functions(source))
 
 
 def oob_policy_tables(source):
@@ -116,13 +115,13 @@ def oob_ops_definitions(source):
         elif name != "sunxi_nfc_scrambled_plain_bbm_oob_ops":
             raise ValueError("missing OOB table: " + name)
     selector = "&sunxi_nfc_plain_oob_ops"
-    if "sunxi_nfc_scrambled_plain_bbm_oob_ops" in source and not oob_policy_functions(source):
+    if "sunxi_nfc_scrambled_plain_bbm_oob_ops" in source and "sunxi_nfc_get_oob_ops(" not in source:
         selector = "((scrambled) ? &sunxi_nfc_scrambled_plain_bbm_oob_ops : " + selector + ")"
     definitions.append("#define TEST_NORMAL_OOB_OPS(scrambled) " + selector)
     # Custom callbacks isolate transport/error paths; their format policy must
     # match the test input just as the real tables do after actual attach.
     definitions.append("#define TEST_RANDOMIZED_FIELD(value) " +
-                       (".randomized = (value)," if oob_policy_functions(source) else ""))
+                       (".randomized = (value)," if "bool randomized;" in source else ""))
     return definitions
 
 

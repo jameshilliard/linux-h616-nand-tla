@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 from boundary_common import HERE, check
-from run_c import extract_function
+from run_c import extract_function, oob_policy_functions, oob_policy_prototype
 
 
 def main():
@@ -32,17 +32,17 @@ def main():
     has_vendor = 'sunxi_nfc_allwinner_oob_attach_chip' in source
     has_ops = 'struct sunxi_nfc_oob_ops {' in source
     has_policy = 'sunxi_nfc_get_oob_ops(' in source
+    deferred = 'sunxi_nfc_select_oob_ops(' in source
     fixed = bool(args.candidate_source) and not args.expect_late_init_bug
     generated = [f'#define HAS_VENDOR {int(has_vendor)}\n#define EXPECT_FIXED {int(fixed)}\n'
-                 f'#define HAS_OPS_POLICY {int(has_policy)}',
+                 f'#define HAS_OPS_POLICY {int(has_policy)}\n'
+                 f'#define DEFERRED_SELECTION {int(deferred)}',
                  (HERE / 'tests/bbm_init.h').read_text()]
     hashes = {}
     if has_ops:
         start = source.index('struct sunxi_nfc_oob_ops {')
         generated.append(source[start:source.index('\n};', start) + 3])
-    if has_policy:
-        generated.append('static const struct sunxi_nfc_oob_ops *'
-                         'sunxi_nfc_get_oob_ops(struct nand_chip *nand);')
+    generated.append(oob_policy_prototype(source))
     for name in ('sunxi_nfc_randomizer_page_seeds', 'sunxi_nfc_randomizer_ecc512_seeds',
                  'sunxi_nfc_randomizer_ecc1024_seeds'):
         generated.append(re.search(r'^static const u16 ' + name + r'\[\] = \{.*?\n};',
@@ -65,8 +65,8 @@ def main():
                           r' = \{.*?\n};', source, re.M | re.S)
         if match:
             generated.append(match[0])
-    if has_policy:
-        add(source, 'sunxi_nand.c', 'sunxi_nfc_get_oob_ops')
+    for name in oob_policy_functions(source):
+        add(source, 'sunxi_nand.c', name)
     if has_vendor:
         add(source, 'sunxi_nand.c', 'sunxi_nfc_allwinner_oob_attach_chip')
     add(source, 'sunxi_nand.c', 'sunxi_nand_attach_chip')
@@ -75,7 +75,7 @@ def main():
     check('bbm-init', {'check.c': '\n\n'.join(generated)}, hashes, cc=args.cc,
           expected='ALL BBM INIT CHECKS PASSED', limits=[
               'MMIO and geometry setup are fixtures; no physical device is tested.',
-              'Identification and scan-tail dispatch order are audited, not emulated.',
+              'This marker test explicitly calls final selection; run_lifecycle.py checks actual scan/BBT ordering.',
               'Manufacturer flag mutation uses the pinned Toshiba init body.',
               'Checks old-image reads and compensated writes, not only round trips.',
               'Does not execute complete PIO/DMA transfers or BCH correction.'])

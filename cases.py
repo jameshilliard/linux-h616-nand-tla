@@ -172,6 +172,9 @@ extend_recovery_expansion(MODULES, add, mutation)
 from bbm_init_cases import extend_bbm_init
 extend_bbm_init(MODULES, add, mutation)
 
+from deferred_init_cases import extend_deferred_init
+extend_deferred_init(MODULES, add, mutation)
+
 from private_recovery_cases import extend_private_recovery
 extend_private_recovery(MODULES, add, mutation)
 

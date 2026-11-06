@@ -227,6 +227,7 @@ static void randomizer(void)
     }
     struct nand_chip nand = chip(2, 56, 128);
     nand.options = NAND_NEED_SCRAMBLING;
+    nand.oob_ops = TEST_NORMAL_OOB_OPS(true);
     for (unsigned size = 512; size <= 1024; size *= 2)
     for (unsigned ppb = 32; ppb <= 256; ppb *= 2) {
         nand.mtd.erasesize = nand.mtd.writesize * ppb;
@@ -396,6 +397,7 @@ static void columns_and_faults(void)
     assert(raw_calls == 2);
     for (unsigned failure = 1; failure <= 3; failure++) {
         nand.options = NAND_NEED_SCRAMBLING;
+        nand.oob_ops = TEST_NORMAL_OOB_OPS(true);
         unsigned maxflips = 0;
         nand.mtd.ecc_stats.corrected = nand.mtd.ecc_stats.failed = 0;
         raw_calls = 0; fail_raw_at = failure;

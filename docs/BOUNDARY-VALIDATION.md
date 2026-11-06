@@ -136,6 +136,53 @@ The pinned reference and existing TLA+ models remain unchanged. This checks a
 local experimental candidate; it is not a new hardware measurement or a claim
 that the complete refactor has been formally proved.
 
+### Deferred-BBT initialization variant
+
+The subsequent sunxi-only draft keeps geometry setup in `attach_chip()` and
+sets `NAND_SKIP_BBTSCAN` before `nand_scan()`. After manufacturer initialization
+has completed, it finalizes the ordinary ops variant and calls
+`nand_create_bbt()` before registering the MTD. Randomizer setup, marker
+compensation and erased-page rereads then share the stored policy. The
+explicit Allwinner-format selection is preserved. A failed BBT creation calls
+`nand_cleanup()` before the chip enters the controller's list.
+
+This variant does not move manufacturer `.init()` or change NAND core APIs.
+The two ordinary ops variants have identical geometry callbacks; only their
+randomizer policy and marker transform differ. Manufacturer command/OTP
+accesses during scan are not assumed absent: those use raw operation paths,
+not the subsequently selected corrected-page/OOB callbacks.
+
+`run_lifecycle.py` executes the source's probe, chip init, scan-tail and cleanup
+bodies. Its boundary fixtures check final policy at BBT entry, exactly one BBT
+creation per chip, no publication before success, and allocation cleanup.
+The 24 focused early/late/vendor cases include failures before and after BBT
+allocation. Existing event-by-event failure injection also covers the new
+allocation point. The DT fixture preserves driver-set option bits, as the real
+core does, rather than overwriting `NAND_SKIP_BBTSCAN`.
+
+`NandDeferredInitialization` checks the sequencing and ownership abstraction:
+64 positive configurations and six broken-order/cleanup mutations pass their
+expectations. A separate assumption counterexample documents that late
+scrambling on a hypothetical SLC part would not recompute the core's already
+chosen subpage geometry. The current late-setting Toshiba/Hynix parts are MLC;
+early SLC scrambling still disables subpage writes during attach. New late
+SLC requirements would need to revisit this boundary.
+
+```sh
+python3 run_suite.py --module NandDeferredInitialization
+python3 run_lifecycle.py --candidate-source /path/to/linux/drivers/mtd/nand/raw/sunxi_nand.c \
+  --expect-available-children --expect-deferred-publication
+```
+
+The driver candidate has SHA-256
+`159e0501b8906e74cd0a192724d61ddcab08a644842686e664db098f39151153`.
+All 17 source/capture-replay jobs pass, including 1,024 marker cases and
+1,298 lifecycle cases. Transport fixtures explicitly install the matching
+stored ops when selecting their input profile; they do not model live changes
+to a probed chip's scrambling requirements. The pinned historical sources and
+negative controls remain unchanged. These are host checks and replay of older
+hardware captures, not a fresh H616 or physical Toshiba test.
+
 ## Teardown, provider findings and false-positive checks
 
 The new observations are documented as findings 8–10 in [FINDINGS.md](FINDINGS.md):

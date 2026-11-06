@@ -126,6 +126,7 @@ struct nand_chip {
     void *secure_regions,*bbt,*fixture_manuf;
     struct { unsigned options; } *badblock_pattern;
     bool fixture_registered;
+    unsigned fixture_bbt_calls;
     bool suspended;
 };
 struct nand_flash_dev { int unused; };
@@ -160,6 +161,8 @@ static bool hold_first_user;
 static struct nand_chip *held_user;
 static unsigned detects, unavailable_detects, scan_with_busy_controller;
 static unsigned scanned, expected_scans, register_calls, unregister_calls;
+static bool late_scrambling;
+static unsigned bbt_calls, bbt_fail_stage;
 static unsigned options, engine, mode, writesize, oobsize, req_step, req_strength;
 static struct { void *p; bool managed,live; } allocations[256];
 static const char *event_names[256];
@@ -305,7 +308,8 @@ static int nand_readid_op(struct nand_chip *c,int a,u8 *p,unsigned n)
 static int rawnand_dt_init(struct nand_chip *c)
 {
     if (fail("dt-init")) return -EINVAL;
-    c->options=options; c->ecc.engine_type=engine; c->ecc.algo=NAND_ECC_ALGO_HAMMING;
+    /* Like DT parsing in the core, preserve bits set by the controller. */
+    c->options|=options; c->ecc.engine_type=engine; c->ecc.algo=NAND_ECC_ALGO_HAMMING;
     c->base.requirements=(struct nand_ecc_props){req_strength,req_step}; return 0;
 }
 static void nand_set_defaults(struct nand_chip *c) { }
@@ -332,7 +336,12 @@ static int nand_detect(struct nand_chip *c,struct nand_flash_dev *t)
     c->page_shift=11; return 0;
 }
 static int nand_manufacturer_init(struct nand_chip *c)
-{ c->fixture_manuf=allocate(4,false); return c->fixture_manuf?0:-ENOMEM; }
+{
+    c->fixture_manuf=allocate(4,false);
+    if (!c->fixture_manuf) return -ENOMEM;
+    if (late_scrambling) c->options|=NAND_NEED_SCRAMBLING;
+    return 0;
+}
 static void nand_manufacturer_cleanup(struct nand_chip *c)
 { release(c->fixture_manuf); c->fixture_manuf=NULL; }
 static int nand_set_ecc_on_host_ops(struct nand_chip *c) { return fail("ecc-ops")?-EINVAL:0; }
@@ -354,7 +363,22 @@ static int of_get_nand_secure_regions(struct nand_chip *c)
 { c->secure_regions=allocate(4,false); return c->secure_regions?0:-ENOMEM; }
 /* Actual BBT paths (including failures) are executed by run_core.py. */
 static int nand_create_bbt(struct nand_chip *c)
-{ c->bbt=allocate(8,false); return c->bbt?0:-ENOMEM; }
+{
+    CHECK(c->fixture_manuf && !c->fixture_registered);
+    CHECK(++c->fixture_bbt_calls==1);
+    bbt_calls++;
+#if DEFERRED_SELECTION
+    struct sunxi_nand_chip *s=to_sunxi_nand(c);
+    CHECK(s->oob_ops->randomized==!!(c->options & NAND_NEED_SCRAMBLING));
+    CHECK((s->oob_ops==&sunxi_nfc_allwinner_oob_ops)==c->flash_node->vendor);
+    if (!slc || (c->options & NAND_NO_SUBPAGE_WRITE))
+        CHECK(!c->mtd.subpage_sft && c->subpagesize==c->mtd.writesize);
+#endif
+    if (bbt_fail_stage==1) return -EIO;
+    c->bbt=allocate(8,false);
+    if (!c->bbt) return -ENOMEM;
+    return bbt_fail_stage==2 ? -EIO : 0;
+}
 /* Real ECC geometry/attachment is executed by run_c.py; this fixture owns its resources. */
 static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *c,struct nand_ecc_ctrl *e,struct device_node *n)
 {
@@ -367,6 +391,7 @@ static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *c,struct nand_ecc_ctrl 
 static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c,struct device_node *n)
 { if (c->ecc.engine_type!=NAND_ECC_ENGINE_TYPE_ON_HOST) return -EINVAL;
   c->options|=NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE;
+  to_sunxi_nand(c)->oob_ops=&sunxi_nfc_allwinner_oob_ops;
   return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,n); }
 static const struct nand_controller_ops sunxi_nand_controller_ops={
     .attach_chip=sunxi_nand_attach_chip,.detach_chip=sunxi_nand_detach_chip,.setup_interface=setup_interface};
@@ -382,6 +407,9 @@ static int mtd_device_register(struct mtd_info *m,const void *p,int n)
 {
     register_calls++;
     if (DEFERRED_PUBLICATION) CHECK(scanned==expected_scans);
+#if DEFERRED_SELECTION
+    CHECK(mtd_to_nand(m)->fixture_bbt_calls==1 && mtd_to_nand(m)->bbt);
+#endif
     if (fail("register")) { probe_trace_event("register-error",mtd_to_nand(m)); return -EIO; }
     CHECK(!mtd_to_nand(m)->fixture_registered);
     mtd_to_nand(m)->fixture_registered=true; registered++;
