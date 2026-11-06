@@ -31,13 +31,18 @@ def main():
     assert hashlib.sha256(toshiba.encode()).hexdigest() == manufacturer['sha256']
     has_vendor = 'sunxi_nfc_allwinner_oob_attach_chip' in source
     has_ops = 'struct sunxi_nfc_oob_ops {' in source
+    has_policy = 'sunxi_nfc_get_oob_ops(' in source
     fixed = bool(args.candidate_source) and not args.expect_late_init_bug
-    generated = [f'#define HAS_VENDOR {int(has_vendor)}\n#define EXPECT_FIXED {int(fixed)}',
+    generated = [f'#define HAS_VENDOR {int(has_vendor)}\n#define EXPECT_FIXED {int(fixed)}\n'
+                 f'#define HAS_OPS_POLICY {int(has_policy)}',
                  (HERE / 'tests/bbm_init.h').read_text()]
     hashes = {}
     if has_ops:
         start = source.index('struct sunxi_nfc_oob_ops {')
         generated.append(source[start:source.index('\n};', start) + 3])
+    if has_policy:
+        generated.append('static const struct sunxi_nfc_oob_ops *'
+                         'sunxi_nfc_get_oob_ops(struct nand_chip *nand);')
     for name in ('sunxi_nfc_randomizer_page_seeds', 'sunxi_nfc_randomizer_ecc512_seeds',
                  'sunxi_nfc_randomizer_ecc1024_seeds'):
         generated.append(re.search(r'^static const u16 ' + name + r'\[\] = \{.*?\n};',
@@ -48,7 +53,8 @@ def main():
         hashes[f'{filename}:{name}'] = hashlib.sha256(body.encode()).hexdigest()
         generated.append(f'#line {line} "{filename}"\n' + body)
     for name in ('sunxi_nfc_randomizer_step', 'sunxi_nfc_randomizer_state',
-                 'sunxi_nfc_randomizer_enable', 'sunxi_nfc_randomize_bbm',
+                 'sunxi_nfc_randomizer_config', 'sunxi_nfc_randomizer_enable',
+                 'sunxi_nfc_randomizer_disable', 'sunxi_nfc_randomize_bbm',
                  'sunxi_nfc_user_data_to_buf', 'sunxi_nfc_buf_to_user_data',
                  'sunxi_nfc_user_data_sz', 'sunxi_nfc_hw_ecc_get_prot_oob_bytes',
                  'sunxi_nfc_hw_ecc_set_prot_oob_bytes'):
@@ -59,6 +65,8 @@ def main():
                           r' = \{.*?\n};', source, re.M | re.S)
         if match:
             generated.append(match[0])
+    if has_policy:
+        add(source, 'sunxi_nand.c', 'sunxi_nfc_get_oob_ops')
     if has_vendor:
         add(source, 'sunxi_nand.c', 'sunxi_nfc_allwinner_oob_attach_chip')
     add(source, 'sunxi_nand.c', 'sunxi_nand_attach_chip')

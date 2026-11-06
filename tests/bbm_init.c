@@ -23,6 +23,32 @@ int main(void)
         assert(!sunxi_nand_attach_chip(&n));
         if (mode == 2)
             assert(!tc58teg5dclta00_init(&n));
+#if HAS_OPS_POLICY
+        const struct sunxi_nfc_oob_ops *ops = sunxi_nfc_get_oob_ops(&n);
+        assert(ops->randomized == (mode != 0));
+        assert(!!ops->transform_bbm == (mode == 1 || mode == 2));
+#if HAS_VENDOR
+        if (mode == 3)
+            assert(n.oob_ops == &sunxi_nfc_allwinner_oob_ops);
+        else
+#endif
+            assert(n.oob_ops == &sunxi_nfc_plain_oob_ops);
+#endif
+        for (unsigned ecc_seed = 0; ecc_seed < 2; ecc_seed++) {
+            const u32 initial = 0x12340000 | (1U << 1);
+            writel(initial, nfc.regs + NFC_REG_ECC_CTL);
+            sunxi_nfc_randomizer_config(&n, page, ecc_seed);
+            u32 configured = initial;
+            if (mode != 0)
+                configured = (initial & ~NFC_RANDOM_SEED_MSK) |
+                    NFC_RANDOM_SEED(sunxi_nfc_randomizer_state(&n, page, ecc_seed));
+            assert(readl(nfc.regs + NFC_REG_ECC_CTL) == configured);
+            sunxi_nfc_randomizer_enable(&n);
+            assert(readl(nfc.regs + NFC_REG_ECC_CTL) ==
+                   (configured | (mode ? NFC_RANDOM_EN(&nfc) : 0)));
+            sunxi_nfc_randomizer_disable(&n);
+            assert(readl(nfc.regs + NFC_REG_ECC_CTL) == configured);
+        }
         sunxi_nfc_randomizer_enable(&n);
         assert(!!(readl(nfc.regs + NFC_REG_ECC_CTL) & NFC_RANDOM_EN(&nfc)) == (mode != 0));
 

@@ -38,6 +38,7 @@ static struct nand_chip chip(unsigned steps, unsigned bytes, unsigned spare)
         .mtd = {.writesize = steps * 1024, .oobsize = spare,
                 .erasesize = steps * 1024 * 64, .ecc_step_size = 1024},
         .controller = &controller, .oob_poi = oob_data,
+        .oob_ops = TEST_NORMAL_OOB_OPS(false),
     };
 }
 
@@ -314,7 +315,10 @@ static void ecc_results(void)
         struct nand_chip nand = chip(3, 56, 256);
         nand.user_data_bytes = variable ? lengths : NULL;
         nand.options = random ? NAND_NEED_SCRAMBLING : 0;
-        struct sunxi_nfc_oob_ops ops = { .transform_bbm = NULL };
+        struct sunxi_nfc_oob_ops ops = {
+            TEST_RANDOMIZED_FIELD(random)
+            .transform_bbm = NULL,
+        };
         nand.oob_ops = &ops;
         struct sunxi_nfc_ecc_read read = {
             .buf = main_data, .page = 17, .dma = dma, .oob_required = want_oob,

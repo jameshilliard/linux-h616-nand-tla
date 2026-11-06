@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 from run_c import HERE, extract_function, chunk_functions
+from run_c import oob_policy_functions, oob_policy_prototype, oob_policy_tables
 
 FUNCTIONS = [
     "sunxi_nfc_interrupt", "sunxi_nfc_wait_events", "sunxi_nfc_wait_cmd_fifo_empty",
@@ -47,7 +48,9 @@ def main():
     for text, key in ((core, "parser_excerpt_sha256"), (header, "parser_header_excerpt_sha256")):
         if hashlib.sha256(text.encode()).hexdigest() != pin[key]:
             parser.error("core parser excerpt hash mismatch")
-    generated = []
+    generated = [oob_policy_prototype(source)]
+    if oob_policy_functions(source):
+        generated.append(oob_policy_tables(source))
     for match in re.finditer(r"^#define (?:NFC_|NDFC_|SUNXI_NFC_TIMING_STEPS)[^\n\\]*(?:\\\n[^\n\\]*)*", source, re.M):
         generated.append(match[0])
     for name in ("sunxi_nfc_randomizer_page_seeds", "sunxi_nfc_randomizer_ecc512_seeds",
@@ -77,7 +80,7 @@ def main():
         generated.append("{ " + ", ".join(values) + " },")
     generated.append("};")
     hashes = {}
-    functions = chunk_functions(source) + FUNCTIONS
+    functions = chunk_functions(source) + FUNCTIONS + oob_policy_functions(source)
     recovery_fixed = 'bool recovery_failed;' in source
     streaming_recovery = recovery_fixed and 'sunxi_nfc_dma_release(' not in source
     pulse_reset = 'reset_control_reset(nfc->reset)' in source
@@ -107,6 +110,7 @@ def main():
         fixture_inputs[recovery_test] = (HERE/'tests'/recovery_test).read_text()
         tests = tests.replace('/* @abort-recovery@ */', fixture_inputs[recovery_test])
     combined = (f'#define FIXED_SUNXI {int(bool(args.candidate_source))}\n' +
+                f'#define OPS_POLICY {int(bool(oob_policy_functions(source)))}\n' +
                 f'#define FIXED_ABORT {int(recovery_fixed)}\n' +
                 f'#define STREAMING_RECOVERY {int(streaming_recovery)}\n' +
                 f'#define PULSE_RESET {int(pulse_reset)}\n' +

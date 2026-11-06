@@ -27,8 +27,11 @@ static int flow_finish_read(struct nand_chip *nand, struct sunxi_nfc_ecc_read *r
     return read->max_bitflips;
 }
 
-static const struct sunxi_nfc_oob_ops flow_ops = {
-    .read_batch = flow_read_batch, .finish_read = flow_finish_read,
+static const struct sunxi_nfc_oob_ops flow_ops[] = {
+    { TEST_RANDOMIZED_FIELD(false)
+      .read_batch = flow_read_batch, .finish_read = flow_finish_read },
+    { TEST_RANDOMIZED_FIELD(true)
+      .read_batch = flow_read_batch, .finish_read = flow_finish_read },
 };
 
 static void reset_flow(unsigned failure)
@@ -89,7 +92,7 @@ static void batch_transport_errors(void)
         u8 user[]={32,4,0}, kinds[]={kind ? 3 : 0,0,3};
         nand.user_data_bytes=variable ? user : NULL;
         nand.options=random ? NAND_NEED_SCRAMBLING : 0;
-        struct sunxi_nfc_oob_ops ops={.transform_bbm=NULL};
+        struct sunxi_nfc_oob_ops ops={TEST_RANDOMIZED_FIELD(random) .transform_bbm=NULL};
         nand.oob_ops=&ops;
         unsigned total=0;
         for(unsigned fail=0;fail<=total;fail++) {
@@ -178,7 +181,7 @@ static void control_flow(void)
         controller.caps=&c; controller.use_mdma=true;
         struct nand_chip nand=chip(6,56,6*88+9);
         nand.user_data_bytes=user;
-        nand.oob_ops=&flow_ops; nand.options=NAND_NEED_SCRAMBLING;
+        nand.oob_ops=&flow_ops[1]; nand.options=NAND_NEED_SCRAMBLING;
         expected_stop=operation==2 ? 5 : 6;
         unsigned total=0;
         for(unsigned fail=0;fail<=total;fail++) {
@@ -209,7 +212,7 @@ static void control_flow(void)
         controller.caps = &c;
         controller.use_mdma = mdma;
         nand.user_data_bytes = variable ? user : NULL;
-        nand.oob_ops = &flow_ops;
+        nand.oob_ops = &flow_ops[1];
         nand.options = NAND_NEED_SCRAMBLING;
         reset_flow(0);
         select_error = error ? -EINVAL : -EBUSY;
@@ -238,7 +241,7 @@ static void control_flow(void)
         controller.caps = &c;
         controller.use_mdma = mdma;
         nand.user_data_bytes = variable ? user : NULL;
-        nand.oob_ops = &flow_ops;
+        nand.oob_ops = &flow_ops[random];
         nand.options = random ? NAND_NEED_SCRAMBLING : 0;
         unsigned total = 0;
         for (unsigned fail = 0; fail <= total; fail++) {
@@ -272,7 +275,7 @@ static void control_flow(void)
         controller.caps = &c;
         controller.use_mdma = mdma;
         nand.user_data_bytes = variable ? user : NULL;
-        nand.oob_ops = &flow_ops;
+        nand.oob_ops = &flow_ops[1];
         nand.options = NAND_NEED_SCRAMBLING;
         bool subpage = operation == 2 || operation == 3;
         expected_stop = subpage ? 5 : 6;
@@ -309,7 +312,7 @@ static void control_flow(void)
         struct nand_chip nand=chip(1,28,32);
         nand.mtd.writesize=nand.ecc.size=512;
         nand.options=random ? NAND_NEED_SCRAMBLING : 0;
-        nand.oob_ops=&flow_ops;
+        nand.oob_ops=&flow_ops[random];
         expected_stop=1;
         reset_flow(0);
         assert(!write_case(&nand,0,true));

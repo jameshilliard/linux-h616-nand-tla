@@ -87,8 +87,11 @@ struct nand_chip {
     unsigned page_shift, options;
 };
 struct sunxi_nand_chip_sel { u8 cs; s8 rb; };
+/* OOB callbacks are outside this runner; policy values come from source. */
+struct sunxi_nfc_oob_ops { bool randomized; };
 struct sunxi_nand_chip {
     struct nand_chip nand;
+    const struct sunxi_nfc_oob_ops *oob_ops;
     struct { u32 ecc_ctl; } ecc;
     unsigned long clk_rate;
     u32 timing_cfg, timing_ctl;

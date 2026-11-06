@@ -118,6 +118,24 @@ not perform ONFI/JEDEC transactions or establish which protocol the physical
 Toshiba part uses. This is not a physical Toshiba reproduction or a fresh H616
 test. Earlier hardware captures are replayed, not relabeled as v11 measurements.
 
+### Experimental ops-policy variant
+
+The separate ops-policy prototype resolves the ordinary ops variant when
+used, allowing late manufacturer initialization to select both randomizer
+policy and the BBM callback together. The source runners extract that resolver
+unchanged. Low-level and lifecycle fixtures project only the source tables'
+`randomized` field; the full-driver and marker tests use the complete tables.
+
+The marker regression now also exercises actual seed programming, enable and
+disable helpers for both register generations and checks the resolved policy
+against all four initialization modes. Its 1,024 marker cases pass for the
+prototype, while the pinned source retains the expected late-init failures.
+All 17 source/capture-replay jobs pass for prototype driver SHA-256
+`e29dcd51db7dc6425763b6248475eb622de5bd4fc49a31c42584891dbbf89786`.
+The pinned reference and existing TLA+ models remain unchanged. This checks a
+local experimental candidate; it is not a new hardware measurement or a claim
+that the complete refactor has been formally proved.
+
 ## Teardown, provider findings and false-positive checks
 
 The new observations are documented as findings 8–10 in [FINDINGS.md](FINDINGS.md):

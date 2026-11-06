@@ -73,8 +73,38 @@ def chunk_defines(source):
     return match[0] + "\n" if match else ""
 
 
+def oob_policy_functions(source):
+    return ["sunxi_nfc_get_oob_ops"] if "sunxi_nfc_get_oob_ops(" in source else []
+
+
+def oob_policy_prototype(source):
+    if oob_policy_functions(source):
+        return ("static const struct sunxi_nfc_oob_ops *"
+                "sunxi_nfc_get_oob_ops(struct nand_chip *nand);\n")
+    return ""
+
+
+def oob_policy_tables(source):
+    """Project only policy fields for fixtures that do not execute OOB callbacks.
+
+    The BBM and full-driver runners execute the complete source tables.
+    """
+    definitions = []
+    for name in ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops",
+                 "sunxi_nfc_allwinner_oob_ops"):
+        table = re.search(r"^static const struct sunxi_nfc_oob_ops " + name +
+                          r" = \{(.*?)\n};", source, re.M | re.S)
+        if not table:
+            continue
+        field = re.search(r"^\s*\.randomized\s*=\s*(.*),$", table[1], re.M)
+        value = field[1] if field else "false"
+        definitions.append("static const struct sunxi_nfc_oob_ops " + name +
+                           " __attribute__((unused)) = { .randomized = " + value + " };")
+    return "\n".join(definitions)
+
+
 def oob_ops_definitions(source):
-    """Keep pinned split tables and the unified candidate table executable."""
+    """Execute pinned tables and candidate variants without changing their bodies."""
     names = ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops",
              "sunxi_nfc_allwinner_oob_ops")
     definitions = []
@@ -86,9 +116,13 @@ def oob_ops_definitions(source):
         elif name != "sunxi_nfc_scrambled_plain_bbm_oob_ops":
             raise ValueError("missing OOB table: " + name)
     selector = "&sunxi_nfc_plain_oob_ops"
-    if "sunxi_nfc_scrambled_plain_bbm_oob_ops" in source:
+    if "sunxi_nfc_scrambled_plain_bbm_oob_ops" in source and not oob_policy_functions(source):
         selector = "((scrambled) ? &sunxi_nfc_scrambled_plain_bbm_oob_ops : " + selector + ")"
     definitions.append("#define TEST_NORMAL_OOB_OPS(scrambled) " + selector)
+    # Custom callbacks isolate transport/error paths; their format policy must
+    # match the test input just as the real tables do after actual attach.
+    definitions.append("#define TEST_RANDOMIZED_FIELD(value) " +
+                       (".randomized = (value)," if oob_policy_functions(source) else ""))
     return definitions
 
 
@@ -109,9 +143,9 @@ def main():
     binding = (HERE / "reference/allwinner,sun4i-a10-nand.yaml").read_bytes()
     if hashlib.sha256(binding).hexdigest() != pin["binding_sha256"]:
         parser.error("binding hash mismatch")
-    generated = [chunk_defines(source),
+    generated = [chunk_defines(source), oob_policy_prototype(source),
                  "struct sunxi_nfc_ecc_read;\nstruct sunxi_nfc_ecc_snapshot;\n"]
-    functions = chunk_functions(source) + FUNCTIONS
+    functions = chunk_functions(source) + FUNCTIONS + oob_policy_functions(source)
     hashes = {}
     for name in STRUCTURES:
         start = source.index("struct " + name + " {")

@@ -130,7 +130,8 @@ struct nand_chip {
 };
 struct nand_flash_dev { int unused; };
 struct sunxi_nand_chip_sel { u8 cs; int rb; };
-struct sunxi_nfc_oob_ops { int unused; };
+/* OOB callbacks are outside this runner; policy values come from source. */
+struct sunxi_nfc_oob_ops { bool randomized; };
 struct sunxi_nand_chip {
     struct list_head node;
     struct nand_chip nand;
@@ -273,8 +274,7 @@ static int io_stub(void) { CHECK(!"I/O callback unexpectedly executed during sca
 #define nand_block_markbad io_stub
 #define nanddev_mtd_max_bad_blocks io_stub
 static const int rawnand_ops, layout;
-static const struct sunxi_nfc_oob_ops sunxi_nfc_plain_oob_ops __attribute__((unused)),
-    sunxi_nfc_scrambled_plain_bbm_oob_ops __attribute__((unused));
+/* @oob-policy-tables@ */
 static const void *nand_get_small_page_ooblayout(void) { return &layout; }
 static const void *nand_get_large_page_hamming_ooblayout(void) { return &layout; }
 static const void *nand_get_large_page_ooblayout(void) { return &layout; }

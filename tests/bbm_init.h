@@ -23,6 +23,8 @@ typedef uint32_t u32;
 #define NFC_REG_ECC_CTL 0x34
 #define NFC_REG_USER_DATA(n, i) ((n)->caps->reg_user_data + (i) * 4)
 #define NFC_RANDOM_EN(n) ((n)->caps->random_en)
+#define NFC_RANDOM_SEED_MSK (0x7fffU << 16)
+#define NFC_RANDOM_SEED(seed) ((seed) << 16)
 #define mtd_div_by_ws(n, m) ((n) / (m)->writesize)
 #define dev_err_probe(d, err, ...) ((void)(d), (err))
 struct nand_chip;

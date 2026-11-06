@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 
 from run_core import extract
+from run_c import oob_policy_functions, oob_policy_tables
 from source_coverage import build_and_collect
 
 HERE = Path(__file__).resolve().parent
@@ -57,6 +58,8 @@ def main():
         if name == "sunxi_nand.c" and args.candidate_source:
             src = args.candidate_source.read_text()
             sources[name] = src
+        if name == "sunxi_nand.c":
+            names.extend(oob_policy_functions(src))
         for func in names:
             body = extract(src, func)
             prototypes.append(body[:body.index("\n{")] + ";")
@@ -67,6 +70,7 @@ def main():
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="lifecycle-", dir=results))
     fixture = (HERE / "tests/lifecycle.h").read_text()
+    fixture = fixture.replace("/* @oob-policy-tables@ */", oob_policy_tables(sources["sunxi_nand.c"]))
     fixture = fixture.replace("/* @prototypes@ */", "\n".join(prototypes))
     tests = (HERE / "tests/lifecycle.c").read_text()
     if args.probe_traces:
