@@ -86,6 +86,10 @@ jobs:
         run: |
           python3 tests/test_tlc_result.py
           python3 run_suite.py --module NandRandomizerBits
+      - name: Check exact controller transitions and older BSP evidence
+        run: |
+          python3 tests/test_randomizer_controller.py
+          python3 run_randomizer_hardware.py --download
       - name: Retain arithmetic and policy evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -100,6 +104,7 @@ jobs:
             results/**/trace*.json
             results/**/build.log
             results/**/check.log
+            results/**/bsp-*.log
           retention-days: 14
 
   recovery-traces:

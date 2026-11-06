@@ -12,6 +12,11 @@ randomizer assumption. Normal commands restart streams, page-size reads and
 writes differ, and non-word read tails have an exception. Historical
 assumptions below must be read with that correction; older NFCs are unmeasured.
 
+The [stateful randomizer extension](RANDOMIZER-HARDWARE-STATE.md) now audits
+four older Allwinner BSPs, checks their erased-spare signatures against exact
+LFSR bytes, and separates expected codeword contracts from undocumented
+reload alternatives. It does not transfer H616 measurements to older NFCs.
+
 The [extended v10 capture](HARDWARE-EXTENDED-20261104.md) adds native PIO/MDMA,
 all on-chip BCH modes as isolated codewords, metadata reuse, public callers,
 randomizer toggles and real timeout-status rechecks. It also finds that the

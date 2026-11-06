@@ -106,6 +106,12 @@ does not simulate BCH decoding or the NAND bus. Older-controller reload timing,
 unmeasured silicon and arbitrary concurrent failures are not established by
 passing this extension. No new board measurement is claimed.
 
+The subsequent [stateful controller extension](RANDOMIZER-HARDWARE-STATE.md)
+connects exact LFSR bytes to those captured H616 command transitions and
+models older BSP contracts separately from uncertain hardware behavior.
+It closes the stream/arithmetic composition gap without resolving unknown
+older-silicon reload rules or claiming a new hardware measurement.
+
 ## Running
 
 ```sh

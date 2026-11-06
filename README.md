@@ -26,6 +26,11 @@ The [bit-accurate randomizer checks](docs/RANDOMIZER-BIT-CONFORMANCE.md) connect
 that policy to actual source-helper register/marker observations, an exact
 15-bit LFSR model, and all 128 entries of both ECC seed tables. Independent
 inputs distinguish compatibility from a matching write/read error.
+The [stateful hardware/randomizer model](docs/RANDOMIZER-HARDWARE-STATE.md)
+then separates programmed seeds from active state across commands, aborts,
+resets and chip changes. It replays 3,184 stored H616 comparisons and audits
+four older Allwinner BSPs. Older hardware uncertainty is checked separately
+from the BSP-compatible codeword contract, not filled in with H616 behavior.
 The [refinement checks](docs/REFINEMENT-VALIDATION.md) connect requests to real
 command helpers and `exec_op()`, execute Hynix/Micron retry callbacks, and
 separate reset/stop, MTD lifetime and byte/cache-line ownership contracts.
@@ -184,6 +189,8 @@ explicitly authorized board tests, including a destructive backup-block phase.
 
 ```sh
 python3 run.py --download
+python3 run_randomizer_hardware.py --download
+python3 tests/test_randomizer_controller.py
 python3 run_c.py
 python3 run_lowlevel.py
 python3 run_core.py
@@ -283,6 +290,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandRandomizerBits` | Exact numeric recurrence versus a fifteen-bit shift register; all 16-bit input seeds for one step, bounded multi-step and byte-order checks |
 | `NandRandomizerPhase` | All BSP page seeds advanced through 512-/1024-byte ECC steps plus fifteen bits; source table entries and exact software bytes |
 | `NandRandomizerPolicy` | Source-observed finalized policy, seed/register preservation, independent marker bytes and failed-transfer cleanup; dedicated runner |
+| `NandRandomizerController` | Exact active LFSR versus programmed seed, mixed commands, abort/reset/chip-switch composition, measured H616 bytes and separate older-BSP/uncertainty profiles; dedicated runner |
 | `NandResetObservation` | Retained-buffer lifetime and the distinction between reset/quiet observations and correct first subsequent data |
 | `NandDmaAperture` | 32-bit buffer/descriptor endpoints, mask/alignment/caller contracts, exact address encoding and balanced mapping cleanup |
 | `NandUserDataContext` | Persistent packed lengths across PIO/DMA requests, logical-step offsets, zero/unused slots, word boundaries and absent legacy registers |

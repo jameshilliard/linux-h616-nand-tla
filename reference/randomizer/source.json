@@ -1,0 +1,61 @@
+{
+  "repository": "https://github.com/allwinner-zh/linux-3.4-sunxi",
+  "commit": "6964d467510849e3e262518cb87bff7ef92e01f5",
+  "scope": "BSP register programming and spare signatures, not measured older silicon",
+  "functions": {
+    "NFC_SetRandomSeed": "893d343032a25b87a738e8c596751ae4ec1742d6f11522d415ba7c17a6dd97d0",
+    "NFC_RandomEnable": "361270f86ca05f9c9a212b13a71d7e37e38fb65847a7d3b74ed6ef9665aa7c7e",
+    "NFC_RandomDisable": "868db73b5b6cd3ff9b26e034822fc2e8ab76b52fd8dddbf46223bbff32e495ba"
+  },
+  "variants": {
+    "sun4i": {
+      "soc": "A10",
+      "nfc/nfc_r.c": "3a3f92abeddeed215386e4703905216fdfcd592e43386763898ce2c74f4595d7",
+      "physic/nand_phy.c": "eea5aee461b4b74666cdbf362179dcade188dcff0e1703664c88cfce1668a586",
+      "physic/nand_simple_r.c": "a1b4d405e970f6a780c3bb1514623013568e59dca59f8f94ab8ca893aed5087f"
+    },
+    "sun7i": {
+      "soc": "A20",
+      "nfc/nfc_r.c": "a1c01ca3599a7186ef597bb031320e5f9b12b48b2e51580dcd4acf6102c61a05",
+      "physic/nand_phy.c": "fffc97c30873ae8ddcd29f294ce8b0e0e3f830bc18d86c144506def49782f282",
+      "physic/nand_simple_r.c": "0bf42935785c72e2d48b8c05897949093c935c88a6c96d0dcc2e9f8f8454fce2"
+    },
+    "sun8iw3": {
+      "soc": "A23",
+      "nfc/nfc_r.c": "37123b01ae37a81c5f0153c701368d8047e1c6d1b24c4bb45c0066a2050edf36",
+      "physic/nand_phy.c": "a884b353f474a540d4eac4fcf9c6d91a14909aee8fe158b11083f40cb910f095",
+      "physic/nand_simple_r.c": "1a8528148a1a6f241e301b0d59f31838b7b2efc2f459a3f55b656e2dd3e80b13"
+    },
+    "sun8iw5": {
+      "soc": "A33",
+      "nfc/nfc_r.c": "767fb6331ac99a10d6a26382a309beaf3e8e6f808d933c0b86b22df33e9cfa0b",
+      "physic/nand_phy.c": "f70123c69180cc5f53e008f1f190fc3f7deb0b3992ab89fada3411db780636f4",
+      "physic/nand_simple_r.c": "e8e21c273d72ab96216e2cdea4098d6698ed20edde09c810bf7e11fa03c96a03"
+    }
+  },
+  "spare_signatures": [
+    {"page": 0, "main_bytes": 1024, "decoded_ff": [10, 83, 184, 194]},
+    {"page": 127, "main_bytes": 1024, "decoded_ff": [50, 67, 170, 78]}
+  ],
+  "manuals": [
+    {
+      "title": "A33 NAND Flash Controller Specification, revision 1.0, 2014-02-28",
+      "url": "https://linux-sunxi.org/images/4/49/A33_Nand_Flash_Controller_Specification.pdf",
+      "sections": ["1.4.10", "1.4.14"],
+      "access": "Search-indexed primary text available; direct PDF download returned HTTP 404 on 2026-11-05",
+      "fields": {"seed": [30, 16], "enable": 9, "direction": 10, "page_size": 11},
+      "limit": "Does not specify hidden NORMAL-command reload or disable/resume rules. A33 text is not direct A10/A20/A23 documentation."
+    },
+    {
+      "title": "Allwinner A10 User Manual V1.50",
+      "manifest": "hardware-evidence.json",
+      "limit": "NFC overview lacks a register-level randomizer state machine."
+    },
+    {
+      "title": "Allwinner H616 User Manual V1.0",
+      "manifest": "hardware-evidence.json",
+      "fields": {"seed": [30, 16], "enable": 5, "direction": 6, "page_size": 7},
+      "limit": "Measured command behavior is recorded separately; names of fields alone do not define reload timing."
+    }
+  ]
+}
