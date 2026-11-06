@@ -229,7 +229,7 @@ static void deferred_bbt_cases(void)
             struct sunxi_nand_chip *chip=list_first_entry(&nfc->chips,struct sunxi_nand_chip,node);
             CHECK(chip->oob_ops->TEST_RANDOMIZER_MEMBER==!!(early || late || vendor));
 #if HAS_VENDOR
-            CHECK((chip->oob_ops==&sunxi_nfc_allwinner_oob_ops)==!!vendor);
+            CHECK((chip->oob_ops==TEST_VENDOR_OOB_OPS(true))==!!vendor);
 #else
             CHECK(chip->oob_ops==(early || late ?
                   &sunxi_nfc_scrambled_plain_bbm_oob_ops : &sunxi_nfc_plain_oob_ops));

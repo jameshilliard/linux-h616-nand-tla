@@ -27,7 +27,7 @@ static void codec_bridge(void)
             else memset(user,32,steps);
             n.user_data_bytes=user;
         }
-        n.oob_ops=vendor?&sunxi_nfc_allwinner_oob_ops:TEST_NORMAL_OOB_OPS(random);
+        n.oob_ops=vendor?TEST_VENDOR_OOB_OPS(variable):TEST_NORMAL_OOB_OPS(random);
         for (unsigned dma=0;dma<(size>512?2U:1U);dma++) {
             unsigned decoded_off=0;
             memset(output,0xa5,sizeof(output));

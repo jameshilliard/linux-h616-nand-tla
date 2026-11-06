@@ -10,6 +10,7 @@ int main(void)
             .reg_user_data = hw ? 0x80 : 0x50,
             .reg_user_data_len = hw ? 0x70 : 0,
             .random_en = hw ? (1U << 5) : (1U << 9),
+            .allwinner_oob_ops = hw ? TEST_H6_VENDOR_OPS : TEST_A10_VENDOR_OPS,
         };
         struct sunxi_nfc nfc = { .caps = &caps };
         struct nand_chip n = {

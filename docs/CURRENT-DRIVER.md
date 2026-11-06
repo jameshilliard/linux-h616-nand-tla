@@ -1,6 +1,16 @@
 # Current sunxi driver verification
 
-## Current submission draft: single-install OOB policy
+## Current submission draft: generation-specific OOB geometry
+
+The 26-patch v11 draft ends at `60b1bc96cc0b`, with driver digest
+`6e2f9e7d696a6be37f0ad40a6787d8aaf31e526bfe63ed2bff051819108e8e4d`.
+The [generation-specific policy checks](GENERATION-OOB-POLICY.md) distinguish
+older fixed user-data fields from H6/H616 packed vendor geometry, while keeping
+read classification and completion shared. All 19 source/capture-replay jobs,
+152 initialization-model expectations and both architecture object builds pass.
+This is a submission refactor, not a fresh hardware deployment or measurement.
+
+## Earlier submission draft: single-install OOB policy
 
 The 26-patch v11 draft ends at `2c9dee1e8416`, with driver digest
 `b213779ff1c567213095c70004b788df83419abc205cdfc9b61f9b4a81867df6`.

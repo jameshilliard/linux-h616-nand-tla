@@ -63,11 +63,11 @@ static void oob_pipeline(void)
         n.mtd.ecc_stats.corrected = 7;
         n.mtd.ecc_stats.failed = 3;
         n.options = NAND_NEED_SCRAMBLING;
-        n.oob_ops = &sunxi_nfc_allwinner_oob_ops;
+        n.oob_ops = TEST_VENDOR_OOB_OPS(variable);
         controller.caps = &c;
         flow.enabled = false;
         allocation_failure = false;
-        assert(!sunxi_nfc_allwinner_oob_init_user_data(&n, steps));
+        assert(!n.oob_ops->init_user_data(&n, steps));
         memset(main_data, 0x4b, sizeof(main_data));
         memset(oob_data, 0xa5, sizeof(oob_data));
         raw_calls = fail_raw_at = 0;

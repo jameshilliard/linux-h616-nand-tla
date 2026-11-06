@@ -36,7 +36,7 @@ static void compatibility(void)
         u8 input[128], result[128], linux_input[128], linux_result[128];
         struct nand_controller_info bsp={.nreg={regs,lengths}};
         bsp_spare_capacity(&info);
-        assert(!sunxi_nfc_allwinner_oob_init_user_data(&n,steps));
+        assert(!TEST_VENDOR_OOB_OPS(true)->init_user_data(&n,steps));
         assert(info.sdata_bytes_per_page==sunxi_nfc_user_data_sz(&n,0));
         assert(!ndfc_set_user_data_len_cfg(&bsp,info.sdata_bytes_per_page));
         assert(!ndfc_set_user_data_len(&bsp));

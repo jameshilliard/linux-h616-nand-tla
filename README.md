@@ -25,6 +25,10 @@ correction against existing-image reads and new-write representation separately.
 The [single-install policy checks](docs/BOUNDARY-VALIDATION.md#single-install-oob-policy)
 also distinguish attach-time geometry from the final immutable per-chip policy,
 with source checks and mutation controls for premature or repeated installation.
+The [generation-specific geometry checks](docs/GENERATION-OOB-POLICY.md)
+exercise the actual controller-to-ops assignments and distinguish fixed older
+user-data fields from H6/H616 packed vendor geometry without duplicating the
+shared read callbacks.
 The [bit-accurate randomizer checks](docs/RANDOMIZER-BIT-CONFORMANCE.md) connect
 that policy to actual source-helper register/marker observations, an exact
 15-bit LFSR model, and all 128 entries of both ECC seed tables. Independent

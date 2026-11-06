@@ -43,7 +43,7 @@ int driver_attach_check(unsigned page, unsigned spare, unsigned step,
         }
         assert(n.ecc.read_page && n.ecc.write_page && n.ecc.read_oob && n.ecc.write_oob);
         assert((n.ecc.read_page==sunxi_nfc_hw_ecc_read_page_dma)==(dma && page>512));
-        if (vendor) assert(n.oob_ops==&sunxi_nfc_allwinner_oob_ops);
+        if (vendor) assert(n.oob_ops==TEST_VENDOR_OOB_OPS(variable));
     }
     free(n.user_data_bytes);
     return ret;

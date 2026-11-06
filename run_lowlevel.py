@@ -65,7 +65,7 @@ def main():
               "reg_io_data", "dma_maxburst", "sram_size", "timings", "max_ecc_steps",
               "reg_ecc_err_cnt", "reg_user_data", "reg_user_data_len", "reg_pat_found",
               "random_dir_mask", "ecc_mode_mask", "ecc_err_mask", "pat_found_mask",
-              "has_ecc_block_512", "needs_bus_reset")
+              "has_ecc_block_512", "needs_bus_reset", "allwinner_oob_ops")
     generated.append("static const struct sunxi_nfc_caps source_caps[] = {")
     for soc in ("a10", "a23", "h616"):
         match = re.search(r"^static const struct sunxi_nfc_caps sunxi_nfc_" + soc +

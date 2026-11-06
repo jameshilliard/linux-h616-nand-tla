@@ -9,8 +9,10 @@ int main(void)
     FILE *f = fopen("randomizer-policy.jsonl", "w");
     assert(f);
     struct caps caps[2] = {
-        { .reg_user_data = 0x50, .random_en = 1U << 9 },
-        { .reg_user_data = 0x80, .reg_user_data_len = 0x70, .random_en = 1U << 5 },
+        { .reg_user_data = 0x50, .random_en = 1U << 9,
+          .allwinner_oob_ops = TEST_A10_VENDOR_OPS },
+        { .reg_user_data = 0x80, .reg_user_data_len = 0x70, .random_en = 1U << 5,
+          .allwinner_oob_ops = TEST_H6_VENDOR_OPS },
     };
     /* Preserve each controller's register state across differently configured chips. */
     struct sunxi_nfc controllers[2] = { { .caps = &caps[0] }, { .caps = &caps[1] } };

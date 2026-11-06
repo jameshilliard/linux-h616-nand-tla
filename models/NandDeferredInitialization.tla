@@ -3,12 +3,18 @@
 \* Probe lifecycle abstraction, paired with source-executed lifecycle tests.
 \* ECC geometry is unchanged between the two ordinary-format ops tables.
 EXTENDS Integers, FiniteSets
-CONSTANTS EarlyScramble, LateScramble, Vendor, SLC, FailAt, Mutation
+CONSTANTS EarlyScramble, LateScramble, Vendor, SLC, FailAt, Mutation, Generation
 VARIABLE s
 vars == <<s>>
-Policy(scramble) == IF Vendor THEN "vendor"
+VendorPolicy == IF Generation = "h6" THEN "vendor-h6" ELSE "vendor-legacy"
+Policy(scramble) == IF Vendor THEN VendorPolicy
                    ELSE IF scramble THEN "scrambled" ELSE "plain"
-Geometry(ops) == IF ops = "vendor" THEN "packed" ELSE "ordinary"
+Geometry(ops) == IF ops = "vendor-h6" THEN "packed"
+                ELSE IF ops = "vendor-legacy" \/ Generation = "legacy" THEN "fixed"
+                ELSE "variable"
+FinalPolicy == IF Mutation = "wrong-generation"
+               THEN IF Generation = "h6" THEN "vendor-legacy" ELSE "vendor-h6"
+               ELSE Policy(s.scramble)
 Init == s = [pc |-> "identify", scramble |-> FALSE, ops |-> "unset",
              geometry |-> "unset", installs |-> 0, installedOps |-> "unset",
              resources |-> {}, finalized |-> FALSE, bbtCalls |-> 0,
@@ -44,10 +50,10 @@ Finalize ==
     /\ s.pc = "finalize"
     /\ s' = [s EXCEPT !.finalized = TRUE,
         !.installs = IF Mutation = "omit-final-selection" THEN @ ELSE @ + 1,
-        !.installedOps = Policy(s.scramble),
+        !.installedOps = FinalPolicy,
         !.ops = IF Mutation = "omit-final-selection" THEN @
                 ELSE IF Mutation = "replace-vendor" THEN "scrambled"
-                ELSE Policy(s.scramble),
+                ELSE FinalPolicy,
         !.pc = IF Mutation = "publish-before-bbt" THEN "publish" ELSE "bbt"]
 BBT ==
     /\ s.pc = "bbt"
@@ -74,9 +80,10 @@ Done == s.pc = "done" /\ UNCHANGED vars
 Next == Identify \/ Attach \/ Manufacturer \/ Tail \/ Finalize \/ BBT \/
         Publish \/ Remove \/ Cleanup \/ Done
 Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
-TypeOK == s.ops \in {"unset", "plain", "scrambled", "vendor"} /\
-          s.installedOps \in {"unset", "plain", "scrambled", "vendor"} /\
-          s.geometry \in {"unset", "ordinary", "packed"} /\ s.installs \in 0..2 /\
+TypeOK == Generation \in {"legacy", "h6"} /\
+          s.ops \in {"unset", "plain", "scrambled", "vendor-legacy", "vendor-h6"} /\
+          s.installedOps \in {"unset", "plain", "scrambled", "vendor-legacy", "vendor-h6"} /\
+          s.geometry \in {"unset", "fixed", "variable", "packed"} /\ s.installs \in 0..2 /\
           s.resources \subseteq {"ident", "attach", "manufacturer", "core", "bbt"} /\
           s.scramble \in BOOLEAN /\ s.finalized \in BOOLEAN /\
           s.bbtOK \in BOOLEAN /\ s.published \in BOOLEAN /\ s.bbtCalls \in 0..2
@@ -85,6 +92,7 @@ InstallOnce == s.installs <= 1 /\
                (~s.finalized => s.installs = 0 /\ s.ops = "unset") /\
                (s.finalized => s.installs = 1)
 StablePolicy == s.finalized => s.ops = s.installedOps
+GenerationMatches == s.finalized /\ Vendor /\ s.ops # "unset" => s.ops = VendorPolicy
 GeometryCompatible == s.finalized => s.geometry = Geometry(s.ops)
 OneBBT == s.bbtCalls <= 1
 PublishReady == s.published => s.finalized /\ s.bbtOK /\ s.bbtCalls = 1

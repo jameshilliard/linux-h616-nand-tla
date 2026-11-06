@@ -3,7 +3,7 @@
 import hashlib
 import re
 from boundary_common import HERE
-from run_c import FUNCTIONS, STRUCTURES, ARRAYS, extract_function, chunk_functions, chunk_defines, oob_ops_definitions
+from run_c import STRUCTURES, ARRAYS, extract_function, chunk_defines, oob_ops_definitions, driver_functions
 from run_c import oob_policy_defines, oob_policy_functions, oob_policy_prototype
 from run_core import extract
 
@@ -49,7 +49,7 @@ def generate(src, *, persistent=False):
         generated.append(source[start:source.index("\n};",start)+3])
     for name in ARRAYS:
         generated.append(re.search(r"^static const u(?:8|16) " + name + r"\[\] = \{.*?\n};",source,re.M|re.S)[0])
-    for name in [*chunk_functions(source),*FUNCTIONS,*oob_policy_functions(source),*extra]:
+    for name in [*driver_functions(source),*extra]:
         if name == "sunxi_nfc_allwinner_oob_attach_chip":
             generated.extend(oob_ops_definitions(source))
         body = extract_function(source,name)

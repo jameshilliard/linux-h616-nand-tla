@@ -39,7 +39,10 @@ struct nand_ecc_ctrl {
     int engine_type;
     int (*read_subpage)(struct nand_chip *, u32, u32, u8 *, int);
 };
-struct caps { unsigned reg_user_data, reg_user_data_len, random_en; };
+struct caps {
+    unsigned reg_user_data, reg_user_data_len, random_en;
+    const struct sunxi_nfc_oob_ops *allwinner_oob_ops;
+};
 struct sunxi_nfc { u8 regs[0x1000]; struct caps *caps; void *dev; };
 struct nand_chip {
     struct sunxi_nfc *controller;
@@ -82,6 +85,9 @@ static int sunxi_nfc_oob_read_batch(struct nand_chip *n, struct sunxi_nfc_ecc_re
 static int sunxi_nfc_oob_finish_read(struct nand_chip *n, struct sunxi_nfc_ecc_read *r, int *off) { return 0; }
 static unsigned sunxi_nfc_allwinner_oob_min_user_data(struct nand_chip *n, int steps) { return steps * 4; }
 static int sunxi_nfc_allwinner_oob_init_user_data(struct nand_chip *n, int steps) { return 0; }
+static int sun4i_a10_nfc_allwinner_oob_init_user_data(struct nand_chip *n, int steps) { return 0; }
+static unsigned sun50i_h6_nfc_allwinner_oob_min_user_data(struct nand_chip *n, int steps) { return steps * 4; }
+static int sun50i_h6_nfc_allwinner_oob_init_user_data(struct nand_chip *n, int steps) { return 0; }
 static int sunxi_nfc_allwinner_oob_read_batch(struct nand_chip *n, struct sunxi_nfc_ecc_read *r, struct sunxi_nfc_ecc_snapshot *s, int f, int count) { return 0; }
 static int sunxi_nfc_allwinner_oob_finish_read(struct nand_chip *n, struct sunxi_nfc_ecc_read *r, int *off) { return 0; }
 static int sunxi_nfc_allwinner_oob_read_subpage(struct nand_chip *n, u32 a, u32 b, u8 *p, int page) { return 0; }

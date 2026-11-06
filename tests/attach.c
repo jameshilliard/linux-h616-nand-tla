@@ -22,10 +22,8 @@ static void attach_geometry(void)
         controller.caps = &c;
         controller.use_mdma = true;
         controller.mdma_desc = variable ? controller.regs : NULL;
-        struct sunxi_nfc_oob_ops ops = {
-            .min_user_data = vendor ? sunxi_nfc_allwinner_oob_min_user_data : sunxi_nfc_oob_min_user_data,
-            .init_user_data = vendor ? sunxi_nfc_allwinner_oob_init_user_data : sunxi_nfc_oob_init_user_data,
-        };
+        struct sunxi_nfc_oob_ops ops = vendor ? *TEST_VENDOR_OOB_OPS(variable) :
+            *TEST_NORMAL_OOB_OPS(false);
         struct nand_chip nand = chip(1, 0, spares[o]);
         nand.oob_ops = &ops;
         nand.mtd.writesize = pages[p];
@@ -118,6 +116,58 @@ static void attach_geometry(void)
     printf("PIO/external-DMA/internal-DMA attach callback selection: %u\n",selection);
 }
 
+static void generation_policy(void)
+{
+#if SPLIT_VENDOR_OPS
+    unsigned runs = 0;
+    flow.enabled = allocation_failure = false;
+    for (unsigned variant = 0; variant < 3; variant++) {
+        bool variable = variant == 2;
+        struct caps c = caps(variable);
+        if (variant == 1) c.allwinner_oob_ops = TEST_A23_VENDOR_OPS;
+        controller.caps = &c;
+        for (unsigned vendor = 0; vendor < 2; vendor++)
+        for (unsigned scrambled = 0; scrambled < 2; scrambled++) {
+            struct nand_chip n = chip(2, 56, 256);
+            n.options = scrambled ? NAND_NEED_SCRAMBLING : 0;
+            n.oob_ops = NULL;
+            vendor_property = vendor;
+            const struct sunxi_nfc_oob_ops *ops = sunxi_nfc_get_oob_ops(&n);
+            assert(!n.oob_ops);
+            assert(ops == (vendor ? TEST_VENDOR_OOB_OPS(variable) :
+                          TEST_NORMAL_OOB_OPS(scrambled)));
+            if (!vendor) continue;
+            assert(ops->use_randomizer && !ops->transform_bbm);
+            assert(ops->read_batch == sunxi_nfc_allwinner_oob_read_batch);
+            assert(ops->finish_read == sunxi_nfc_allwinner_oob_finish_read);
+            for (int steps = -1; steps <= (int)c.max_ecc_steps; steps++) {
+                assert(!n.user_data_bytes);
+                int ret = ops->init_user_data(&n, steps);
+                if (steps <= 0) {
+                    assert(ret == -EINVAL && !n.user_data_bytes);
+                } else {
+                    assert(!ret);
+                    unsigned reserved = ops->min_user_data(&n, steps);
+                    assert(reserved == (variable ? min(steps * 4, 16) : steps * 4 + 2));
+                    for (int i = 0; i < steps; i++)
+                        assert(sunxi_nfc_user_data_sz(&n, i) ==
+                               (variable ? (i ? 0U : min(steps * 4, 16)) : 4U));
+                }
+                free(n.user_data_bytes);
+                n.user_data_bytes = NULL;
+                runs++;
+            }
+            allocation_failure = true;
+            assert(ops->init_user_data(&n, 2) == (variable ? -ENOMEM : 0));
+            assert(!n.user_data_bytes);
+            allocation_failure = false;
+        }
+    }
+    vendor_property = false;
+    printf("generation-selected OOB tables: A10/A23/H6, %u geometry/error cases; shared read callbacks\n", runs);
+#endif
+}
+
 static unsigned whole_page_calls;
 static int whole_page_fixture(struct nand_chip *nand,u8 *buf,int oob,int page)
 {
@@ -166,7 +216,7 @@ static void attach_policy(void)
         assert(n.options&NAND_SUBPAGE_READ);
         if(!ret) {
             if(vendor) {
-                assert(n.oob_ops==&sunxi_nfc_allwinner_oob_ops);
+                assert(n.oob_ops==TEST_VENDOR_OOB_OPS(variable));
                 assert((n.options&(NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE))==
                     (NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE));
                 assert(n.ecc.read_subpage==sunxi_nfc_allwinner_oob_read_subpage);
@@ -203,7 +253,7 @@ static void metadata_identity(void)
         u8 user[6]={32,16,4,0,0,0};
         if(vendor) { memset(user,0,sizeof(user)); user[0]=16; }
         n.user_data_bytes=variable ? user : NULL;
-        n.oob_ops=vendor ? &sunxi_nfc_allwinner_oob_ops : TEST_NORMAL_OOB_OPS(scrambled);
+        n.oob_ops=vendor ? TEST_VENDOR_OOB_OPS(variable) : TEST_NORMAL_OOB_OPS(scrambled);
         n.options=(vendor || scrambled) ? NAND_NEED_SCRAMBLING : 0;
         u8 original[1024],decoded[1024],flash[1024];
         memset(flash,0xff,sizeof(flash)); memset(decoded,0xa5,sizeof(decoded));

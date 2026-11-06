@@ -142,7 +142,10 @@ struct sunxi_nand_chip {
     int nsels;
     struct sunxi_nand_chip_sel sels[];
 };
-struct sunxi_nfc_caps { bool has_ecc_clk,has_mbus_clk,needs_bus_reset; };
+struct sunxi_nfc_caps {
+    bool has_ecc_clk,has_mbus_clk,needs_bus_reset;
+    const struct sunxi_nfc_oob_ops *allwinner_oob_ops;
+};
 struct sunxi_nfc {
     struct device *dev;
     struct nand_controller controller;
@@ -375,7 +378,7 @@ static int nand_create_bbt(struct nand_chip *c)
     CHECK(s->oob_ops);
     CHECK(s->oob_ops->TEST_RANDOMIZER_MEMBER==!!(c->options & NAND_NEED_SCRAMBLING));
 #if HAS_VENDOR
-    CHECK((s->oob_ops==&sunxi_nfc_allwinner_oob_ops)==c->flash_node->vendor);
+    CHECK((s->oob_ops==TEST_VENDOR_OOB_OPS(true))==c->flash_node->vendor);
 #else
     CHECK(!c->flash_node->vendor);
     CHECK(s->oob_ops==(s->oob_ops->TEST_RANDOMIZER_MEMBER ?
@@ -417,7 +420,7 @@ static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c,
 { if (c->ecc.engine_type!=NAND_ECC_ENGINE_TYPE_ON_HOST) return -EINVAL;
   c->options|=NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE;
 #if SINGLE_INSTALL
-  CHECK(ops==&sunxi_nfc_allwinner_oob_ops && !to_sunxi_nand(c)->oob_ops);
+  CHECK(ops==TEST_VENDOR_OOB_OPS(true) && !to_sunxi_nand(c)->oob_ops);
   return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,ops); }
 #else
   to_sunxi_nand(c)->oob_ops=&sunxi_nfc_allwinner_oob_ops;
@@ -468,7 +471,8 @@ static int mtd_device_unregister(struct mtd_info *m)
     return 0;
 }
 static struct resource resource;
-static struct sunxi_nfc_caps caps={.has_ecc_clk=true,.has_mbus_clk=true};
+static struct sunxi_nfc_caps caps={.has_ecc_clk=true,.has_mbus_clk=true,
+                                   .allwinner_oob_ops=TEST_H6_VENDOR_OPS};
 static unsigned regs[16];
 static void *devm_platform_get_and_ioremap_resource(struct platform_device *p,int i,struct resource **r)
 { *r=&resource; return fail("ioremap")?ERR_PTR(-ENOMEM):regs; }

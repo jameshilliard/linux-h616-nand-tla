@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 from boundary_common import HERE, check
-from run_c import extract_function, oob_policy_defines, oob_policy_functions, oob_policy_prototype
+from run_c import extract_function, oob_policy_defines, oob_policy_functions, oob_policy_prototype, oob_table_names
 
 
 def fixture(source, *, fixed, extra_functions=()):
@@ -49,8 +49,7 @@ def fixture(source, *, fixed, extra_functions=()):
                  'sunxi_nfc_user_data_sz', 'sunxi_nfc_hw_ecc_get_prot_oob_bytes',
                  'sunxi_nfc_hw_ecc_set_prot_oob_bytes'):
         add(source, 'sunxi_nand.c', name)
-    for name in ('sunxi_nfc_plain_oob_ops', 'sunxi_nfc_scrambled_plain_bbm_oob_ops',
-                 'sunxi_nfc_allwinner_oob_ops'):
+    for name in oob_table_names(source):
         match = re.search(r'^static const struct sunxi_nfc_oob_ops ' + name +
                           r' = \{.*?\n};', source, re.M | re.S)
         if match:

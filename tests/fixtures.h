@@ -117,6 +117,7 @@ struct caps {
     bool has_ecc_block_512;
     bool legacy_max_strength;
     bool (*spare_is_erased)(struct nand_chip *, const u8 *, int);
+    const struct sunxi_nfc_oob_ops *allwinner_oob_ops;
 };
 struct sunxi_nfc {
     void *mdma_buf;

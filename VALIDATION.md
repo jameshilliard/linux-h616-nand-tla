@@ -1,4 +1,15 @@
-# Current v11 single-install policy validation
+# Current v11 generation-specific policy validation
+
+The [generation-specific OOB report](docs/GENERATION-OOB-POLICY.md) records the
+fixed-layout and packed-layout split in the final format-support patch. Driver
+digest `6e2f9e7d696a6be37f0ad40a6787d8aaf31e526bfe63ed2bff051819108e8e4d`
+passes all 19 source/capture-replay jobs and ARM32/ARM64 object builds. The
+initialization model meets all 152 expected outcomes, including detection of
+wrong-generation selection and preserved late-SLC assumption counterexamples.
+The test harness reads each controller's actual ops-table assignment. No new
+hardware measurements are claimed.
+
+# Earlier v11 single-install policy validation
 
 The [single-install policy report](docs/BOUNDARY-VALIDATION.md#single-install-oob-policy)
 records the opening refactor and completed draft separately. The final driver

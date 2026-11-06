@@ -5,6 +5,7 @@ static void attach_geometry(void);
 static void snapshot_cache(void);
 static void bitmap_boundaries(void);
 static void attach_policy(void);
+static void generation_policy(void);
 static void metadata_identity(void);
 static void format_roundtrip(void);
 static void compatibility(void);
@@ -28,6 +29,7 @@ static struct caps caps(bool variable)
         .nuser_data_tab = ARRAY_SIZE(sunxi_user_data_len_h6),
         .legacy_max_strength = !variable,
         .spare_is_erased = variable ? sun50i_h6_nfc_spare_is_erased : sun4i_a10_nfc_spare_is_erased,
+        .allwinner_oob_ops = variable ? TEST_H6_VENDOR_OPS : TEST_A10_VENDOR_OPS,
     };
 }
 
@@ -54,7 +56,7 @@ static void geometry(void)
             struct nand_chip nand = chip(n, parity, n * parity + spare);
             int ret = 0;
             if (variable)
-                ret = vendor ? sunxi_nfc_allwinner_oob_init_user_data(&nand, n) :
+                ret = vendor ? TEST_VENDOR_OOB_OPS(variable)->init_user_data(&nand, n) :
                     sunxi_nfc_maximize_user_data(&nand, nand.mtd.oobsize, parity, n);
             assert(!ret);
             unsigned sum = 0;
@@ -577,6 +579,7 @@ int main(void)
     snapshot_cache();
     bitmap_boundaries();
     attach_policy();
+    generation_policy();
     metadata_identity();
     format_roundtrip();
     compatibility();

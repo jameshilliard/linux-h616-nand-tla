@@ -18,7 +18,7 @@ static void format_roundtrip(void)
         if (vendor) { memset(user,0,sizeof(user)); user[0]=16; }
         n.user_data_bytes=variable?user:NULL;
         n.options=random?NAND_NEED_SCRAMBLING:0;
-        n.oob_ops=vendor?&sunxi_nfc_allwinner_oob_ops:TEST_NORMAL_OOB_OPS(random);
+        n.oob_ops=vendor?TEST_VENDOR_OOB_OPS(variable):TEST_NORMAL_OOB_OPS(random);
         unsigned tail=sunxi_get_oob_offset(&n,&n.ecc,n.ecc.steps);
         unsigned total=n.mtd.writesize+n.mtd.oobsize;
         memset(image,255,sizeof(image));

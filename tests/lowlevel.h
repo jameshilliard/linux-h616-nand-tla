@@ -64,6 +64,7 @@ struct sunxi_nfc_caps {
     unsigned reg_io_data, dma_maxburst, max_ecc_steps;
     int sram_size;
     const struct sunxi_nfc_timings *timings;
+    const struct sunxi_nfc_oob_ops *allwinner_oob_ops;
 };
 struct sunxi_nfc_mdma_desc { __le32 config, size, buf, next; };
 struct sunxi_nfc {
