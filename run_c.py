@@ -81,6 +81,9 @@ def oob_policy_defines(source):
     """Keep historical fixtures separate from the single-install implementation."""
     single = "oob_ops = sunxi_nfc_get_oob_ops(nand);" in source
     member = "use_randomizer" if "bool use_randomizer;" in source else "randomized"
+    bbm_member = "compensate_bbm" if "(*compensate_bbm)" in source else "transform_bbm"
+    ops = re.search(r"struct sunxi_nfc_oob_ops \{(.*?)\n};", source, re.S)
+    spare_in_policy = bool(ops and "(*spare_is_erased)" in ops[1])
     split = "sun50i_h6_nfc_allwinner_oob_ops" in source
     normal_split = "sun50i_h6_nfc_plain_oob_ops" in source
     vendor = "sunxi_nfc_allwinner_oob_attach_chip(" in source
@@ -91,6 +94,8 @@ def oob_policy_defines(source):
                    f"#define SPLIT_VENDOR_OPS {int(split)}",
                    f"#define SPLIT_NORMAL_OPS {int(normal_split)}",
                    f"#define TEST_RANDOMIZER_MEMBER {member}",
+                   f"#define TEST_BBM_CALLBACK {bbm_member}",
+                   f"#define TEST_SPARE_IN_POLICY {int(spare_in_policy)}",
                    f"#define TEST_VENDOR_OOB_OPS(variable) ({selector})"]
     normal = "&sunxi_nfc_plain_oob_ops"
     if normal_split:

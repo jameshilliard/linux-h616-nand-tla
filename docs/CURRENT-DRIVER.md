@@ -1,6 +1,18 @@
 # Current sunxi driver verification
 
-## Current submission draft: generation selection in the opening refactor
+## Current submission draft: unified format policy
+
+The v11 draft ends at `9e7ee35abbbb`, with driver digest
+`1562e6617a6860753d5d836ccc9e9bfb19647f3aebbe92da01e35122002275cd`.
+The [policy cleanup](GENERATION-OOB-POLICY.md) names BBM compensation
+explicitly and selects erased-spare interpretation with the format's
+geometry. Shared PIO/DMA transport and format algorithms are unchanged.
+All 19 source/capture-replay jobs, 154 initialization-model expectations
+and 119 OOB-pipeline expectations match; both architecture builds pass.
+This is host/model validation, not a new hardware run or resolution of the
+separate reset-binding ABI review.
+
+## Earlier submission draft: generation selection in the opening refactor
 
 The 26-patch v11 draft ends at `18524bbd6021`, with driver digest
 `02a11014ed40efaa47b77f7e383644b8a6036f910914a61e6357f5dbac48161a`.

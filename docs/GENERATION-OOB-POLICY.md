@@ -1,6 +1,61 @@
 # Generation-specific Allwinner OOB geometry
 
-## Current draft: establish generation selection in the first refactor
+## Current draft: keep related format operations together
+
+The 26-patch v11 draft ends at `9e7ee35abbbb`, with driver SHA-256
+`1562e6617a6860753d5d836ccc9e9bfb19647f3aebbe92da01e35122002275cd`.
+The opening refactor names the symmetric marker callback `compensate_bbm`:
+it compensates hardware randomization on reads and writes so the ordinary
+format retains a plain physical marker. `use_randomizer` still controls
+the overall transfer format; these are separate responsibilities.
+
+The final format patch now puts the generation-specific `spare_is_erased`
+predicate in the selected OOB operations alongside its geometry. A10/A23
+and H6/H616 keep their exact previous predicates. The controller selects
+one const table, and the shared read-completion path uses that table's
+predicate instead of selecting it separately from controller capabilities.
+The ordinary tables do not install this firmware-format check.
+
+This keeps six small, explicit tables and shared geometry/read helpers.
+There is no nested operations hierarchy or runtime copying of callbacks.
+Transport functions retain command sequencing, DMA ownership and cleanup.
+The first 25 source prefixes are identical after normalizing the marker
+callback rename and its explanatory comment; the predicate move belongs
+only to patch 26. Historical cover notes and all sign-offs are preserved.
+
+### Checks for the policy cleanup
+
+- All 19 source/capture-replay jobs pass. The generation matrix checks the
+  actual controller assignments and that each vendor table supplies its
+  own predicate, with the obsolete fixture capability callback left NULL.
+- The opening patch independently passes 768 marker cases and 1,227
+  lifecycle cases. The final marker matrix passes 1,024 cases, including
+  existing-image reads and new writes after late manufacturer setup.
+- All 154 initialization-model expectations and all 119 OOB-pipeline
+  expectations match. The latter replay 430 source-generated traces.
+  Existing deliberate mutation and assumption counterexamples remain
+  expected outcomes, not claims of universal correctness.
+- Both ARM32 LLVM and ARM64 GCC `W=1` final-tree object builds pass. All
+  26 b4 checks and strict checks for the two changed patches pass.
+- The pinned historical C/marker checks and 13 Python unit tests pass.
+  Historical late-manufacturer marker failures remain negative controls.
+
+The fixture update replaced empty operations tables in direct vendor-helper
+tests with actual selected tables. The initial ASan failure identified that
+fixture mismatch, not a driver callback reachable with the ordinary policy.
+Randomizer-only coverage lists erased-spare predicates as dependencies;
+their behavior is exercised by the separate C and OOB-pipeline matrices.
+Suite input tracking ignores generated Python cache files while continuing
+to hash source, models and reference inputs.
+
+Review checked Sashiko's technical-pattern, callstack, false-positive and
+subjective guidance against the changed paths. No new driver defect was
+identified in this cleanup. The separate reset-binding ABI review remains
+open; these results do not establish send-readiness. No board deployment or
+new hardware measurement was performed, and earlier evidence keeps its
+original source identity.
+
+## Previous draft: establish generation selection in the first refactor
 
 The 26-patch v11 draft ends at `18524bbd6021`, with driver SHA-256
 `02a11014ed40efaa47b77f7e383644b8a6036f910914a61e6357f5dbac48161a`.

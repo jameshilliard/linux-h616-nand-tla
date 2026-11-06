@@ -76,6 +76,14 @@ static const int dist3_pairing_scheme;
 static void mtd_set_pairing_scheme(struct mtd_info *m, const int *s) { }
 static u32 readl(const void *p) { u32 v; memcpy(&v, p, 4); return v; }
 static void writel(u32 v, void *p) { memcpy(p, &v, 4); }
+static void *memchr_inv(const void *p, int value, size_t len)
+{
+    const u8 *bytes = p;
+    for (size_t i = 0; i < len; i++)
+        if (bytes[i] != (u8)value)
+            return (void *)(bytes + i);
+    return NULL;
+}
 static unsigned sunxi_nfc_oob_min_user_data(struct nand_chip *n, int steps) { return steps * 4; }
 static int sunxi_nfc_oob_init_user_data(struct nand_chip *n, int steps) { return 0; }
 static unsigned sun4i_a10_nfc_oob_min_user_data(struct nand_chip *n, int steps) { return steps * 4; }

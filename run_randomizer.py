@@ -168,14 +168,19 @@ def main():
                 require_all_called=False,
                 artifacts=('randomizer-policy.jsonl', 'randomizer-tables.jsonl'), limits=[
                     'Actual source helpers with fixture MMIO/decoded USER_DATA; no board access.',
+                    'Erased-spare predicates are table dependencies here; run_c.py tests their behavior.',
                     'Final ops selection is called explicitly; nand_scan/BBT ordering has separate tests.',
                     'No physical BCH decoding, transport, command reload, or concurrent I/O is simulated.',
                     'Synthetic geometries exercise helper contracts, not Toshiba part identification.'])
     source_report = json.loads((out / 'summary.json').read_text())
     coverage = source_report['coverage']['functions']
-    # The shared extractor also includes a geometry helper used by other tests.
+    # Geometry and erased-spare helpers are dependencies of the shared fixture,
+    # not randomizer execution paths. Their behavior is checked by run_c.py.
+    other_checks = {'sunxi_nand.c:sunxi_nfc_user_data_sz',
+                    'sunxi_nand.c:sun4i_a10_nfc_spare_is_erased',
+                    'sunxi_nand.c:sun50i_h6_nfc_spare_is_erased'}
     assert all(v['calls'] for k, v in coverage.items()
-               if k != 'sunxi_nand.c:sunxi_nfc_user_data_sz')
+               if k not in other_checks)
     raw = (out / 'randomizer-policy.jsonl').read_bytes()
     observed = [json.loads(line) for line in raw.splitlines()]
     assert len(observed) == len(records)

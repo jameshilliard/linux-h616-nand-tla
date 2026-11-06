@@ -24,7 +24,8 @@ def inputs():
     """Record executable inputs; do not silently mix edits during a run."""
     paths=set(HERE.glob("*.py")) | {HERE/"source.json"}
     for directory in ("tests","models","reference"):
-        paths.update(p for p in (HERE/directory).rglob("*") if p.is_file())
+        paths.update(p for p in (HERE/directory).rglob("*")
+                     if p.is_file() and "__pycache__" not in p.parts)
     paths.update(p for p in (HERE/"hardware").glob("*")
                  if p.suffix in (".py", ".json", ".c", ".h"))
     return {str(p.relative_to(HERE)):hashlib.sha256(p.read_bytes()).hexdigest()

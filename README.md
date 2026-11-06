@@ -32,6 +32,9 @@ without duplicating the shared read callbacks. The v11 draft establishes
 ordinary generation selection in its opening refactor, then adds the vendor
 format in the final patch. First-patch and final-tree checks are recorded
 separately.
+The current policy cleanup also selects the erased-spare predicate with
+the format's geometry and names its optional marker callback
+`compensate_bbm`, retaining shared transport and read algorithms.
 The [bit-accurate randomizer checks](docs/RANDOMIZER-BIT-CONFORMANCE.md) connect
 that policy to actual source-helper register/marker observations, an exact
 15-bit LFSR model, and all 128 entries of both ECC seed tables. Independent

@@ -33,7 +33,7 @@ int main(void)
         assert(!n.oob_ops); /* Lookup is pure, including after manufacturer init. */
         assert(n.options == final_options);
         assert(ops->use_randomizer == (mode != 0));
-        assert(!!ops->transform_bbm == (mode == 1 || mode == 2));
+        assert(!!ops->TEST_BBM_CALLBACK == (mode == 1 || mode == 2));
         assert(geometry_ops->min_user_data == ops->min_user_data);
         assert(geometry_ops->init_user_data == ops->init_user_data);
         n.oob_ops = ops;
@@ -43,14 +43,14 @@ int main(void)
         sunxi_nfc_select_oob_ops(&n);
         const struct sunxi_nfc_oob_ops *ops = n.oob_ops;
         assert(ops->randomized == (mode != 0));
-        assert(!!ops->transform_bbm == (mode == 1 || mode == 2));
+        assert(!!ops->TEST_BBM_CALLBACK == (mode == 1 || mode == 2));
         const struct sunxi_nfc_oob_ops *final = ops;
         sunxi_nfc_select_oob_ops(&n);
         assert(n.oob_ops == final);
 #elif HAS_OPS_POLICY
         const struct sunxi_nfc_oob_ops *ops = sunxi_nfc_get_oob_ops(&n);
         assert(ops->randomized == (mode != 0));
-        assert(!!ops->transform_bbm == (mode == 1 || mode == 2));
+        assert(!!ops->TEST_BBM_CALLBACK == (mode == 1 || mode == 2));
 #if HAS_VENDOR
         if (mode == 3)
             assert(n.oob_ops == &sunxi_nfc_allwinner_oob_ops);

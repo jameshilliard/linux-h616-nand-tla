@@ -141,7 +141,10 @@ static void generation_policy(void)
                           TEST_NORMAL_OOB_OPS(variable, scrambled)));
             if (!vendor) {
                 assert(ops->use_randomizer == !!scrambled);
-                assert(!!ops->transform_bbm == !!scrambled);
+                assert(!!ops->TEST_BBM_CALLBACK == !!scrambled);
+#if TEST_SPARE_IN_POLICY
+                assert(!ops->spare_is_erased);
+#endif
                 assert(ops->read_batch == sunxi_nfc_oob_read_batch);
                 assert(ops->finish_read == sunxi_nfc_oob_finish_read);
                 for (int steps = 0; steps <= (int)c.max_ecc_steps; steps++) {
@@ -165,7 +168,12 @@ static void generation_policy(void)
                 allocation_failure = false;
                 continue;
             }
-            assert(ops->use_randomizer && !ops->transform_bbm);
+            assert(ops->use_randomizer && !ops->TEST_BBM_CALLBACK);
+#if TEST_SPARE_IN_POLICY
+            assert(ops->spare_is_erased == (variable ? sun50i_h6_nfc_spare_is_erased :
+                                                        sun4i_a10_nfc_spare_is_erased));
+            assert(!c.spare_is_erased); /* The policy supplies the predicate. */
+#endif
             assert(ops->read_batch == sunxi_nfc_allwinner_oob_read_batch);
             assert(ops->finish_read == sunxi_nfc_allwinner_oob_finish_read);
             for (int steps = -1; steps <= (int)c.max_ecc_steps; steps++) {

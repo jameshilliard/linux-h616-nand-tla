@@ -92,7 +92,7 @@ static void batch_transport_errors(void)
         u8 user[]={32,4,0}, kinds[]={kind ? 3 : 0,0,3};
         nand.user_data_bytes=variable ? user : NULL;
         nand.options=random ? NAND_NEED_SCRAMBLING : 0;
-        struct sunxi_nfc_oob_ops ops={TEST_RANDOMIZED_FIELD(random) .transform_bbm=NULL};
+        struct sunxi_nfc_oob_ops ops={TEST_RANDOMIZED_FIELD(random) .TEST_BBM_CALLBACK=NULL};
         nand.oob_ops=&ops;
         unsigned total=0;
         for(unsigned fail=0;fail<=total;fail++) {
@@ -119,6 +119,7 @@ static void batch_transport_errors(void)
         struct caps c=caps(variable);
         controller.caps=&c;
         struct nand_chip nand=chip(3,56,256);
+        nand.oob_ops=TEST_VENDOR_OOB_OPS(variable);
         u8 user[]={32,4,0};
         nand.user_data_bytes=variable ? user : NULL;
         unsigned total=0;

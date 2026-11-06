@@ -49,6 +49,9 @@ def fixture(source, *, fixed, extra_functions=()):
                  'sunxi_nfc_user_data_sz', 'sunxi_nfc_hw_ecc_get_prot_oob_bytes',
                  'sunxi_nfc_hw_ecc_set_prot_oob_bytes'):
         add(source, 'sunxi_nand.c', name)
+    if has_vendor:
+        for name in ('sun4i_a10_nfc_spare_is_erased', 'sun50i_h6_nfc_spare_is_erased'):
+            add(source, 'sunxi_nand.c', name)
     for name in oob_table_names(source):
         match = re.search(r'^static const struct sunxi_nfc_oob_ops ' + name +
                           r' = \{.*?\n};', source, re.M | re.S)

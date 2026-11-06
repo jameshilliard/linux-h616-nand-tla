@@ -28,7 +28,9 @@ static struct caps caps(bool variable)
         .user_data_len_tab = sunxi_user_data_len_h6,
         .nuser_data_tab = ARRAY_SIZE(sunxi_user_data_len_h6),
         .legacy_max_strength = !variable,
+#if !TEST_SPARE_IN_POLICY
         .spare_is_erased = variable ? sun50i_h6_nfc_spare_is_erased : sun4i_a10_nfc_spare_is_erased,
+#endif
         .allwinner_oob_ops = variable ? TEST_H6_VENDOR_OPS : TEST_A10_VENDOR_OPS,
         .plain_oob_ops = variable ? TEST_H6_PLAIN_OPS : TEST_A10_PLAIN_OPS,
         .scrambled_oob_ops = variable ? TEST_H6_SCRAMBLED_OPS : TEST_A10_SCRAMBLED_OPS,
@@ -322,7 +324,7 @@ static void ecc_results(void)
         nand.options = random ? NAND_NEED_SCRAMBLING : 0;
         struct sunxi_nfc_oob_ops ops = {
             TEST_RANDOMIZED_FIELD(random)
-            .transform_bbm = NULL,
+            .TEST_BBM_CALLBACK = NULL,
         };
         nand.oob_ops = &ops;
         struct sunxi_nfc_ecc_read read = {
@@ -465,8 +467,8 @@ static void vendor_results(void)
         for (unsigned i = 0; i < 3; i++) { kinds[i] = temp % 6; temp /= 6; }
         struct nand_chip nand = chip(3, 56, 256);
         nand.user_data_bytes = variable ? lengths : NULL;
-        struct sunxi_nfc_oob_ops ops = {0}; /* Firmware format has no plain-BBM transform. */
-        nand.oob_ops = &ops;
+        nand.oob_ops = TEST_VENDOR_OOB_OPS(variable);
+        assert(!nand.oob_ops->TEST_BBM_CALLBACK);
         struct sunxi_nfc_ecc_read read = {
             .buf = main_data, .page = 17, .dma = dma, .oob_required = want_oob,
         };
@@ -631,10 +633,9 @@ static void bitmap_boundaries(void)
         struct nand_chip nand = chip(n, 56, n * 60);
         struct sunxi_nfc_ecc_read read = {.buf = main_data, .page = 17, .dma = true};
         struct sunxi_nfc_ecc_snapshot snapshot;
-        struct sunxi_nfc_oob_ops ops = {0};
         controller.caps = &c;
         nand.user_data_bytes = variable ? user : NULL;
-        nand.oob_ops = &ops;
+        nand.oob_ops = TEST_VENDOR_OOB_OPS(variable);
         if (!mode) memset(kinds, 1, n);
         if (mode == 1) kinds[n - 1] = 1;
         if (mode == 2) kinds[n - 1] = 3;

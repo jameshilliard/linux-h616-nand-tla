@@ -1,4 +1,17 @@
-# Current v11 early generation-selection validation
+# Current v11 format-policy cleanup
+
+The [policy report](docs/GENERATION-OOB-POLICY.md) records driver digest
+`1562e6617a6860753d5d836ccc9e9bfb19647f3aebbe92da01e35122002275cd`.
+All 19 source/capture-replay jobs pass in `results/suite-xh5dn2wc`.
+Initialization meets all 154 expectations in `results/tlc-ax3pcb8l`, and
+the OOB pipeline meets all 119 expectations in `results/tlc-2mqqj1ln`.
+The first patch separately passes marker and lifecycle checks in
+`results/bbm-init-2otoiq21` and `results/lifecycle-vyh5l76m`.
+ARM32/ARM64 final-tree builds, all 26 b4 checks and 13 Python unit tests
+pass. This cleanup changes policy organization, not the algorithms or
+hardware contracts. Historical results below retain their source identity.
+
+# Earlier v11 early generation-selection validation
 
 The [generation-specific OOB report](docs/GENERATION-OOB-POLICY.md) records
 the controller-selection infrastructure introduced in patch 1 and the format

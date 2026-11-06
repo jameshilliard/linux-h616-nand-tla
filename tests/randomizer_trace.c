@@ -52,7 +52,7 @@ int main(void)
 #endif
         fprintf(f, "{\"id\":%u,\"randomized\":%s,\"compensate\":%s,"
                    "\"pageSeed\":%u,\"eccSeed\":%u,\"regs\":[", i,
-                randomized ? "true" : "false", ops->transform_bbm ? "true" : "false",
+                randomized ? "true" : "false", ops->TEST_BBM_CALLBACK ? "true" : "false",
                 sunxi_nfc_randomizer_state(&n, t->page, false),
                 sunxi_nfc_randomizer_state(&n, t->page, true));
         for (unsigned ecc = 0; ecc < 2; ecc++) {
