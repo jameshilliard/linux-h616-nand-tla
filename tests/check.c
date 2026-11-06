@@ -225,6 +225,7 @@ static void randomizer(void)
         }
     }
     struct nand_chip nand = chip(2, 56, 128);
+    nand.options = NAND_NEED_SCRAMBLING;
     for (unsigned size = 512; size <= 1024; size *= 2)
     for (unsigned ppb = 32; ppb <= 256; ppb *= 2) {
         nand.mtd.erasesize = nand.mtd.writesize * ppb;

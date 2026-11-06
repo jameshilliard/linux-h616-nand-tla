@@ -1,0 +1,6 @@
+{
+  "commit": "30daaf3e7897b4a8d9b72e5b0c86dd6e2a4d7d85",
+  "path": "drivers/mtd/nand/raw/nand_toshiba.c",
+  "function": "tc58teg5dclta00_init",
+  "sha256": "61699a072733235fea2c756d8760ed5ab36ba10bc5e95ddf4e222b6c81c0920a"
+}

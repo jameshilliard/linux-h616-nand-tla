@@ -51,6 +51,7 @@ def main():
     candidate=out/"candidate-sunxi_nand.c"; candidate.write_bytes(source)
     shared=["--candidate-source",str(candidate)]
     jobs=[("hardware-capture","run_hardware.py",[]),
+          ("bbm-init","run_bbm_init.py",shared),
           ("c","run_c.py",shared),
           ("lowlevel","run_lowlevel.py",shared+["--expect-count-fixed"]),
           ("lifecycle","run_lifecycle.py",shared+["--expect-available-children","--expect-deferred-publication"]),

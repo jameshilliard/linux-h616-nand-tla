@@ -73,6 +73,25 @@ def chunk_defines(source):
     return match[0] + "\n" if match else ""
 
 
+def oob_ops_definitions(source):
+    """Keep pinned split tables and the unified candidate table executable."""
+    names = ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops",
+             "sunxi_nfc_allwinner_oob_ops")
+    definitions = []
+    for name in names:
+        match = re.search(r"^static const struct sunxi_nfc_oob_ops " + name +
+                          r" = \{.*?\n};", source, re.M | re.S)
+        if match:
+            definitions.append(match[0])
+        elif name != "sunxi_nfc_scrambled_plain_bbm_oob_ops":
+            raise ValueError("missing OOB table: " + name)
+    selector = "&sunxi_nfc_plain_oob_ops"
+    if "sunxi_nfc_scrambled_plain_bbm_oob_ops" in source:
+        selector = "((scrambled) ? &sunxi_nfc_scrambled_plain_bbm_oob_ops : " + selector + ")"
+    definitions.append("#define TEST_NORMAL_OOB_OPS(scrambled) " + selector)
+    return definitions
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="gcc")
@@ -105,11 +124,7 @@ def main():
         generated.append(match[0])
     for name in functions:
         if name == "sunxi_nfc_allwinner_oob_attach_chip":
-            for ops in ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops",
-                        "sunxi_nfc_allwinner_oob_ops"):
-                match = re.search(r"^static const struct sunxi_nfc_oob_ops " + ops +
-                                  r" = \{.*?\n};", source, re.M | re.S)
-                generated.append(match[0])
+            generated.extend(oob_ops_definitions(source))
         function = extract_function(source, name)
         line = source[:source.index(function)].count("\n") + 1
         generated.append(f'#line {line} "sunxi_nand.c"\n' + function)

@@ -3,7 +3,7 @@
 import hashlib
 import re
 from boundary_common import HERE
-from run_c import FUNCTIONS, STRUCTURES, ARRAYS, extract_function, chunk_functions, chunk_defines
+from run_c import FUNCTIONS, STRUCTURES, ARRAYS, extract_function, chunk_functions, chunk_defines, oob_ops_definitions
 from run_core import extract
 
 
@@ -50,8 +50,7 @@ def generate(src, *, persistent=False):
         generated.append(re.search(r"^static const u(?:8|16) " + name + r"\[\] = \{.*?\n};",source,re.M|re.S)[0])
     for name in [*chunk_functions(source),*FUNCTIONS,*extra]:
         if name == "sunxi_nfc_allwinner_oob_attach_chip":
-            for ops in ("sunxi_nfc_plain_oob_ops", "sunxi_nfc_scrambled_plain_bbm_oob_ops", "sunxi_nfc_allwinner_oob_ops"):
-                generated.append(re.search(r"^static const struct sunxi_nfc_oob_ops " + ops + r" = \{.*?\n};",source,re.M|re.S)[0])
+            generated.extend(oob_ops_definitions(source))
         body = extract_function(source,name)
         generated.append(f'#line {source[:source.index(body)].count(chr(10))+1} "sunxi_nand.c"\n'+body)
         hashes["sunxi_nand.c:"+name] = hashlib.sha256(body.encode()).hexdigest()

@@ -45,6 +45,10 @@ full source-branch coverage merely because it compiled all the functions.
 
 ## Discovery details
 
+The late manufacturer-init extension below checks one flag-changing path that
+the original discovery matrix did not cover; it does not imply coverage of all
+manufacturer callbacks.
+
 The discovery suite checks 483 scenarios. The ONFI-to-attach submatrix yields
 576 accepted and 576 rejected driver profiles across PIO/DMA and legacy/H6
 capabilities. Additional checks cover all 256 extended-ID configuration bytes,
@@ -61,6 +65,58 @@ not a substitute for the C initializer's strength selection and alignment, and
 its CRC-copy input does not model majority voting. Those calculations and
 repair paths are checked in the source-extracted C suite. The ONFI host
 fixtures currently require a little-endian machine and reject other hosts.
+
+## Late manufacturer initialization and marker compatibility
+
+Controller attach runs before manufacturer initialization in `nand_scan_tail()`.
+The Toshiba `tc58teg5dclta00_init()` callback can therefore enable
+`NAND_NEED_SCRAMBLING` after sunxi has selected its OOB operations. Caching the
+ordinary-format marker-transform choice at attach leaves it out of step with
+the hardware randomizer, which checks the current flag. This is an
+initialization-order error, not a concurrent race.
+
+The v11 correction uses one ordinary-format operations table and checks the
+current scrambling flag inside the BBM transform. The vendor format continues
+to omit that compensation. This restores the pre-refactor decision timing.
+
+`run_bbm_init.py` extracts the actual attach, randomizer-enable and protected-OOB
+accessor bodies. The exact Toshiba initializer is separately pinned in
+`reference/bbm-init.json`. The expected marker representation applies the seed
+mask independently of the callback selection and its flag guard. Existing-image
+reads and new-write register contents are checked separately: a write/read
+round trip using the same wrong transform could conceal the incompatibility.
+
+The matrix covers two register profiles, 64 page seeds, good/bad markers and
+four modes: no scrambling, early scrambling, late scrambling and vendor format.
+The pinned source reproduces 256 read and 256 write mismatches out of 1,024
+cases, exclusively with the late flag. The fixed v11 candidate has none.
+At page zero, the old ordinary-format read returns `0a 53` for an existing
+`ff ff` marker, and the write omits the compensation that keeps it plain.
+
+`NandBbmInitialization` separates identify, attach, manufacturer initialization,
+read and write. Sixteen positive configurations pass; four negative controls
+detect cached attach-time selection on read and write, unconditional ordinary
+compensation without scrambling, and compensation of vendor-format markers.
+The marker is a one-bit XOR abstraction, not a complete LFSR or BCH model.
+
+```sh
+# Known-bug reference: require the precise late-init mismatch signature.
+python3 run_bbm_init.py
+# Candidate: require all representations to match.
+python3 run_bbm_init.py --candidate-source /path/to/linux/drivers/mtd/nand/raw/sunxi_nand.c
+python3 run_suite.py --module NandBbmInitialization
+```
+
+The complete v11 candidate also passes the 17 source/capture-replay jobs in
+`run_suite.py --source-only`, with the new regression included. Its driver
+SHA-256 is `6a4e8c05d61e02a09275a4b434203df33e0ea2be48b5c33d6454329e35f5e02b`.
+The original pinned source and its known-bug expectations remain unchanged.
+
+MMIO, geometry setup and API boundaries are fixtures. Discovery dispatch order
+is audited against core source; the test invokes the real initializer but does
+not perform ONFI/JEDEC transactions or establish which protocol the physical
+Toshiba part uses. This is not a physical Toshiba reproduction or a fresh H616
+test. Earlier hardware captures are replayed, not relabeled as v11 measurements.
 
 ## Teardown, provider findings and false-positive checks
 

@@ -21,6 +21,8 @@ jobs:
           java-version: '21'
       - name: Execute submitted C with sanitizers
         run: python3 run_c.py
+      - name: Detect late manufacturer initialization marker regression
+        run: python3 run_bbm_init.py
       - name: Execute DMA, IRQ, NAND-core parser, SRAM and timing checks
         run: python3 run_lowlevel.py
       - name: Execute MTD request, read-retry and BBT source checks

@@ -18,6 +18,10 @@ removal and provider IRQ/tasklet paths, and detect historical bug patterns.
 The [OOB-end v2 checks](docs/BOUNDARY-VALIDATION.md#oob-end-v2-trailing-partial-pages)
 also exercise read-only partitions ending inside a page, with independent
 baseline, v1 and corrected-candidate expectations.
+The [late manufacturer-init checks](docs/BOUNDARY-VALIDATION.md#late-manufacturer-initialization-and-marker-compatibility)
+exercise a scrambling flag set after controller attach. They reproduce the
+ordinary-format marker regression in the pinned submission and check the v11
+correction against existing-image reads and new-write representation separately.
 The [refinement checks](docs/REFINEMENT-VALIDATION.md) connect requests to real
 command helpers and `exec_op()`, execute Hynix/Micron retry callbacks, and
 separate reset/stop, MTD lifetime and byte/cache-line ownership contracts.
@@ -187,6 +191,7 @@ python3 run_composed.py
 python3 run_transport.py
 python3 run_transport.py --count-boundary
 python3 run_discovery_boundary.py
+python3 run_bbm_init.py
 python3 run_lifetime_boundary.py
 python3 run_provider_boundary.py
 python3 run_historical.py

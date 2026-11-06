@@ -152,7 +152,7 @@ static void attach_policy(void)
                     (NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE));
                 assert(n.ecc.read_subpage==sunxi_nfc_allwinner_oob_read_subpage);
             } else {
-                assert(n.oob_ops==(scrambled ? &sunxi_nfc_scrambled_plain_bbm_oob_ops : &sunxi_nfc_plain_oob_ops));
+                assert(n.oob_ops==TEST_NORMAL_OOB_OPS(scrambled));
             }
         }
         free(n.user_data_bytes); runs++;
@@ -184,8 +184,8 @@ static void metadata_identity(void)
         u8 user[6]={32,16,4,0,0,0};
         if(vendor) { memset(user,0,sizeof(user)); user[0]=16; }
         n.user_data_bytes=variable ? user : NULL;
-        n.oob_ops=vendor ? &sunxi_nfc_allwinner_oob_ops : scrambled ?
-            &sunxi_nfc_scrambled_plain_bbm_oob_ops : &sunxi_nfc_plain_oob_ops;
+        n.oob_ops=vendor ? &sunxi_nfc_allwinner_oob_ops : TEST_NORMAL_OOB_OPS(scrambled);
+        n.options=(vendor || scrambled) ? NAND_NEED_SCRAMBLING : 0;
         u8 original[1024],decoded[1024],flash[1024];
         memset(flash,0xff,sizeof(flash)); memset(decoded,0xa5,sizeof(decoded));
         for(unsigned i=0;i<sizeof(original);i++) original[i]=(i*23+(i>>8)*7+page*11)&255;
