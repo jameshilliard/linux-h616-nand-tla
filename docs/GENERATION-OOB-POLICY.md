@@ -1,6 +1,11 @@
 # Generation-specific Allwinner OOB geometry
 
-## Current draft: keep related format operations together
+The generation-policy refactor recorded here was set aside in favor of
+the [minimal v11 correction](MINIMAL-V11.md). Its checks remain useful
+historical evidence, but these tables and deferred initialization are
+not part of the current submission draft.
+
+## Historical draft: keep related format operations together
 
 The 26-patch v11 draft ends at `9e7ee35abbbb`, with driver SHA-256
 `1562e6617a6860753d5d836ccc9e9bfb19647f3aebbe92da01e35122002275cd`.

@@ -103,6 +103,9 @@ def check_observations(records, tables, *, historical):
         late_bug = historical and r['mode'] == 2
         assert o['randomized'] == random
         assert o['compensate'] == (r['mode'] in (1, 2) and not late_bug)
+        expected_mask = ([ecc & 255, advance(ecc, 8) & 255, 0, 0]
+                         if r['mode'] in (1, 2) and not late_bug else [0, 0, 0, 0])
+        assert o['bbmMask'] == expected_mask
         assert (o['pageSeed'], o['eccSeed']) == (page, ecc)
         value = previous[r['hw']]
         def config(before, seed):

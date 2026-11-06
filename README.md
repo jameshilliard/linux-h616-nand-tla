@@ -22,21 +22,16 @@ The [late manufacturer-init checks](docs/BOUNDARY-VALIDATION.md#late-manufacture
 exercise a scrambling flag set after controller attach. They reproduce the
 ordinary-format marker regression in the pinned submission and check the v11
 correction against existing-image reads and new-write representation separately.
-The [single-install policy checks](docs/BOUNDARY-VALIDATION.md#single-install-oob-policy)
-also distinguish attach-time geometry from the final immutable per-chip policy,
-with source checks and mutation controls for premature or repeated installation.
-The [generation-specific geometry checks](docs/GENERATION-OOB-POLICY.md)
-exercise the actual controller-to-ops assignments and distinguish fixed older
-user-data fields, ordinary H6/H616 variable lengths and packed vendor geometry
-without duplicating the shared read callbacks. The v11 draft establishes
-ordinary generation selection in its opening refactor, then adds the vendor
-format in the final patch. First-patch and final-tree checks are recorded
+The [minimal v11 draft](docs/MINIMAL-V11.md) keeps v10's organization and
+checks the live scrambling flag in the ordinary marker callback. It uses
+one ordinary-format operations table and the original NAND-core BBT scan.
+The experimental [single-install policy checks](docs/BOUNDARY-VALIDATION.md#single-install-oob-policy)
+and [generation-specific geometry checks](docs/GENERATION-OOB-POLICY.md)
+remain as historical validation of the larger refactor, not descriptions
+of the current submission. First-patch and final-tree checks are recorded
 separately.
-The current policy cleanup also selects the erased-spare predicate with
-the format's geometry and names its optional marker callback
-`compensate_bbm`, retaining shared transport and read algorithms.
 The [bit-accurate randomizer checks](docs/RANDOMIZER-BIT-CONFORMANCE.md) connect
-that policy to actual source-helper register/marker observations, an exact
+format behavior to actual source-helper register/marker observations, an exact
 15-bit LFSR model, and all 128 entries of both ECC seed tables. Independent
 inputs distinguish compatibility from a matching write/read error.
 The [stateful hardware/randomizer model](docs/RANDOMIZER-HARDWARE-STATE.md)

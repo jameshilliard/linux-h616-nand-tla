@@ -50,9 +50,13 @@ int main(void)
 #else
         bool randomized = n.options & NAND_NEED_SCRAMBLING;
 #endif
+        /* A shared callback can be present but deliberately leave bytes alone. */
+        u8 bbm_mask[4] = {};
+        if (ops->TEST_BBM_CALLBACK)
+            ops->TEST_BBM_CALLBACK(&n, t->page, bbm_mask);
         fprintf(f, "{\"id\":%u,\"randomized\":%s,\"compensate\":%s,"
                    "\"pageSeed\":%u,\"eccSeed\":%u,\"regs\":[", i,
-                randomized ? "true" : "false", ops->TEST_BBM_CALLBACK ? "true" : "false",
+                randomized ? "true" : "false", (bbm_mask[0] || bbm_mask[1]) ? "true" : "false",
                 sunxi_nfc_randomizer_state(&n, t->page, false),
                 sunxi_nfc_randomizer_state(&n, t->page, true));
         for (unsigned ecc = 0; ecc < 2; ecc++) {
@@ -71,7 +75,8 @@ int main(void)
         sunxi_nfc_hw_ecc_get_prot_oob_bytes(&n, rx, 0, t->bbm, t->page, 4);
         sunxi_nfc_hw_ecc_set_prot_oob_bytes(&n, t->marker, 0, t->bbm, t->page, 4);
         sunxi_nfc_user_data_to_buf(readl(nfc->regs + caps[t->hw].reg_user_data), tx);
-        fprintf(f, "],\"rx\":"); bytes(f, rx);
+        fprintf(f, "],\"bbmMask\":"); bytes(f, bbm_mask);
+        fprintf(f, ",\"rx\":"); bytes(f, rx);
         fprintf(f, ",\"tx\":"); bytes(f, tx);
         transfer_result = t->fail;
         for (unsigned write = 0; write < 2; write++) {

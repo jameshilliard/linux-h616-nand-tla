@@ -120,6 +120,10 @@ test. Earlier hardware captures are replayed, not relabeled as v11 measurements.
 
 ### Experimental ops-policy variant
 
+The variants below record experiments that were subsequently set aside.
+The current submission returns to the live-flag correction described
+above; see the [minimal v11 validation](MINIMAL-V11.md).
+
 The separate ops-policy prototype resolves the ordinary ops variant when
 used, allowing late manufacturer initialization to select both randomizer
 policy and the BBM callback together. The source runners extract that resolver
@@ -219,7 +223,7 @@ the completed series, not this prefix. No new hardware run is implied.
 
 ### Single-install OOB policy
 
-The current v11 cleanup names the format field `use_randomizer` and replaces
+This experimental v11 cleanup names the format field `use_randomizer` and replaces
 the mutating selector with a pure `sunxi_nfc_get_oob_ops()` lookup. Attach uses
 local operations for geometry and the early subpage-write restriction. The
 chip's stored `oob_ops` remains NULL throughout `nand_scan()` and is installed

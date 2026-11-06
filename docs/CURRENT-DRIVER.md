@@ -1,6 +1,20 @@
 # Current sunxi driver verification
 
-## Current submission draft: unified format policy
+## Current submission draft: minimal late-initialization correction
+
+The 26-patch v11 draft ends at `82d7d88fc332`, with driver digest
+`6a4e8c05d61e02a09275a4b434203df33e0ea2be48b5c33d6454329e35f5e02b`.
+It restores v10's organization and folds the marker initialization fix
+into patch 1. Ordinary plain and scrambled transfers share one operations
+table; marker compensation checks the current `NAND_NEED_SCRAMBLING` flag.
+The standard `nand_scan()` path still creates the BBT. The larger deferred
+initialization and generation-policy refactors below are historical.
+
+The [minimal-v11 report](MINIMAL-V11.md) records the exact v10 comparison,
+source/model checks, cross-builds and remaining review boundary. No new
+board deployment or hardware measurement is implied.
+
+## Earlier submission draft: unified format policy
 
 The v11 draft ends at `9e7ee35abbbb`, with driver digest
 `1562e6617a6860753d5d836ccc9e9bfb19647f3aebbe92da01e35122002275cd`.
