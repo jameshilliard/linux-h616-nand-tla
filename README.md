@@ -22,6 +22,10 @@ The [late manufacturer-init checks](docs/BOUNDARY-VALIDATION.md#late-manufacture
 exercise a scrambling flag set after controller attach. They reproduce the
 ordinary-format marker regression in the pinned submission and check the v11
 correction against existing-image reads and new-write representation separately.
+The [bit-accurate randomizer checks](docs/RANDOMIZER-BIT-CONFORMANCE.md) connect
+that policy to actual source-helper register/marker observations, an exact
+15-bit LFSR model, and all 128 entries of both ECC seed tables. Independent
+inputs distinguish compatibility from a matching write/read error.
 The [refinement checks](docs/REFINEMENT-VALIDATION.md) connect requests to real
 command helpers and `exec_op()`, execute Hynix/Micron retry callbacks, and
 separate reset/stop, MTD lifetime and byte/cache-line ownership contracts.
@@ -276,6 +280,9 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandRandomizerStream` | Conditional continuous-stream representations, seed changes, zero-length requests and partial errors; not the measured H616 contract |
 | `NandMeasuredStream` | Observed H616 normal-command restart, page-mode read/write asymmetry, non-word read tails and format-compatibility witnesses |
 | `NandMeasuredToggle` | Observed keystream phase across randomizer disable/re-enable, separated for read/write and block/page modes |
+| `NandRandomizerBits` | Exact numeric recurrence versus a fifteen-bit shift register; all 16-bit input seeds for one step, bounded multi-step and byte-order checks |
+| `NandRandomizerPhase` | All BSP page seeds advanced through 512-/1024-byte ECC steps plus fifteen bits; source table entries and exact software bytes |
+| `NandRandomizerPolicy` | Source-observed finalized policy, seed/register preservation, independent marker bytes and failed-transfer cleanup; dedicated runner |
 | `NandResetObservation` | Retained-buffer lifetime and the distinction between reset/quiet observations and correct first subsequent data |
 | `NandDmaAperture` | 32-bit buffer/descriptor endpoints, mask/alignment/caller contracts, exact address encoding and balanced mapping cleanup |
 | `NandUserDataContext` | Persistent packed lengths across PIO/DMA requests, logical-step offsets, zero/unused slots, word boundaries and absent legacy registers |

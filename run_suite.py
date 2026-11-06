@@ -67,6 +67,8 @@ def main():
           ("historical","run_historical.py",[]),
           ("mtd","run_mtd_boundary.py",shared)]
     jobs.append(("measured-request","run_measured_requests.py",shared+["--expect-tail-fixed"]))
+    jobs.append(("randomizer","run_randomizer.py",shared +
+                 (["--source-only"] if args.source_only else [])))
     followups={}
     if not args.source_only:
         for name,script,options in jobs:

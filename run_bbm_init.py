@@ -15,17 +15,8 @@ from boundary_common import HERE, check
 from run_c import extract_function, oob_policy_functions, oob_policy_prototype
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--candidate-source', type=Path)
-    parser.add_argument('--expect-late-init-bug', action='store_true')
-    parser.add_argument('--cc', default='gcc')
-    args = parser.parse_args()
-    pin = json.loads((HERE / 'source.json').read_text())
-    source = (HERE / 'reference/sunxi_nand.c').read_text()
-    assert hashlib.sha256(source.encode()).hexdigest() == pin['driver_sha256']
-    if args.candidate_source:
-        source = args.candidate_source.read_text()
+def fixture(source, *, fixed, extra_functions=()):
+    """Extract unchanged policy/marker helpers for both marker test runners."""
     toshiba = (HERE / 'reference/toshiba-bbm-init.c').read_text()
     manufacturer = json.loads((HERE / 'reference/bbm-init.json').read_text())
     assert hashlib.sha256(toshiba.encode()).hexdigest() == manufacturer['sha256']
@@ -33,7 +24,6 @@ def main():
     has_ops = 'struct sunxi_nfc_oob_ops {' in source
     has_policy = 'sunxi_nfc_get_oob_ops(' in source
     deferred = 'sunxi_nfc_select_oob_ops(' in source
-    fixed = bool(args.candidate_source) and not args.expect_late_init_bug
     generated = [f'#define HAS_VENDOR {int(has_vendor)}\n#define EXPECT_FIXED {int(fixed)}\n'
                  f'#define HAS_OPS_POLICY {int(has_policy)}\n'
                  f'#define DEFERRED_SELECTION {int(deferred)}',
@@ -71,6 +61,24 @@ def main():
         add(source, 'sunxi_nand.c', 'sunxi_nfc_allwinner_oob_attach_chip')
     add(source, 'sunxi_nand.c', 'sunxi_nand_attach_chip')
     add(toshiba, 'toshiba-bbm-init.c', 'tc58teg5dclta00_init')
+    for name in extra_functions:
+        add(source, 'sunxi_nand.c', name)
+    return generated, hashes
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--candidate-source', type=Path)
+    parser.add_argument('--expect-late-init-bug', action='store_true')
+    parser.add_argument('--cc', default='gcc')
+    args = parser.parse_args()
+    pin = json.loads((HERE / 'source.json').read_text())
+    source = (HERE / 'reference/sunxi_nand.c').read_text()
+    assert hashlib.sha256(source.encode()).hexdigest() == pin['driver_sha256']
+    if args.candidate_source:
+        source = args.candidate_source.read_text()
+    generated, hashes = fixture(source, fixed=bool(args.candidate_source) and
+                               not args.expect_late_init_bug)
     generated += ['#line 1 "bbm_init.c"', (HERE / 'tests/bbm_init.c').read_text()]
     check('bbm-init', {'check.c': '\n\n'.join(generated)}, hashes, cc=args.cc,
           expected='ALL BBM INIT CHECKS PASSED', limits=[

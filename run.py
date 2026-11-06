@@ -38,6 +38,16 @@ def render(value):
     raise TypeError(value)
 
 
+def invariant_counterexample(returncode, log, name):
+    """Accept the named invariant only, including an invalid initial state."""
+    if returncode != 12:
+        return False
+    return ((f"Invariant {name} is violated." in log and
+             "The behavior up to this point is:" in log) or
+            (f"Invariant {name} is violated by the initial state:" in log and
+             'CounterExample written: trace' in log))
+
+
 def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jar", type=Path, default=Path(os.environ.get(
@@ -86,6 +96,8 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
         case_dir = out / case["name"]
         case_dir.mkdir()
         (case_dir / (module + ".tla")).write_bytes(model_inputs[module + ".tla"])
+        for dependency in spec.get("dependencies", ()):
+            (case_dir / (dependency + ".tla")).write_bytes(model_inputs[dependency + ".tla"])
         wrapper = "Check" + module
         definitions, assignments = [], []
         for key, value in case["constants"].items():
@@ -123,9 +135,7 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
             matched = (rc == 13 and f"Temporal property {case['expected']} was violated." in log and
                        "The following behavior constitutes a counter-example:" in log)
         elif case["expected"]:
-            matched = (rc == 12 and
-                       f"Invariant {case['expected']} is violated." in log and
-                       "The behavior up to this point is:" in log)
+            matched = invariant_counterexample(rc, log, case["expected"])
         else:
             matched = rc == 0 and "Model checking completed. No error has been found." in log
             if matched:
