@@ -74,6 +74,10 @@ def main():
                  ["--source-only"] if args.source_only else []))
     jobs.append(("timing","run_timing.py",shared +
                  (["--source-only"] if args.source_only else [])))
+    jobs.append(("mtdchar", "run_mtdchar.py",
+                 ["--source-only"] if args.source_only else []))
+    jobs.append(("mtdchar-admission", "run_mtdchar_admission.py",
+                 ["--source-only"] if args.source_only else []))
     followups={}
     if not args.source_only:
         for name,script,options in jobs:

@@ -17,6 +17,11 @@ configurations and 256 candidate-source core calls for the five remaining
 recovery/placement/measured-stream/write/compound-failure areas. It also
 records their physical evidence boundaries and new conditional tail findings.
 
+The independent [mtdchar chunking map](MTDCHAR-CHUNKING.md) adds bounded
+MEMREAD/MEMWRITE protocol models, actual ioctl trace checks, allocation and
+partial-I/O failures, and wide page/OOB arithmetic. Its baseline and candidate
+are pinned separately from this historical sunxi v9 coverage record.
+
 | Patch | Critical behavior | Validation |
 | --- | --- | --- |
 | 1, centralize OOB handling | Protected/parity/free-region offsets; first two bytes reserved for BBM; per-format operations | `NandBatch`, `NandOob`; C layout functions and generic/vendor batch/finish functions |

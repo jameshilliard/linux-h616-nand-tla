@@ -9,6 +9,10 @@ parser, SRAM/media identity, NAND-core contracts, shared-controller lifecycle,
 probe unwinding, and timing calculations. Integration checks cover BBM/BBT
 lifecycle, real MTD request/retry code, stored-byte format equivalence, RT IRQ
 draining, DMA visibility, device program budgets and interrupted BBT updates.
+The independent [mtdchar chunking validation](docs/MTDCHAR-CHUNKING.md) models
+MEMREAD/MEMWRITE allocation, page alignment, separate data/OOB cursors, partial
+failures and ECC-result propagation. It checks actual ioctl call traces and
+retains a separate, reproducible pre-existing uninitialized-statistics finding.
 Deeper checks execute scan/cleanup and ONFI negotiation, compare pre-series and
 BSP layouts, compose real BCH correction with the driver, and inject compound
 read/BBT failures.
@@ -229,6 +233,9 @@ python3 run_retained_lifetime.py
 python3 run_retained_model.py
 python3 run_hardware.py
 python3 run_measured_requests.py
+python3 run_mtdchar_model.py --download
+python3 run_mtdchar.py
+python3 run_mtdchar_admission.py
 ```
 
 `--download` fetches the official TLA+ tools v1.8.0 prerelease asset and verifies
@@ -413,15 +420,18 @@ make a mismatch disappear.
 Changes to hardware assumptions require independent documentation or
 measurements, not just a model that produces the desired result.
 
-## Optional CI
+## CI
+
+[.github/workflows/mtdchar.yml](.github/workflows/mtdchar.yml) runs the mtdchar
+protocol, extracted-source and admission-statistics checks on pushes and pull
+requests. A local pass does not imply that a remote Actions run has completed.
 
 [ci/validate.yml](ci/validate.yml) is a pinned GitHub Actions workflow template.
 It runs host source/model suites and sanitized hardware-capture replay on
 Ubuntu 24.04 with Java 21 and retains diagnostics and
-counterexample traces. It is intentionally outside `.github/workflows/` in this
-initial publication because the publishing credential cannot install workflows.
-Automatic CI is not enabled. Install it as `.github/workflows/validate.yml` using
-a workflow-authorized credential to activate it.
+counterexample traces. This broader workflow remains a template outside
+`.github/workflows/`. Install it as `.github/workflows/validate.yml` using a
+workflow-authorized credential to activate it.
 
 Repository-authored code is GPL-2.0-or-later. See `LICENSE`; the reference binding
 retains its dual-license SPDX notice, and the NAND-core excerpts retain their

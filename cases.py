@@ -178,6 +178,10 @@ extend_deferred_init(MODULES, add, mutation)
 from randomizer_cases import extend_randomizer
 extend_randomizer(MODULES, add, mutation)
 
+from mtdchar_cases import MODEL as MTDCHAR_MODEL, cases as mtdchar_cases
+MODULES["NandMtdCharChunks"] = MTDCHAR_MODEL
+CASES.extend(mtdchar_cases())
+
 from private_recovery_cases import extend_private_recovery
 extend_private_recovery(MODULES, add, mutation)
 

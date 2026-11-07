@@ -18,6 +18,13 @@ The [reviewable v10 update](REVIEWABLE-V10.md) fixes that software-tail
 mismatch while preserving the writer and stored format. Post-abort recovery
 and the separate native non-word read-tail behavior remain unresolved.
 
+The separate [mtdchar chunking validation](MTDCHAR-CHUNKING.md) reproduces
+incorrect data/OOB chunk alignment and verifies an independent candidate fix.
+It also confirms a pre-existing MEMREAD statistics-initialization bug: a core
+admission error can leave counters undefined before the ioctl copies them to
+userspace. This newer finding is retained separately from the original eleven
+observations below and is not fixed by the chunking patch.
+
 ## 1. Split address instructions lose the trailing address cycles
 
 Location: `sunxi_nfc_exec_subop()` in the pinned
