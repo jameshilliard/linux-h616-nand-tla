@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Exact function bodies extracted from 51e1737afbf8d2e6902814add5848c1522f36973
+// Exact function bodies extracted from 35230cb6d8b9bbdca23abd90ad7177077ec03ea9
 #line 576 "mtdchar.c"
 static void adjust_oob_length(struct mtd_info *mtd, uint64_t start,
 			      struct mtd_oob_ops *ops)
@@ -18,7 +18,7 @@ static void adjust_oob_length(struct mtd_info *mtd, uint64_t start,
 }
 #line 592 "mtdchar.c"
 static int mtdchar_adjust_io_lengths(struct mtd_info *mtd, uint64_t start,
-				     struct mtd_oob_ops *ops, uint64_t ooblen)
+				     struct mtd_oob_ops *ops, uint64_t remaining_oob)
 {
 	u32 oob_per_page = mtd_oobavail(mtd, ops);
 	u64 len;
@@ -28,9 +28,9 @@ static int mtdchar_adjust_io_lengths(struct mtd_info *mtd, uint64_t start,
 	if (!oob_per_page)
 		return -EINVAL;
 
-	if (ops->ooblen < ooblen) {
+	if (ops->ooblen < remaining_oob) {
 		/* Keep a page's OOB together when another chunk follows. */
-		ops->ooblen -= ops->ooblen % oob_per_page;
+		ops->ooblen = rounddown(ops->ooblen, oob_per_page);
 		if (ops->len) {
 			len = (u64)(ops->ooblen / oob_per_page) * mtd->writesize;
 			len -= mtd_mod_by_ws(start, mtd);
@@ -101,7 +101,7 @@ mtdchar_write_ioctl(struct mtd_info *mtd, struct mtd_write_req __user *argp)
 
 		/*
 		 * Shorten non-page-aligned, eraseblock-sized writes so that
-		 * the write ends on an eraseblock boundary.  This is necessary
+		 * the write ends on a page boundary.  This is necessary
 		 * for adjust_oob_length() to properly handle non-page-aligned
 		 * writes.
 		 */
@@ -223,7 +223,7 @@ mtdchar_read_ioctl(struct mtd_info *mtd, struct mtd_read_req __user *argp)
 
 		/*
 		 * Shorten non-page-aligned, eraseblock-sized reads so that the
-		 * read ends on an eraseblock boundary.  This is necessary in
+		 * read ends on a page boundary.  This is necessary in
 		 * order to prevent OOB data for some pages from being
 		 * duplicated in the output of non-page-aligned reads requiring
 		 * multiple mtd_read_oob() calls to be completed.

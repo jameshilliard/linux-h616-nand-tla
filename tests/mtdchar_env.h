@@ -22,6 +22,8 @@ typedef uint64_t u64;
 #define GFP_KERNEL 0
 #define min_t(type, a, b) ((type)(a) < (type)(b) ? (type)(a) : (type)(b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
+/* Same arbitrary-multiple rounding as include/linux/math.h. */
+#define rounddown(x, y) ({ typeof(x) __x = (x); __x - (__x % (y)); })
 #define check_add_overflow(a, b, p) __builtin_add_overflow((a), (b), (p))
 #define kvmalloc(n, flags) malloc(n)
 #define kmalloc(n, flags) malloc(n)

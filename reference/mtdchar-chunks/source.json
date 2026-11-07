@@ -1,12 +1,15 @@
 {
   "base_commit": "d48723711bae9b8cdc56719c448ba42fef28cbee",
-  "candidate_commit": "51e1737afbf8d2e6902814add5848c1522f36973",
-  "patch_id": "31e5910c9c1ca598ec8872fed0cfffcc579bf867",
-  "candidate_status": "local unsent v1; not a published prerequisite",
+  "candidate_commit": "35230cb6d8b9bbdca23abd90ad7177077ec03ea9",
+  "patch_id": "462a78300fb1dd998dc6fe444527295de712a45c",
+  "submission_base_commit": "1c1a342aceec79528b3ba51f376eca2be5928fe7",
+  "original_candidate_commit": "51e1737afbf8d2e6902814add5848c1522f36973",
+  "original_patch_id": "31e5910c9c1ca598ec8872fed0cfffcc579bf867",
+  "candidate_status": "local unsent three-patch v1; not a published prerequisite",
   "files": {
     "read-wrapper.c": "c5325697ed5b8e39e6e0f9d66173be1405a3999960ebb168b01276a7d895f9ac",
     "baseline.c": "cc8f8bfce61d7efcc283d75085ae281d2b3f3379688b722355dc2eb43ff57be2",
-    "candidate.c": "bda6b83b8a9129c4c1dea6965a1145f72e2ebd13a0988a6bf5a6a72d4cdeee00",
+    "candidate.c": "6ddea1c7110554ce2da5b8292ed54abbe2db61ba5cbbf8f7de0d17d76a88efb5",
     "mtdcore.c": "d27bd780869b1a8d182780c4f8e9d56ddcf291c3fc29c376026f2d74f037b0e7",
     "mtd-abi.h": "21cb435f6b606838c87c4bb183a5e6232fa72bec9f3899b2bb8cd93903000cc7"
   }

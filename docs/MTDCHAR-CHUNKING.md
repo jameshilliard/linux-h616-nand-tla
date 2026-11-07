@@ -2,13 +2,20 @@
 
 This extension validates the independent mtdchar page/OOB chunking fixes,
 not the Boot0 mapper or the sunxi controller implementation. The current
-submission draft is a three-patch v1 series. Its final implementation is
-identical to the original unsplit candidate pinned here:
+submission draft is a three-patch v1 series. The source snapshot includes
+the final patch's readability cleanups:
 
 - Base: `d48723711bae9b8cdc56719c448ba42fef28cbee`.
-- Local candidate: `51e1737afbf8d2e6902814add5848c1522f36973`.
-- Stable patch ID: `31e5910c9c1ca598ec8872fed0cfffcc579bf867`.
+- Local candidate: `35230cb6d8b9bbdca23abd90ad7177077ec03ea9`.
+- Combined stable patch ID: `462a78300fb1dd998dc6fe444527295de712a45c`.
 - Exact extracted source and hashes: `reference/mtdchar-chunks/`.
+
+The original unsplit candidate was `51e1737afbf8d2e6902814add5848c1522f36973`
+(patch ID `31e5910c9c1ca598ec8872fed0cfffcc579bf867`). Its snapshot remains
+in repository history. The revised source uses the kernel's arbitrary-multiple
+`rounddown()` helper, names the remaining OOB length explicitly, and corrects
+the page-boundary comments. The C fixture supplies the same `rounddown()`
+expression as `include/linux/math.h`; the TLA+ transition system is unchanged.
 
 The candidate is not yet a public prerequisite. Source snapshots are included
 so these checks do not depend on a developer's checkout or unpublished Git
@@ -74,11 +81,12 @@ the original mainline base. The patches are:
    Patch ID: `07a4ff0417eef2d0ae148dee29c03bf02261775f`.
 2. `18cbeff590d0` — bound OOB reads to the data in intermediate chunks.
    Patch ID: `343a650cc574481d4117448117e363f35ba6cd0d`.
-3. `9a49816f6889` — keep OOB chunks aligned with their data pages.
-   Patch ID: `1916d7ceb6c7e49a335116ba36d051ecdac8fe8c`.
+3. `35230cb6d8b9` — keep OOB chunks aligned with their data pages.
+   Patch ID: `6912b6051bb6e00997e1d107ef0e86f7e4f19198`.
 
 These are local submission commit identifiers, not posted prerequisites.
-The public source snapshots remain the original ones. The series runner
+The final source snapshot includes the readability cleanups; the baseline
+and core snapshots retain their original source revisions. The series runner
 reconstructs the first stage by replacing only `adjust_oob_length()`, then
 the second by inserting the intermediate MEMREAD cap. The final stage is
 the pinned candidate. With `--sources`, it verifies every extracted function
@@ -97,9 +105,9 @@ request behavior across the preparatory patch:
 
 All four stages pass ASan/UBSan and emit identical sanitizer/gcov call traces.
 Each kernel commit builds `drivers/mtd/mtdchar.o` with `W=1` on x86-64.
-The final helper arithmetic and fault tests are unchanged. This is bounded
-regression evidence for the intermediate stages; only the complete final
-implementation is checked against the full corrected TLA+ protocol.
+The helper arithmetic and fault tests cover the revised final source. This is
+bounded regression evidence for the intermediate stages; only the complete
+final implementation is checked against the full corrected TLA+ protocol.
 
 The capacity patch is preparatory and has no `Fixes` or stable trailer. Its
 synthetic wide-product check is not presented as evidence of a reachable
@@ -209,7 +217,7 @@ source without modifying its initializer. Both the actual standalone fix and
 its combination with chunking pass the first- and later-rejection tests.
 Applying the two patches in either order produces identical Git trees. The
 combined source also passes the chunking and ECC-aggregation C regressions.
-The original pinned snapshots and their expected failures remain unchanged.
+The baseline and core snapshots and their expected failures remain unchanged.
 The statistics fix was subsequently rebased onto MTD `mtd/fixes` at
 `1c1a342aceec79528b3ba51f376eca2be5928fe7` and submitted separately as local
 commit `558159d117c03b258a675e37ab54e9dc649f4040`, with the same patch ID.

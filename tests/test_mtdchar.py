@@ -35,7 +35,7 @@ class MtdCharInputs(unittest.TestCase):
 
     def test_source_pins(self):
         src, pin = snapshot()
-        self.assertEqual(pin["patch_id"], "31e5910c9c1ca598ec8872fed0cfffcc579bf867")
+        self.assertEqual(pin["patch_id"], "462a78300fb1dd998dc6fe444527295de712a45c")
         self.assertIn("mtdchar_adjust_io_lengths", src["candidate.c"])
         self.assertNotIn("mtdchar_adjust_io_lengths", src["baseline.c"])
         # Both snapshots deliberately retain the independent admission bug.
