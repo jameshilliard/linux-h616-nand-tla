@@ -5,6 +5,7 @@ static void publish(struct mtd_info *m, struct mtd_info *master, unsigned index)
     m->dev.type=&mtd_class; m->dev.data=m; m->dev.refs=1;
     kref_init(&m->refcnt); m->ref_master=master; mtd_get_lifetime(master);
     if(m->parent && m->parent!=master) m->parent->dev.refs++;
+    assert(!mtd_ids[index]); mtd_ids[index]=true;
     mtd_idr[index]=m; core_module.refs++; m->np=master->np; m->np->refs++;
 }
 
@@ -19,9 +20,17 @@ static struct mtd_info *new_partition(struct mtd_info *parent, unsigned index)
 
 static struct nand_chip *waiting_chip;
 static void disconnect_waiter(void) { nand_disconnect(waiting_chip); }
+static unsigned notifier_reads;
+static void removal_io(struct mtd_info *m)
+{
+    struct nand_chip *chip=mtd_to_nand(m);
+    assert(!nand_get_device(chip)); nand_release_device(chip); notifier_reads++;
+}
 
 static void multi_chip_test(void)
 {
+    struct mtd_notifier notifier={.remove=removal_io};
+    INIT_LIST_HEAD(&notifier.list); list_add_tail(&notifier.list,&mtd_notifiers);
     struct device parent={.refs=2};
     struct device_node node={0};
     struct sunxi_nfc *nfc=calloc(1,sizeof(*nfc)); assert(nfc);
@@ -41,6 +50,7 @@ static void multi_chip_test(void)
         assert(!mtdchar_open(&inodes[i],&files[i]));
     }
     sunxi_nand_chips_cleanup(nfc); sunxi_nfc_put(nfc);
+    assert(notifier_reads==2); list_del(&notifier.list);
     assert(!mtdchar_close(&inodes[0],&files[0]));
     assert(cleaned==1 && parent.refs==2);
     assert(!mtdchar_close(&inodes[1],&files[1]));
@@ -112,7 +122,7 @@ int main(void)
         drain_devices();
         assert(cleaned==1 && part_freed==depth && !node.refs && parent.refs==1);
         assert(!driver_module.refs && !core_module.refs);
-        for(unsigned i=0;i<16;i++) assert(!mtd_idr[i]);
+        for(unsigned i=0;i<16;i++) assert(!mtd_idr[i] && !mtd_ids[i]);
         cases++;
     }
     /* Completion callback used when device registration failed. */

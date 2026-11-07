@@ -1,0 +1,15 @@
+#!/bin/busybox sh
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t devtmpfs devtmpfs /dev
+collision=0
+case "$(/bin/busybox cat /proc/cmdline)" in
+    *expect_collision=1*) collision=1 ;;
+esac
+if /bin/busybox insmod /retained_lifetime_test.ko expect_collision="$collision"; then
+    /bin/busybox rmmod retained_lifetime_test
+    echo "MTD-LIFETIME-QEMU: PASS"
+else
+    echo "MTD-LIFETIME-QEMU: FAIL"
+fi
+/bin/busybox poweroff -f

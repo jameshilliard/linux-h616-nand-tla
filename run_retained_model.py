@@ -29,8 +29,15 @@ def cases():
         kind="mutation", expected="Terminates", temporal=True,
         constants=dict(DeviceCount=1, InitiallySuspended=True,
                        Drain=True, RetainDevices=True, RetainParents=True, Wake=False)))
+    for fixed in (True, False):
+        result.append(dict(name="retained-number-" + ("fixed" if fixed else "early-reuse"),
+            module="MtdRetainedNumber", kind="positive" if fixed else "mutation",
+            expected=None if fixed else "NoNameCollision", constants=dict(HoldNumber=fixed)))
     return result
 
 if __name__ == "__main__":
     raise SystemExit(tlc.main(sys.argv[1:], cases=cases(),
-        modules={"NandRetainedLifetime": MODEL}))
+        modules={"NandRetainedLifetime": MODEL,
+                 "MtdRetainedNumber": dict(invariants=["NoNameCollision"],
+                     actions=["LastMtdPut", "ConsumerPut", "ProviderRelease",
+                              "DeviceRelease", "RegisterReplacement"])}))

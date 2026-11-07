@@ -40,11 +40,11 @@ Unlock(u) == /\ s.pc[u] \in {"read-unlock","close-unlock"}
          !.pc[u]=IF @="read-unlock" THEN "close" ELSE "put"]
 Put(u) == /\ s.pc[u]="put"
     /\ s'=[s EXCEPT !.refs=@ \ {u},!.pc[u]="done",!.badStorage=@ \/ ~s.metadata]
-Disconnect == /\ s.remove=0 /\ (~Drain \/ (s.chip=0 /\ s.controller=0))
-    /\ s'=[s EXCEPT !.disconnected=TRUE,!.remove=1,
+Disconnect == /\ s.remove=1 /\ (~Drain \/ (s.chip=0 /\ s.controller=0))
+    /\ s'=[s EXCEPT !.disconnected=TRUE,!.remove=2,
                      !.waiting=IF Wake THEN {} ELSE @]
-Unpublish == /\ s.remove=1
-    /\ s'=[s EXCEPT !.published=FALSE,!.remove=2]
+Unpublish == /\ s.remove=0
+    /\ s'=[s EXCEPT !.published=FALSE,!.remove=1]
 DropInitial == /\ s.remove=2
     /\ s'=[s EXCEPT !.driver=FALSE,!.remove=3]
 Teardown == /\ s.remove=3

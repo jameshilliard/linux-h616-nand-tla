@@ -70,6 +70,9 @@ static void lock_cleanup(struct lock **p) { if (*p) mutex_unlock(*p); }
 static struct lock *take_lock(struct lock *l) { mutex_lock(l); return l; }
 static struct lock mtd_table_mutex;
 static struct mtd_info *mtd_idr[16];
+static bool mtd_ids[16];
+static void ida_free(void *ida, unsigned id)
+{ assert(mtd_ids[id]); mtd_ids[id]=false; }
 static void *idr_find(void *id, int index) { return mtd_idr[index]; }
 static void *idr_get_next(void *id, int *index)
 { for(;*index<16;(*index)++) if(mtd_idr[*index]) return mtd_idr[*index]; return NULL; }

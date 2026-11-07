@@ -88,12 +88,12 @@ generic data-range patch:
 
 The intended lifetime contract separates three events:
 
-1. Serialize hardware disconnection with operations already admitted,
-   including close-time sync and suspend/resume. Wake suspended waiters;
-   this must precede notifiers that may drain those requests.
-2. Unregister the MTD devices and drain notifier clients before releasing
-   controller resources. Failed post-disconnect operations return `-ENODEV`;
-   close-time sync becomes a no-op.
+1. Unregister the MTD devices while removal notifiers can still finish their
+   I/O, including mtdblock's dirty-cache flush.
+2. Serialize hardware disconnection with operations already admitted,
+   including close-time sync and suspend/resume, before releasing controller
+   resources. Wake remaining suspended waiters. Failed post-disconnect
+   operations return `-ENODEV`; close-time sync becomes a no-op.
 3. Retain the chip, parent/controller lock storage and metadata reachable
    through existing handles until their final references are released.
 
@@ -127,7 +127,7 @@ functions. Unlike the original witness fixture, it frees heap objects so
 ASan can detect premature metadata access.
 
 The pinned function bodies in `reference/retained-lifetime.json` come from
-candidate commit `198a09362d4e14f357c79bced795325e36b08fab`. The manifest records
+candidate commit `59e798e59e6774d3e57ed6cfb3e77bb0c3eda62e`. The manifest records
 the source paths, full-file hashes and per-function hashes without local
 workspace paths. Use `--kernel-tree` to check another applied candidate.
 
@@ -141,6 +141,7 @@ The current 101 schedules exercise 202 file opens/closes and cover:
 - Ordinary unbind and module-going release with no open handles.
 - Suspended-reader wakeup, rejected suspend and harmless resume after removal.
 - Two chips sharing a controller, released in different close operations.
+- Removal notifier I/O before the disconnect gate closes.
 
 Registration itself, devres, module accounting and device-core primitives are
 explicit shims. The registration-failure completion callback is exercised,
@@ -161,6 +162,8 @@ storage lifetime, parent lifetime, hardware draining, exclusivity and eventual
 release; four negative controls detect missing draining, missing device
 retention, missing nested-parent retention, or missing suspend wakeup.
 The older witness runner still reproduces the original unsafe close paths.
+Two additional configurations check MTD-number reservation against NVMEM
+provider lifetime, bringing the runner to ten cases.
 
 ```sh
 python3 run_retained_lifetime.py
@@ -182,7 +185,7 @@ prompts. There is no dedicated MTD prompt in that bundle. In particular:
 
 - All `nand_get_device()` callers propagate failure, including close-time sync.
 - The disconnect path takes chip then controller locks and does not wait for
-  open files. It precedes unregister so suspended notifier requests can drain.
+  open files. Unregister precedes disconnect so notifier I/O still works.
 - Panic-write notifier clients are unregistered before hardware destruction;
   a lockless disconnected check alone is not a general drain mechanism.
 - The master callback caches module/completion state before freeing its object;
@@ -192,7 +195,9 @@ prompts. There is no dedicated MTD prompt in that bundle. In particular:
 
 Remaining work before calling the implementation fully validated:
 
-- Real kernel lockdep/KASAN unbind/rebind, writable-close and NVMEM tests.
+- Real-controller lockdep/KASAN unbind/rebind and writable-close tests. The
+  synthetic real-kernel NVMEM/registration checks below supplement the host
+  source checks; they do not exercise actual NAND hardware.
 - Full allocation/registration-failure injection, including partial publication
   and delayed kobject release during probe failure.
 - Virtual-concat lifetime/error paths: these have independent ownership issues
@@ -202,3 +207,39 @@ Remaining work before calling the implementation fully validated:
 
 The bounded model and host shims do not prove complete kernel correctness or
 Sashiko approval. No hardware was unbound or modified during these checks.
+
+### Real-kernel registration and NVMEM checks
+
+`tests/kernel/retained_lifetime` is an external test module for the lifetime
+RFC. It registers synthetic read-only MTD devices and never accesses real
+flash. In QEMU with KASAN and lockdep it checks retained MTD handles, bare
+device references, NVMEM reads after disconnection, replacement registration,
+number reuse after release, and nested partitions held only by NVMEM/device
+references. Run with `MTD_PARTITIONED_MASTER` enabled and disabled. Build the
+module against the same kernel used for the VM; `init` can serve as the
+initramfs entrypoint alongside a static `/bin/busybox` and the built module.
+The six backing-object releases complete cleanly in both tested configurations.
+
+The earlier candidate removed its IDR entry at the last MTD put and reused
+the number immediately. A retained NVMEM consumer still kept the old provider
+named `mtd0` registered. The next MTD registration then failed with `-EEXIST`.
+The test's `expect_collision=1` parameter reproduces that earlier behavior;
+the fixed implementation must pass without that parameter or kernel warnings.
+
+The revised implementation unpublishes the IDR pointer under
+`mtd_table_mutex`, but uses IDA to reserve the number through final device
+release. `MtdRetainedNumber` models that distinction and the ordering of
+NVMEM provider removal and the parent device put. Its negative control frees
+the number at the last MTD put and must violate `NoNameCollision`.
+
+The source harness also checks that sunxi removal notifiers can acquire the
+NAND locks and finish I/O before disconnection. The bounded disconnect model
+now follows unregister-before-disconnect ordering. It does not model block
+queue suspension or every removal notifier; these require separate caller
+audits and cannot be inferred from the suspended character-handle model.
+
+The pre-send refresh checked the current Sashiko general, locking, allocation,
+PM, build and syscall prompts, plus the false-positive and callstack guides.
+There is no MTD-specific prompt in the current bundle. The generic lifetime
+API still requires maintainer review, and other NAND drivers are not converted
+by the sunxi patch.

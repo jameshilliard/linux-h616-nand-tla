@@ -1,5 +1,5 @@
 {
-  "commit": "198a09362d4e14f357c79bced795325e36b08fab",
+  "commit": "59e798e59e6774d3e57ed6cfb3e77bb0c3eda62e",
   "files": {
     "mtd.h": {
       "path": "include/linux/mtd/mtd.h",
@@ -15,7 +15,7 @@
     },
     "mtdcore.c": {
       "path": "drivers/mtd/mtdcore.c",
-      "source_sha256": "4e5b464b7bcef4c0a434837e337900b913318408078df3cefc75905ed7e7b85a",
+      "source_sha256": "9fb6f2eae3cbcf4e80045094cf8592920bb9ffec71b7b88f77753f03697c1322",
       "functions": {
         "__mtd_next_device": "struct mtd_info *__mtd_next_device(int i)\n{\n\tstruct mtd_info *mtd;\n\n\twhile ((mtd = idr_get_next(&mtd_idr, &i))) {\n\t\tif (mtd->registered)\n\t\t\treturn mtd;\n\t\ti++;\n\t}\n\n\treturn NULL;\n}",
         "mtd_master_release": "static void mtd_master_release(struct kref *ref)\n{\n\tstruct mtd_info *master = container_of(ref, struct mtd_info,\n\t\t\t\t\t     master.life_refcnt);\n\tstruct completion *done = master->master.release_done;\n\tstruct module *owner = master->master.release_owner;\n\n\tmaster->master.release(master);\n\tif (done)\n\t\tcomplete(done);\n\telse\n\t\tmodule_put(owner);\n}",
@@ -23,7 +23,7 @@
         "mtd_put_lifetime": "static void mtd_put_lifetime(struct mtd_info *master)\n{\n\tif (master->master.release)\n\t\tkref_put(&master->master.life_refcnt, mtd_master_release);\n}",
         "mtd_set_release": "void mtd_set_release(struct mtd_info *master,\n\t\t     void (*release)(struct mtd_info *mtd))\n{\n\tkref_init(&master->master.life_refcnt);\n\tmaster->master.release = release;\n}",
         "mtd_put_master": "void mtd_put_master(struct mtd_info *master)\n{\n\tDECLARE_COMPLETION_ONSTACK(done);\n\n\tif (try_module_get(master->owner)) {\n\t\tmaster->master.release_owner = master->owner;\n\t\tmtd_put_lifetime(master);\n\t} else {\n\t\tmaster->master.release_done = &done;\n\t\tmtd_put_lifetime(master);\n\t\twait_for_completion(&done);\n\t}\n}",
-        "mtd_release": "static void mtd_release(struct device *dev)\n{\n\tstruct mtd_info *mtd = dev_get_drvdata(dev);\n\tstruct mtd_info *master = mtd->ref_master;\n\tstruct mtd_info *parent = mtd->parent;\n\n\tof_node_put(mtd_get_of_node(mtd));\n\n\tif (mtd_is_partition(mtd))\n\t\trelease_mtd_partition(mtd);\n\n\tif (master) {\n\t\t/* Nested partitions can outlive device_del() of their parents. */\n\t\tif (parent && parent != master)\n\t\t\tput_device(&parent->dev);\n\t\tmtd_put_lifetime(master);\n\t}\n\tmodule_put(THIS_MODULE);\n}",
+        "mtd_release": "static void mtd_release(struct device *dev)\n{\n\tstruct mtd_info *mtd = dev_get_drvdata(dev);\n\tstruct mtd_info *master = mtd->ref_master;\n\tstruct mtd_info *parent = mtd->parent;\n\n\t/* Retained NVMEM providers use the MTD number in their device name. */\n\tida_free(&mtd_ids, mtd->index);\n\tof_node_put(mtd_get_of_node(mtd));\n\n\tif (mtd_is_partition(mtd))\n\t\trelease_mtd_partition(mtd);\n\n\tif (master) {\n\t\t/* Nested partitions can outlive device_del() of their parents. */\n\t\tif (parent && parent != master)\n\t\t\tput_device(&parent->dev);\n\t\tmtd_put_lifetime(master);\n\t}\n\tmodule_put(THIS_MODULE);\n}",
         "mtd_device_release": "static void mtd_device_release(struct kref *kref)\n{\n\tstruct mtd_info *mtd = container_of(kref, struct mtd_info, refcnt);\n\tbool is_partition = mtd_is_partition(mtd);\n\tbool managed = mtd->ref_master;\n\n\t/* The table mutex is held by the registration or handle put path. */\n\tidr_remove(&mtd_idr, mtd->index);\n\tdevice_destroy(&mtd_class, MTD_DEVT(mtd->index) + 1);\n\n\tdebugfs_remove_recursive(mtd->dbg.dfs_dir);\n\n\t/* Try to remove the NVMEM provider */\n\tnvmem_unregister(mtd->nvmem);\n\n\tdevice_unregister(&mtd->dev);\n\n\t/*\n\t *  Clear dev so mtd can be safely re-registered later if desired.\n\t *  Should not be done for partition,\n\t *  as it was already destroyed in device_unregister().\n\t */\n\tif (!is_partition && !managed)\n\t\tmemset(&mtd->dev, 0, sizeof(mtd->dev));\n}",
         "del_mtd_device": "int del_mtd_device(struct mtd_info *mtd)\n{\n\tint ret;\n\tstruct mtd_notifier *not;\n\n\tmutex_lock(&mtd_table_mutex);\n\n\tif (idr_find(&mtd_idr, mtd->index) != mtd || !mtd->registered) {\n\t\tret = -ENODEV;\n\t\tgoto out_error;\n\t}\n\n\t/* No need to get a refcount on the module containing\n\t\tthe notifier, since we hold the mtd_table_mutex */\n\tlist_for_each_entry(not, &mtd_notifiers, list)\n\t\tnot->remove(mtd);\n\n\tmtd->registered = false;\n\tkref_put(&mtd->refcnt, mtd_device_release);\n\tret = 0;\n\nout_error:\n\tmutex_unlock(&mtd_table_mutex);\n\treturn ret;\n}",
         "get_mtd_device": "struct mtd_info *get_mtd_device(struct mtd_info *mtd, int num)\n{\n\tstruct mtd_info *ret = NULL, *other;\n\tint err = -ENODEV;\n\n\tmutex_lock(&mtd_table_mutex);\n\n\tif (num == -1) {\n\t\tmtd_for_each_device(other) {\n\t\t\tif (other == mtd) {\n\t\t\t\tret = mtd;\n\t\t\t\tbreak;\n\t\t\t}\n\t\t}\n\t} else if (num >= 0) {\n\t\tret = idr_find(&mtd_idr, num);\n\t\tif (mtd && mtd != ret)\n\t\t\tret = NULL;\n\t}\n\n\tif (!ret) {\n\t\tret = ERR_PTR(err);\n\t\tgoto out;\n\t}\n\n\terr = __get_mtd_device(ret);\n\tif (err)\n\t\tret = ERR_PTR(err);\nout:\n\tmutex_unlock(&mtd_table_mutex);\n\treturn ret;\n}",
@@ -40,7 +40,7 @@
         "mtd_put_lifetime": "ae35e2665c89c78f27226bf40b68ed516188583e902ebf5df7b351afd227d5dc",
         "mtd_set_release": "cd3894e3397d878ca9fd04bfe9aae201dc195d4f32a5078aba1c154d381d65e8",
         "mtd_put_master": "144c181513659a0a8459c1cd52060de06736777acdd4f7a4257bd5fe7b25e864",
-        "mtd_release": "bc94ae9a81df08c9ea74de330ea085baebe806164a8a76be7611c9daa5ed35f8",
+        "mtd_release": "99f9df8c7b0ee6566c561a0495b7684631b60226be3a5ff77f6df202404e4f3f",
         "mtd_device_release": "1e46aa7cfec64fa0d3c3b8df9c83c71ac48f4a1e0488a50b32bbe276b5280e81",
         "del_mtd_device": "46cf8539549dcf8b7b34e40b81c44ee158730283b1c1decc3e90a3221ac2c34a",
         "get_mtd_device": "d2282833f0e11a7391d6d7b2f7833c249988b128f9b0dd770b092694eaf2e395",
@@ -77,7 +77,7 @@
     },
     "nand_base.c": {
       "path": "drivers/mtd/nand/raw/nand_base.c",
-      "source_sha256": "caf4ebe488f02bd248dfdb09a2147a1b032e374747adc57f4e8d9c943fc891ec",
+      "source_sha256": "5b3cc141bdd72dfc6df1e5f0577afd1cd853e48ec66339fffda2655d48259339",
       "functions": {
         "nand_get_device": "static int nand_get_device(struct nand_chip *chip)\n{\n\t/* Wait until the device is resumed. */\n\twhile (1) {\n\t\tmutex_lock(&chip->lock);\n\t\tif (chip->disconnected) {\n\t\t\tmutex_unlock(&chip->lock);\n\t\t\treturn -ENODEV;\n\t\t}\n\t\tif (!chip->suspended) {\n\t\t\tmutex_lock(&chip->controller->lock);\n\t\t\treturn 0;\n\t\t}\n\t\tmutex_unlock(&chip->lock);\n\n\t\twait_event(chip->resume_wq, !READ_ONCE(chip->suspended) ||\n\t\t\t   READ_ONCE(chip->disconnected));\n\t}\n}",
         "nand_release_device": "static void nand_release_device(struct nand_chip *chip)\n{\n\t/* Release the controller and the chip */\n\tmutex_unlock(&chip->controller->lock);\n\tmutex_unlock(&chip->lock);\n}",
@@ -97,20 +97,20 @@
     },
     "sunxi_nand.c": {
       "path": "drivers/mtd/nand/raw/sunxi_nand.c",
-      "source_sha256": "1e775dfb1057f9d79322bc8bbca4e8de3d122259a8cef86ceae3c67f289c5bc2",
+      "source_sha256": "cdbe740545d1901e2ca3fbf128b1a99b187f37b91819bc5fb6af141d45ddb362",
       "functions": {
         "sunxi_nfc_release": "static void sunxi_nfc_release(struct kref *ref)\n{\n\tstruct sunxi_nfc *nfc = container_of(ref, struct sunxi_nfc, refcnt);\n\n\tput_device(nfc->dev);\n\tkfree(nfc);\n}",
         "sunxi_nfc_put": "static void sunxi_nfc_put(void *data)\n{\n\tstruct sunxi_nfc *nfc = data;\n\n\tkref_put(&nfc->refcnt, sunxi_nfc_release);\n}",
         "sunxi_nand_get_device": "static int sunxi_nand_get_device(struct mtd_info *mtd)\n{\n\tstruct nand_chip *chip = mtd_to_nand(mtd_get_master(mtd));\n\n\tguard(mutex)(&chip->lock);\n\treturn chip->disconnected ? -ENODEV : 0;\n}",
         "sunxi_nand_release": "static void sunxi_nand_release(struct mtd_info *mtd)\n{\n\tstruct nand_chip *chip = mtd_to_nand(mtd);\n\tstruct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(chip);\n\tstruct sunxi_nfc *nfc = to_sunxi_nfc(chip->controller);\n\tstruct device_node *np = nand_get_flash_node(chip);\n\tconst char *name = mtd->name;\n\n\tnand_cleanup(chip);\n\tof_node_put(np);\n\tkfree(name);\n\tkfree(sunxi_nand);\n\tsunxi_nfc_put(nfc);\n}",
-        "sunxi_nand_chips_cleanup": "static void sunxi_nand_chips_cleanup(struct sunxi_nfc *nfc)\n{\n\tstruct sunxi_nand_chip *sunxi_nand;\n\tstruct nand_chip *chip;\n\tint ret;\n\n\twhile (!list_empty(&nfc->chips)) {\n\t\tsunxi_nand = list_first_entry(&nfc->chips,\n\t\t\t\t\t      struct sunxi_nand_chip,\n\t\t\t\t\t      node);\n\t\tchip = &sunxi_nand->nand;\n\t\tnand_disconnect(chip);\n\t\tret = mtd_device_unregister(nand_to_mtd(chip));\n\t\tWARN_ON(ret);\n\t\tlist_del(&sunxi_nand->node);\n\t\tmtd_put_master(nand_to_mtd(chip));\n\t}\n}"
+        "sunxi_nand_chips_cleanup": "static void sunxi_nand_chips_cleanup(struct sunxi_nfc *nfc)\n{\n\tstruct sunxi_nand_chip *sunxi_nand;\n\tstruct nand_chip *chip;\n\tint ret;\n\n\twhile (!list_empty(&nfc->chips)) {\n\t\tsunxi_nand = list_first_entry(&nfc->chips,\n\t\t\t\t\t      struct sunxi_nand_chip,\n\t\t\t\t\t      node);\n\t\tchip = &sunxi_nand->nand;\n\t\tret = mtd_device_unregister(nand_to_mtd(chip));\n\t\tWARN_ON(ret);\n\t\tnand_disconnect(chip);\n\t\tlist_del(&sunxi_nand->node);\n\t\tmtd_put_master(nand_to_mtd(chip));\n\t}\n}"
       },
       "functions_sha256": {
         "sunxi_nfc_release": "079d1009ef53e03c4a1c13183fed1267bf232be15a6fa5d32361e4d05e66672d",
         "sunxi_nfc_put": "30469f9d50caeda46baaa4e940e61cd4d14ea93b13d3a0d956cd3e9de6912560",
         "sunxi_nand_get_device": "dbe63c4f9d4af45cd44c4ddf465ab34e56c5ade43a383e2f4e9e91485bcfa9c3",
         "sunxi_nand_release": "572569e5f0f88556462a708d1d04ef5444bdccdb8e8e4d9531e5dd5cb91ba868",
-        "sunxi_nand_chips_cleanup": "7d2216c46cfb23c78fef414d71643146d55eb3a2151c79a040cd547da6cae4da"
+        "sunxi_nand_chips_cleanup": "f545047fb253236f9bf55edc2552dadb709bf322cc988875430ee65b0a81f21a"
       }
     }
   }
