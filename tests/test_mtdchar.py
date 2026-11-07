@@ -7,6 +7,8 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mtdchar_cases import MODEL, TLC, cases
 from run_mtdchar import snapshot
+from run_mtdchar_series import compare, stages
+from run_core import extract
 
 
 class MtdCharInputs(unittest.TestCase):
@@ -43,6 +45,31 @@ class MtdCharInputs(unittest.TestCase):
                           "\t\tstruct mtd_req_stats stats;", src[name])
         core = src["read-wrapper.c"]
         self.assertLess(core.index("mtd_check_oob_ops"), core.index("memset(ops->stats"))
+
+    def test_split_order(self):
+        src, _ = snapshot()
+        first, second, final = stages(src)
+        self.assertEqual(final, src["candidate.c"])
+        for source in (first, second):
+            self.assertEqual(extract(source, "adjust_oob_length"),
+                             extract(final, "adjust_oob_length"))
+            self.assertNotIn("mtdchar_adjust_io_lengths", source)
+        self.assertEqual(extract(first, "mtdchar_read_ioctl"),
+                         extract(src["baseline.c"], "mtdchar_read_ioctl"))
+        self.assertNotEqual(extract(first, "mtdchar_read_ioctl"),
+                            extract(second, "mtdchar_read_ioctl"))
+        self.assertEqual(extract(first, "mtdchar_write_ioctl"),
+                         extract(second, "mtdchar_write_ioctl"))
+
+    def test_split_regression_gate(self):
+        row = dict(width=64, spare=16, avail=8, erase=256, size=4096,
+                   read=True, symmetric=True, hasData=False, start=0,
+                   data=0, oob=512, good=True)
+        self.assertEqual(compare([dict(row, good=False)], [row]), 1)
+        with self.assertRaisesRegex(ValueError, "regressed"):
+            compare([row], [dict(row, good=False)])
+        with self.assertRaisesRegex(ValueError, "differs"):
+            compare([row], [dict(row, width=128)])
 
 
 if __name__ == "__main__":

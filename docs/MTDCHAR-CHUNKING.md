@@ -1,9 +1,9 @@
 # MTD character-device page/OOB chunking
 
-This extension validates the independent, unsent v1 patch
-`mtdchar: keep data and OOB page offsets aligned across chunks`, not the
-Boot0 mapper or the sunxi controller implementation. The kernel patch is
-unchanged by this modeling work.
+This extension validates the independent mtdchar page/OOB chunking fixes,
+not the Boot0 mapper or the sunxi controller implementation. The current
+submission draft is a three-patch v1 series. Its final implementation is
+identical to the original unsplit candidate pinned here:
 
 - Base: `d48723711bae9b8cdc56719c448ba42fef28cbee`.
 - Local candidate: `51e1737afbf8d2e6902814add5848c1522f36973`.
@@ -22,6 +22,8 @@ python3 run_mtdchar_model.py --download
 python3 run_mtdchar.py
 python3 run_mtdchar_admission.py
 python3 run_mtdchar_admission.py --candidate-source path/to/mtdchar.c
+python3 run_mtdchar_series.py
+python3 run_mtdchar_series.py --sources patch1.c patch2.c patch3.c
 ```
 
 These dedicated runners pin the official stable TLA+ Tools v1.7.4 release
@@ -37,8 +39,9 @@ The first runner exhaustively explores a finite protocol. The second executes
 actual C functions under ASan/UBSan, compares bytes with independently indexed
 media, then checks their recorded backend calls against TLA+. Its separate
 non-sanitizer build records source-mapped gcov coverage and must emit identical
-call traces. The last runner exercises the real MTD admission wrapper and a
-separate statistics model. None of these commands accesses hardware.
+call traces. The admission runner exercises the real MTD admission wrapper and
+a separate statistics model. The series runner checks intermediate sources
+with the same C oracle. None of these commands accesses hardware.
 
 The new workflow runs these checks in GitHub Actions. They are also included
 in the appropriate full-suite runners; `run_suite.py`'s sunxi candidate argument
@@ -60,6 +63,49 @@ All protocol actions listed as required were reached. Expected failures must
 be the named invariant with a real TLC counterexample: parser errors, crashes
 and timeouts are failures of the validation, not accepted negative tests.
 Line/branch coverage is a reachability measurement, not a correctness proof.
+
+## Three-patch submission split
+
+The split is based on MTD `mtd/fixes` at
+`1c1a342aceec79528b3ba51f376eca2be5928fe7`. Its baseline `mtdchar.c` matches
+the original mainline base. The patches are:
+
+1. `3096e84b0e57` — calculate OOB capacity from the starting column.
+   Patch ID: `07a4ff0417eef2d0ae148dee29c03bf02261775f`.
+2. `18cbeff590d0` — bound OOB reads to the data in intermediate chunks.
+   Patch ID: `343a650cc574481d4117448117e363f35ba6cd0d`.
+3. `9a49816f6889` — keep OOB chunks aligned with their data pages.
+   Patch ID: `1916d7ceb6c7e49a335116ba36d051ecdac8fe8c`.
+
+These are local submission commit identifiers, not posted prerequisites.
+The public source snapshots remain the original ones. The series runner
+reconstructs the first stage by replacing only `adjust_oob_length()`, then
+the second by inserting the intermediate MEMREAD cap. The final stage is
+the pinned candidate. With `--sources`, it verifies every extracted function
+against those stages before checking the actual supplied sources.
+
+The same 5,471 requests are executed at each stage. The runner rejects any
+regression in a previously passing request and verifies identical ordinary
+request behavior across the preparatory patch:
+
+| Stage | Newly passing requests | Remaining mismatches |
+|---|---:|---:|
+| Base | — | 1,352 |
+| Capacity refactor | 0 | 1,352 |
+| Intermediate-read cap | 183 | 1,169 |
+| Complete page-aligned chunking | 1,169 | 0 |
+
+All four stages pass ASan/UBSan and emit identical sanitizer/gcov call traces.
+Each kernel commit builds `drivers/mtd/mtdchar.o` with `W=1` on x86-64.
+The final helper arithmetic and fault tests are unchanged. This is bounded
+regression evidence for the intermediate stages; only the complete final
+implementation is checked against the full corrected TLA+ protocol.
+
+The capacity patch is preparatory and has no `Fixes` or stable trailer. Its
+synthetic wide-product check is not presented as evidence of a reachable
+large-device bug. The two behavior fixes carry their introducing commits
+and stable Cc. The independently submitted MEMREAD statistics initializer
+is not included in this series and remains a separate known negative control.
 
 ## Chunking argument
 
@@ -163,8 +209,11 @@ source without modifying its initializer. Both the actual standalone fix and
 its combination with chunking pass the first- and later-rejection tests.
 Applying the two patches in either order produces identical Git trees. The
 combined source also passes the chunking and ECC-aggregation C regressions.
-The original pinned snapshots and their expected failures remain unchanged;
-the new local commit is not a posted prerequisite.
+The original pinned snapshots and their expected failures remain unchanged.
+The statistics fix was subsequently rebased onto MTD `mtd/fixes` at
+`1c1a342aceec79528b3ba51f376eca2be5928fe7` and submitted separately as local
+commit `558159d117c03b258a675e37ab54e9dc649f4040`, with the same patch ID.
+The chunking series has no prerequisite on that fix.
 
 ## Review and remaining limits
 

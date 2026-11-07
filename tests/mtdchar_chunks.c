@@ -203,10 +203,12 @@ static bool io_case(bool read, unsigned int mode, size_t start,
 	if (trace_file) {
 		fprintf(trace_file, "{\"width\":%u,\"spare\":%u,\"avail\":%zu,\"erase\":%u,"
 			"\"size\":%" PRIu64 ",\"read\":%s,\"symmetric\":%s,\"hasData\":%s,"
-			"\"start\":%zu,\"data\":%zu,\"oob\":%zu,\"code\":%d,\"reported\":[%zu,%zu],\"calls\":[",
+			"\"start\":%zu,\"data\":%zu,\"oob\":%zu,\"code\":%d,\"good\":%s,"
+			"\"reported\":[%zu,%zu],\"calls\":[",
 			geom.writesize, geom.oobsize, o, geom.erasesize, geom.size,
 			read ? "true" : "false", symmetric ? "true" : "false",
-			dlen ? "true" : "false", start, dlen, olen, ret, reported_data, reported_oob);
+			dlen ? "true" : "false", start, dlen, olen, ret, good ? "true" : "false",
+			reported_data, reported_oob);
 		for (unsigned int i = 0; i < trace_count; i++)
 			fprintf(trace_file, "%s[%" PRIu64 ",%zu,%zu,%zu,%zu,%d]", i ? "," : "",
 				trace_calls[i].at, trace_calls[i].data, trace_calls[i].oob,
