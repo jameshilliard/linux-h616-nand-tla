@@ -39,6 +39,8 @@ class MtdCharInputs(unittest.TestCase):
         # Both snapshots deliberately retain the independent admission bug.
         for name in ("baseline.c", "candidate.c"):
             self.assertIn("struct mtd_req_stats stats;", src[name])
+            self.assertIn("while (req.len > 0 || (!usr_data && req.ooblen > 0)) {\n"
+                          "\t\tstruct mtd_req_stats stats;", src[name])
         core = src["read-wrapper.c"]
         self.assertLess(core.index("mtd_check_oob_ops"), core.index("memset(ops->stats"))
 

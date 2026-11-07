@@ -137,8 +137,16 @@ of reading and exporting undefined statistics, not a measured stack disclosure
 on a production kernel. Automatic-variable initialization configuration can
 mask the symptom without repairing the source contract.
 
+A second test admits the first chunk, then rejects a later chunk. With
+4-byte pages, 5-byte OOB, a 16-byte buffer limit and a 24-byte device, a
+20-byte-data/31-byte-OOB request completes one chunk with three corrected
+bitflips before core OOB validation rejects the next chunk. Baseline and
+candidate both accumulate undefined counters on that rejection as well.
+
 A fixture-only change to `struct mtd_req_stats stats = {};` returns zero
-statistics for the rejected operation. It has **not** been folded into the
+statistics for a rejected first operation and preserves the valid prefix's
+statistics when a later operation is rejected. The declaration is inside the
+loop, so this initializes each iteration. It has **not** been folded into the
 kernel submission. The model retains the current defect as an expected
 counterexample instead of weakening the property to claim a clean result.
 

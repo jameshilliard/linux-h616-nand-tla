@@ -45,11 +45,13 @@ def main():
         return 0
     cases = [dict(module="NandMtdCharStats", name="mtdchar-stats-"+name,
                   kind="baseline" if expected else "positive", expected=expected,
-                  constants=dict(Initialize=init, Reject=reject))
-             for name, init, reject, expected in (
-                 ("rejected-uninitialized", False, True, "DefinedStatistics"),
-                 ("admitted-uninitialized", False, False, None),
-                 ("rejected-initialized", True, True, None))]
+                  constants=dict(Initialize=init, Reject=reject, Rounds=rounds))
+             for name, init, reject, rounds, expected in (
+                 ("rejected-uninitialized", False, True, 1, "DefinedStatistics"),
+                 ("admitted-uninitialized", False, False, 1, None),
+                 ("rejected-initialized", True, True, 1, None),
+                 ("rejected-after-prefix", False, True, 2, "DefinedStatistics"),
+                 ("rejected-prefix-initialized", True, True, 2, None))]
     return tlc.main(["--download"] if args.download else [], cases=cases, toolchain=TLC,
                     modules={"NandMtdCharStats": dict(invariants=["DefinedStatistics"],
                                                      actions=["Core", "Accumulate"])},
