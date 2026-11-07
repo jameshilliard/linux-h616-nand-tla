@@ -95,7 +95,9 @@ static int mtd_class;
 #define MTD_DEVT(i) ((i)*2)
 static void device_destroy(void *cls, dev_t dev) { }
 static void debugfs_remove_recursive(void *p) { }
-static void nvmem_unregister(void *p) { }
+struct otp_provider { struct mtd_info *mtd; bool registered; };
+static void nvmem_unregister(void *p)
+{ if(p) { struct otp_provider *otp=p; assert(otp->registered); otp->registered=false; } }
 static void unregister_reboot_notifier(void *p) { }
 static int mtd_virt_concat_destroy(struct mtd_info *m) { assert(0); return 0; }
 static bool device_is_registered(struct device *d) { return d->registered; }
@@ -115,6 +117,7 @@ static int devm_add_action_or_reset(struct device *d, void (*action)(void *), vo
 static void release_devres(struct device *d)
 { void (*action)(void *)=d->action; d->action=NULL; action(d->action_data); }
 static bool try_module_get(struct module *m) { if(!m) return true; if(!m->live) return false; m->refs++; return true; }
+static void __module_get(struct module *m) { if(m) m->refs++; }
 static void module_put(struct module *m) { if(m) { assert(m->refs); m->refs--; } }
 static void kref_init(struct kref *r) { r->n=1; }
 static void kref_get(struct kref *r) { assert(r->n); r->n++; }

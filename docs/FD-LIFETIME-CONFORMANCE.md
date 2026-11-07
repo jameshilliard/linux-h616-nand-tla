@@ -72,28 +72,33 @@ An expected counterexample passes only when its specifically named invariant
 fails; parser errors, sanitizer failures and unrelated violations are failures.
 No live unbind, flash write or production kernel change is performed.
 
-## Current raw-NAND lifetime RFC
+## Current raw-NAND lifetime series
 
-The current `submit/rawnand-retained-handle-lifetime-v1` draft contains 56
-patches: MTD ownership, NAND disconnection, shared chip/controller lifetime
-helpers, Macronix OTP locking, and 52 controller-family conversions. It
+The current `submit/rawnand-retained-handle-lifetime-v1` draft contains 58
+patches: OTP cleanup, NVMEM context references, MTD ownership, NAND
+disconnection, shared chip/controller lifetime helpers, Macronix OTP locking,
+and 52 controller-family conversions. It
 remains independent of the sunxi OOB series and uses the NAND-next base and
 posted module-reference prerequisite described below.
 
 The candidate snapshot is kernel commit
-`c8305b3be6de1844d6f55d0559abd675b61afb87`. The source-extracted harness now
-passes 125 schedules with 242 successful file opens/closes under ASan/UBSan.
+`4a883aa9f570dbede6c2e3c820bb8f0343f2c921`. The source-extracted harness now
+passes 129 schedules with 242 successful file opens/closes under ASan/UBSan.
 It includes helper allocation failures, embedded chips, unmanaged controllers,
-and module initialization/unload ownership. `audit_retained_drivers.py`
+module initialization/unload ownership, and OTP context pin/drop/removal.
+`audit_retained_drivers.py`
 inventories every raw-NAND scan provider; its presence checks do not prove
 the correctness of each driver's ordering.
 
-The 16 TLC configurations comprise seven positive cases and nine deliberate
+The 23 TLC configurations comprise eleven positive cases and twelve deliberate
 faults. The shared-controller extension checks two successive bindings with
 up to two chips each, including replacement-media isolation. The real-kernel
 synthetic tests pass under KASAN and lockdep, reclaiming six MTD backing objects
-and four NAND chips/two controllers across their respective scenarios. Object
-builds cover x86 compile-test and the PowerPC/MIPS-specific drivers.
+and four NAND chips/two controllers across their respective scenarios. The
+[OTP extension](OTP-LIFETIME.md) adds nine backing releases with built-in
+and modular MTD. Earlier object builds cover x86 compile-test and the
+PowerPC/MIPS-specific drivers; the new core changes also build with NVMEM
+disabled.
 
 These are bounded ownership checks, not physical-controller or universal
 DMA-abort proofs. Exhaustive per-driver probe-failure injection and hardware

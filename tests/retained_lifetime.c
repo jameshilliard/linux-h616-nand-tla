@@ -115,6 +115,38 @@ static void unmanaged_controller_test(void)
     assert(!driver_module.refs);
 }
 
+/* Execute the actual MTD OTP pin/drop/remove callbacks with provider shims. */
+static void otp_test(bool master_registered, bool reverse)
+{
+    struct device parent={.refs=1};
+    struct device_node node={0};
+    struct nand_controller controller={0};
+    struct sunxi_nand_chip *sn=calloc(1,sizeof(*sn)); assert(sn);
+    struct mtd_info *m=&sn->nand.mtd;
+    struct otp_provider providers[2]={{.mtd=m,.registered=true},
+                                      {.mtd=m,.registered=true}};
+    unsigned before=cleaned;
+    sn->nand.controller=&controller; m->name="OTP"; m->owner=&driver_module;
+    m->dev.parent=&parent; m->np=&node; INIT_LIST_HEAD(&m->partitions);
+    assert(!nand_set_release(&sn->nand,sunxi_nand_release));
+    mtd_otp_nvmem_get(m); mtd_otp_nvmem_get(m);
+    m->otp_user_nvmem=&providers[0]; m->otp_factory_nvmem=&providers[1];
+    if(master_registered) publish(m,m,0);
+    assert(!mtd_device_unregister(m));
+    mtd_otp_nvmem_remove(m); /* Outer unwind must not unregister twice. */
+    assert(!providers[0].registered && !providers[1].registered);
+    assert(!m->otp_user_nvmem && !m->otp_factory_nvmem);
+    nand_disconnect(&sn->nand); mtd_put_master(m);
+    assert(cleaned==before && core_module.refs==2 && driver_module.refs==1);
+    unsigned first=reverse?1:0, last=first^1;
+    mtd_otp_nvmem_put(providers[first].mtd);
+    assert(cleaned==before && core_module.refs==1);
+    assert(nand_get_device(&sn->nand)==-ENODEV);
+    mtd_otp_nvmem_put(providers[last].mtd);
+    assert(cleaned==before+1 && !core_module.refs && !driver_module.refs);
+    assert(parent.refs==1 && !node.refs);
+}
+
 int main(void)
 {
     unsigned cases=0, opens=0;
@@ -194,6 +226,10 @@ int main(void)
     multi_chip_test(); cases++; opens+=2;
     embedded_test(false); embedded_test(true); prepare_failure_test(); unmanaged_controller_test();
     cases+=4;
+    for(unsigned registered=0;registered<2;registered++)
+        for(unsigned reverse=0;reverse<2;reverse++) {
+            otp_test(registered,reverse); cases++;
+        }
     printf("Retained lifetime: %u schedules, %u successful file opens/closes\n",cases,opens);
     puts("ALL CHECKS PASSED");
 }

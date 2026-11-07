@@ -1,5 +1,5 @@
 {
-  "commit": "c8305b3be6de1844d6f55d0559abd675b61afb87",
+  "commit": "4a883aa9f570dbede6c2e3c820bb8f0343f2c921",
   "files": {
     "mtd.h": {
       "path": "include/linux/mtd/mtd.h",
@@ -15,7 +15,7 @@
     },
     "mtdcore.c": {
       "path": "drivers/mtd/mtdcore.c",
-      "source_sha256": "cfc90265f0bf9be4a571084a2b7ac6c481f2db5c29d5694589fd773cac975868",
+      "source_sha256": "455468dc835420f96eceede22437b8a23c84755a737d15798d66b264428e9c1f",
       "functions": {
         "__mtd_next_device": "struct mtd_info *__mtd_next_device(int i)\n{\n\tstruct mtd_info *mtd;\n\n\twhile ((mtd = idr_get_next(&mtd_idr, &i))) {\n\t\tif (mtd->registered)\n\t\t\treturn mtd;\n\t\ti++;\n\t}\n\n\treturn NULL;\n}",
         "mtd_master_release": "static void mtd_master_release(struct kref *ref)\n{\n\tstruct mtd_info *master = container_of(ref, struct mtd_info,\n\t\t\t\t\t     master.life_refcnt);\n\tstruct completion *done = master->master.release_done;\n\tstruct module *owner = master->master.release_owner;\n\n\tmaster->master.release(master);\n\tif (done)\n\t\tcomplete(done);\n\telse\n\t\tmodule_put(owner);\n}",
@@ -30,8 +30,11 @@
         "__get_mtd_device": "int __get_mtd_device(struct mtd_info *mtd)\n{\n\tstruct mtd_info *master = mtd_get_master(mtd);\n\tint err;\n\n\tif (!mtd->registered)\n\t\treturn -ENODEV;\n\n\tif (master->_get_device) {\n\t\terr = master->_get_device(mtd);\n\t\tif (err)\n\t\t\treturn err;\n\t}\n\n\tif (!try_module_get(master->owner)) {\n\t\tif (master->_put_device)\n\t\t\tmaster->_put_device(master);\n\t\treturn -ENODEV;\n\t}\n\n\tmtd_get_lifetime(master);\n\twhile (mtd) {\n\t\tif (mtd != master)\n\t\t\tkref_get(&mtd->refcnt);\n\t\tmtd = mtd->parent;\n\t}\n\n\tif (master->dev.type)\n\t\tkref_get(&master->refcnt);\n\n\treturn 0;\n}",
         "__put_mtd_device": "void __put_mtd_device(struct mtd_info *mtd)\n{\n\tstruct mtd_info *master = mtd_get_master(mtd);\n\t/* master can be freed in _put_device */\n\tstruct module *owner = master->owner;\n\tbool managed = master->master.release;\n\n\twhile (mtd) {\n\t\t/* kref_put() can relese mtd, so keep a reference mtd->parent */\n\t\tstruct mtd_info *parent = mtd->parent;\n\n\t\tif (mtd != master)\n\t\t\tkref_put(&mtd->refcnt, mtd_device_release);\n\t\tmtd = parent;\n\t}\n\n\tif (master->dev.type)\n\t\tkref_put(&master->refcnt, mtd_device_release);\n\n\t/* Legacy _put_device() callbacks can free an unmanaged master. */\n\tif (master->_put_device)\n\t\tmaster->_put_device(master);\n\tif (managed)\n\t\tmtd_put_lifetime(master);\n\n\t/* _put_device() runs code from @owner, so drop the module last */\n\tmodule_put(owner);\n}",
         "put_mtd_device": "void put_mtd_device(struct mtd_info *mtd)\n{\n\tmutex_lock(&mtd_table_mutex);\n\t__put_mtd_device(mtd);\n\tmutex_unlock(&mtd_table_mutex);\n\n}",
-        "mtd_device_unregister": "int mtd_device_unregister(struct mtd_info *master)\n{\n\tint err;\n\n\tif (master->_reboot) {\n\t\tunregister_reboot_notifier(&master->reboot_notifier);\n\t\tmemset(&master->reboot_notifier, 0, sizeof(master->reboot_notifier));\n\t}\n\n\tnvmem_unregister(master->otp_user_nvmem);\n\tnvmem_unregister(master->otp_factory_nvmem);\n\n\tif (IS_REACHABLE(CONFIG_MTD_VIRT_CONCAT)) {\n\t\terr = mtd_virt_concat_destroy(master);\n\t\tif (err)\n\t\t\treturn err;\n\t}\n\terr = del_mtd_partitions(master);\n\tif (err)\n\t\treturn err;\n\n\tif (!device_is_registered(&master->dev))\n\t\treturn 0;\n\n\treturn del_mtd_device(master);\n}",
-        "mtd_dev_release_done": "static void mtd_dev_release_done(struct device *dev)\n{\n\tcomplete(dev_get_drvdata(dev));\n}"
+        "mtd_device_unregister": "int mtd_device_unregister(struct mtd_info *master)\n{\n\tint err;\n\n\tif (master->_reboot) {\n\t\tunregister_reboot_notifier(&master->reboot_notifier);\n\t\tmemset(&master->reboot_notifier, 0, sizeof(master->reboot_notifier));\n\t}\n\n\tmtd_otp_nvmem_remove(master);\n\n\tif (IS_REACHABLE(CONFIG_MTD_VIRT_CONCAT)) {\n\t\terr = mtd_virt_concat_destroy(master);\n\t\tif (err)\n\t\t\treturn err;\n\t}\n\terr = del_mtd_partitions(master);\n\tif (err)\n\t\treturn err;\n\n\tif (!device_is_registered(&master->dev))\n\t\treturn 0;\n\n\treturn del_mtd_device(master);\n}",
+        "mtd_dev_release_done": "static void mtd_dev_release_done(struct device *dev)\n{\n\tcomplete(dev_get_drvdata(dev));\n}",
+        "mtd_otp_nvmem_get": "static void mtd_otp_nvmem_get(void *priv)\n{\n\tmtd_get_lifetime(priv);\n\t__module_get(THIS_MODULE);\n}",
+        "mtd_otp_nvmem_put": "static void mtd_otp_nvmem_put(void *priv)\n{\n\tmtd_put_lifetime(priv);\n\tmodule_put(THIS_MODULE);\n}",
+        "mtd_otp_nvmem_remove": "static void mtd_otp_nvmem_remove(struct mtd_info *mtd)\n{\n\tnvmem_unregister(mtd->otp_user_nvmem);\n\tmtd->otp_user_nvmem = NULL;\n\tnvmem_unregister(mtd->otp_factory_nvmem);\n\tmtd->otp_factory_nvmem = NULL;\n}"
       },
       "functions_sha256": {
         "__mtd_next_device": "f46af67e7617709ec30311fca529b6d29b6d128add273c2946d5349803a15e5c",
@@ -47,8 +50,11 @@
         "__get_mtd_device": "5d3a9e681fa5af629834c204cb14ecf60a71fc1175c077316d4dfd380c5111e9",
         "__put_mtd_device": "4bb9a89198ffa1878b8914658cd88f20efba3c784abd4168ef7b7ff83e421684",
         "put_mtd_device": "4f6f91e7e1d0e43ed59a10c88e83c7d6adece09f86690abdaf0b160fe06a17be",
-        "mtd_device_unregister": "ef4049d50d9b38b8b72679842b08437e5e307acc1debc5f30cb0906de706721f",
-        "mtd_dev_release_done": "110831562ca70bbf662e4a22c88259e72ac569bbb626e91d3a9460ed93e98301"
+        "mtd_device_unregister": "d0f31bd2df3cddefea7f67c9e97e428d49e9b45d575b3a78151e08c9789185d5",
+        "mtd_dev_release_done": "110831562ca70bbf662e4a22c88259e72ac569bbb626e91d3a9460ed93e98301",
+        "mtd_otp_nvmem_get": "d7e1e0f8b32f3d416e5f3cfb435af41f66db9fc1a5ba60a5df7f4b2b64292029",
+        "mtd_otp_nvmem_put": "85a2d389adeba485d8d547153c0d3fdbdcd84cde8c13d5397350077d1c223dc6",
+        "mtd_otp_nvmem_remove": "4fe196cc00eaa2d43abfbe4cc7e40657f0974144f2af969af842cbe3f016597d"
       }
     },
     "mtdpart.c": {

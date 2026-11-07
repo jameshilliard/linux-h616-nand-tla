@@ -1838,3 +1838,25 @@ contract. They do not settle physical reset failure, permanently wedged bus
 transactions, interrupted NAND programming, other geometries or older NFCs.
 Removing the private data allocation still requires a production error-path
 audit; the small coherent descriptor is a separate allocation.
+
+## OTP provider lifetime correction, 2026-11-07
+
+The independent retained-handle series now covers OTP NVMEM providers whose
+physical parent does not retain their MTD backing object. It also clears
+unregistered provider pointers to prevent duplicate cleanup during failed
+registration. The [OTP report](docs/OTP-LIFETIME.md) describes the ownership
+contract, reproducer, regression cases and limits.
+
+- Source-extracted ASan/UBSan run: 129 schedules and 242 successful file
+  opens/closes, including the actual OTP pin/drop/removal helpers.
+- Bounded lifetime suite: 23/23 expectations, including four new positive
+  OTP instances and three expected OTP counterexamples.
+- Real-kernel KASAN/lockdep OTP test: nine backing releases, both retained
+  consumer orders, replacement binding, bare device reference, failed-probe
+  consumer and registration-error cleanup. Existing MTD and raw-NAND tests
+  also pass with built-in and modular MTD. The modular run unloads the test
+  modules, raw NAND, NAND core and MTD core successfully. These are synthetic
+  QEMU tests, not hardware coverage.
+
+The exact extracted candidate is recorded in `reference/retained-lifetime.json`.
+No change to the sunxi OOB submission or physical board was required.

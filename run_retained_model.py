@@ -48,11 +48,28 @@ def cases():
         constants[field] = value
         result.append(dict(name="controller-" + name, module="NandControllerLifetime",
             kind="mutation", expected=expected, constants=constants))
+    otp = dict(Providers=2, MtdRegistered=True, RetainContext=True,
+               ReleaseEarly=False, ClearPointers=True)
+    for providers in (1, 2):
+        for registered in (False, True):
+            result.append(dict(name=f"otp-{providers}-{int(registered)}",
+                module="MtdOtpLifetime", kind="positive", expected=None,
+                constants=dict(otp, Providers=providers, MtdRegistered=registered)))
+    for name, changes, expected in (
+            ("missing-context-pin", dict(RetainContext=False), "CallbackStorage"),
+            ("early-context-put", dict(ReleaseEarly=True), "CallbackStorage"),
+            ("double-unregister", dict(MtdRegistered=False, ClearPointers=False),
+             "NoDoubleUnregister")):
+        result.append(dict(name="otp-" + name, module="MtdOtpLifetime",
+            kind="mutation", expected=expected, constants=dict(otp, **changes)))
     return result
 
 if __name__ == "__main__":
     raise SystemExit(tlc.main(sys.argv[1:], cases=cases(), toolchain=TLC,
         modules={"NandRetainedLifetime": MODEL,
+                 "MtdOtpLifetime": dict(invariants=["CallbackStorage", "NoDoubleUnregister"],
+                     actions=["Unregister", "OuterUnwind", "DropMtd", "DropInitial",
+                              "ConsumerPut", "DevicePut", "ProviderRelease", "BackingRelease"]),
                  "MtdRetainedNumber": dict(invariants=["NoNameCollision"],
                      actions=["LastMtdPut", "ConsumerPut", "ProviderRelease",
                               "DeviceRelease", "RegisterReplacement"]),

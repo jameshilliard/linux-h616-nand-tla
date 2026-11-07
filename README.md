@@ -241,7 +241,7 @@ python3 run_mtdchar_admission.py
 python3 run_mtdchar_series.py
 ```
 
-The retained-handle runners cover the separate raw-NAND lifetime RFC. Run
+The retained-handle runners cover the separate raw-NAND lifetime series. Run
 `run_retained_model.py --download` for its pinned TLC 1.7.4 models, and
 `run_retained_lifetime.py` for the committed C-function snapshot under
 ASan/UBSan. The latter also accepts `--kernel-tree` to check another candidate.
@@ -255,6 +255,12 @@ operation draining, independent controller/chip releases, and replacement-card
 isolation. Negative controls free either object too early, omit the drain, or
 reuse card storage. These are bounded ownership models, not simulations of
 every controller's interrupts, DMA aborts or hardware registers.
+
+`MtdOtpLifetime` checks user/factory OTP ownership independently of MTD node
+registration, including failed registration and bare NVMEM device references.
+Its negative controls omit the context reference, release it at unregister,
+or unregister the same provider twice. The [OTP lifetime report](docs/OTP-LIFETIME.md)
+separates these bounded checks from the source-extracted and real-kernel tests.
 
 `audit_retained_drivers.py --kernel-tree PATH` inventories all 52 raw-NAND
 scan-provider families and their ownership hooks, including the SmartMedia
@@ -270,6 +276,10 @@ release counters check that both generations are reclaimed exactly once. Run
 the supplied initramfs `init` with a kernel built with raw NAND, MTD NVMEM,
 KASAN and lockdep; the tests do not access physical flash. The `run` module
 parameters execute after module initialization, while the module is live.
+The OTP module also tests retained user/factory consumers, provider module
+references, a bare NVMEM device reference, a consumer acquired before failed
+probe, and OTP/NVMEM registration errors. Successful runs must unload each
+test module before reporting success.
 
 The three mtdchar model/trace/admission runners independently pin stable
 TLA+ Tools v1.7.4; their first command downloads and verifies it. This avoids
