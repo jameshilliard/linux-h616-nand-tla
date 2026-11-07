@@ -21,6 +21,7 @@ python3 tests/test_mtdchar.py
 python3 run_mtdchar_model.py --download
 python3 run_mtdchar.py
 python3 run_mtdchar_admission.py
+python3 run_mtdchar_admission.py --candidate-source path/to/mtdchar.c
 ```
 
 These dedicated runners pin the official stable TLA+ Tools v1.7.4 release
@@ -53,7 +54,7 @@ does not silently replace the separately pinned mtdchar candidate.
 | Extracted C arithmetic | Every column for widths 2 through 2,048, irregular OOB sizes, multiple eraseblock geometries, large absolute page indices | 1,375,584 cases, plus a page/OOB product exceeding `UINT32_MAX` |
 | Extracted C errors | Allocation/user-copy failures, missing methods, EOF, overflow, NULL pointers, legacy length masking, partial backend failures, mixed ECC sequences | 24 partial-failure cases, 18 request-edge cases, 81 four-chunk ECC arrangements, plus the original error matrix |
 | Host source coverage | The four changed mtdchar functions, excluding shims and backend fixtures | 159/159 executable lines and 102/102 branch edges reached |
-| `NandMtdCharStats` and actual admission wrapper | A core error before initializing request statistics | Pre-existing bug reproduced in baseline and candidate; fixture-only initialization experiment passes |
+| `NandMtdCharStats` and actual admission wrapper | A core error before initializing request statistics | Pre-existing bug reproduced in baseline and chunking candidate; the separate initializer fix passes both alone and combined with chunking |
 
 All protocol actions listed as required were reached. Expected failures must
 be the named invariant with a real TLC counterexample: parser errors, crashes
@@ -143,12 +144,27 @@ A second test admits the first chunk, then rejects a later chunk. With
 bitflips before core OOB validation rejects the next chunk. Baseline and
 candidate both accumulate undefined counters on that rejection as well.
 
-A fixture-only change to `struct mtd_req_stats stats = {};` returns zero
-statistics for a rejected first operation and preserves the valid prefix's
+The initial fixture-only change to `struct mtd_req_stats stats = {};` returns
+zero statistics for a rejected first operation and preserves the valid prefix's
 statistics when a later operation is rejected. The declaration is inside the
-loop, so this initializes each iteration. It has **not** been folded into the
-kernel submission. The model retains the current defect as an expected
-counterexample instead of weakening the property to claim a clean result.
+loop, so this initializes each iteration. The model retains the original
+defect as an expected counterexample instead of weakening the property.
+
+The same one-line fix is now prepared as the independent kernel patch
+`mtdchar: initialize MEMREAD statistics before each read`:
+
+- Local commit: `8228da316bffce30376986cca21833e7db1d010b`.
+- Stable patch ID: `bcb169861b26335771b9f8ba053bd42acf588645`.
+- Introducing commit: `095bb6e44eb1` (`mtdchar: add MEMREAD ioctl`).
+- Base: `d48723711bae9b8cdc56719c448ba42fef28cbee`, without the chunking patch.
+
+The admission runner's `--candidate-source` option extracts the supplied
+source without modifying its initializer. Both the actual standalone fix and
+its combination with chunking pass the first- and later-rejection tests.
+Applying the two patches in either order produces identical Git trees. The
+combined source also passes the chunking and ECC-aggregation C regressions.
+The original pinned snapshots and their expected failures remain unchanged;
+the new local commit is not a posted prerequisite.
 
 ## Review and remaining limits
 

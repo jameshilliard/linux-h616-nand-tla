@@ -3,6 +3,7 @@
 """Reproduce the separate pre-existing MEMREAD uninitialized-statistics path."""
 import argparse
 import hashlib
+from pathlib import Path
 
 from boundary_common import HERE, bodies, check
 from run_mtdchar import TLC, snapshot
@@ -13,20 +14,27 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-only", action="store_true")
     parser.add_argument("--download", action="store_true")
+    parser.add_argument("--candidate-source", type=Path,
+                        help="also check an actual mtdchar.c with the statistics fix")
     args = parser.parse_args()
     source, pin = snapshot()
     wrapper = source["read-wrapper.c"]
     outputs = []
-    for name, initialized in (("baseline", False), ("candidate", False), ("candidate", True)):
-        src = {"mtdchar.c": source[name+".c"],
+    variants = [("baseline", False, source["baseline.c"]),
+                ("candidate", False, source["candidate.c"]),
+                ("candidate", True, source["candidate.c"])]
+    if args.candidate_source:
+        variants.append(("submitted", True, args.candidate_source.read_text()))
+    for name, initialized, mtdchar in variants:
+        src = {"mtdchar.c": mtdchar,
                "mtdcore.c": source["mtdcore.c"] + wrapper}
-        if initialized:
+        if name == "candidate" and initialized:
             before = "struct mtd_req_stats stats;"
             assert src["mtdchar.c"].count(before) == 1
             src["mtdchar.c"] = src["mtdchar.c"].replace(before, "struct mtd_req_stats stats = {};")
         functions = {"mtdcore.c": ["mtd_check_oob_ops", "mtd_read_oob"],
                      "mtdchar.c": ["adjust_oob_length"] +
-                        (["mtdchar_adjust_io_lengths"] if name == "candidate" else []) +
+                        (["mtdchar_adjust_io_lengths"] if "mtdchar_adjust_io_lengths(" in mtdchar else []) +
                         ["mtdchar_read_ioctl"]}
         kernel, _, hashes = bodies(src, functions)
         unit = (HERE / "tests/mtdchar_env.h").read_text()
@@ -38,7 +46,9 @@ def main():
                     expected="MTDCHAR ADMISSION CHECKS PASSED",
                     limits=["Actual MTD admission wrapper and MEMREAD bodies",
                             "Compiler pattern initialization makes uninitialized reads deterministic",
-                            "Candidate initialization is a fixture-only experiment, not a kernel patch",
+                            ("Submitted source is extracted without modifying its initializer"
+                             if name == "submitted" else
+                             "Pinned candidate initialization is a fixture-only experiment"),
                             "The test detects propagation of undefined stats, not a real stack disclosure exploit"])
         outputs.append(str(out.relative_to(HERE)))
     if args.source_only:
