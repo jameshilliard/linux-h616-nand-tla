@@ -5,10 +5,28 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run import invariant_counterexample
+from run import invariant_counterexample, temporal_counterexample
 
 
 class CounterexampleResult(unittest.TestCase):
+    def test_temporal_named(self):
+        log = ("Temporal property Terminates was violated.\n"
+               "The following behavior constitutes a counter-example:")
+        self.assertTrue(temporal_counterexample(13, log, "Terminates"))
+        self.assertFalse(temporal_counterexample(13, log, "Other"))
+        for rc in (-1, 0, 1, 12):
+            self.assertFalse(temporal_counterexample(rc, log, "Terminates"))
+
+    def test_temporal_legacy_single_property(self):
+        log = ("Temporal properties were violated.\n"
+               "The following behavior constitutes a counter-example:")
+        self.assertFalse(temporal_counterexample(13, log, "Terminates"))
+        self.assertTrue(temporal_counterexample(13, log, "Terminates", unnamed=True))
+        self.assertFalse(temporal_counterexample(13, log.split("\n")[0],
+                                                "Terminates", unnamed=True))
+        for rc in (-1, 0, 1, 12):
+            self.assertFalse(temporal_counterexample(rc, log, "Terminates", unnamed=True))
+
     def test_transition(self):
         log = 'Error: Invariant ExactState is violated.\nThe behavior up to this point is:'
         self.assertTrue(invariant_counterexample(12, log, 'ExactState'))

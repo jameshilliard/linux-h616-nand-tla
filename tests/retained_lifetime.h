@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <sys/types.h>
+#define GFP_KERNEL 0
 struct kref { unsigned n; };
-struct module { unsigned refs; bool live; };
+enum module_state { MODULE_STATE_LIVE, MODULE_STATE_COMING, MODULE_STATE_GOING };
+struct module { unsigned refs; bool live; enum module_state state; };
 static struct module core_module={.live=true}, driver_module={.live=true};
 #define THIS_MODULE (&core_module)
 struct completion { bool done; };
@@ -10,7 +12,11 @@ static void complete(struct completion *c) { c->done=true; }
 static void drain_devices(void);
 static void wait_for_completion(struct completion *c) { drain_devices(); assert(c->done); }
 struct device_node { unsigned refs; };
-struct device { bool registered; unsigned refs; void *type, *data; };
+struct device {
+    bool registered; unsigned refs; void *type, *data;
+    struct device *parent;
+    void (*action)(void *); void *action_data;
+};
 struct mtd_info {
     struct mtd_info *parent, *ref_master;
     struct kref refcnt;
@@ -36,7 +42,11 @@ struct mtd_info {
         struct completion *release_done;
     } master;
 };
-struct nand_controller { struct lock lock; };
+struct nand_controller {
+    struct lock lock;
+    struct kref refcnt;
+    void (*release)(struct nand_controller *);
+};
 struct nand_chip {
     struct mtd_info mtd;
     struct nand_controller *controller;
@@ -44,9 +54,10 @@ struct nand_chip {
     bool suspended, disconnected;
     int resume_wq;
     struct { int (*suspend)(struct nand_chip *); void (*resume)(struct nand_chip *); } ops;
+    void (*release)(struct nand_chip *);
 };
 struct sunxi_nand_chip { struct nand_chip nand; struct list_head node; };
-struct sunxi_nfc { struct nand_controller controller; struct kref refcnt; struct device *dev; struct list_head chips; };
+struct sunxi_nfc { struct nand_controller controller; struct device *dev; struct list_head chips; };
 #define mtd_to_nand(m) container_of(m,struct nand_chip,mtd)
 #define nand_to_mtd(c) (&(c)->mtd)
 #define to_sunxi_nand(c) container_of(c,struct sunxi_nand_chip,nand)
@@ -90,6 +101,19 @@ static int mtd_virt_concat_destroy(struct mtd_info *m) { assert(0); return 0; }
 static bool device_is_registered(struct device *d) { return d->registered; }
 static void *dev_get_drvdata(struct device *d) { return d->data; }
 static void of_node_put(struct device_node *n) { if(n) { assert(n->refs); n->refs--; } }
+static void of_node_get(struct device_node *n) { if(n) n->refs++; }
+static struct device *get_device(struct device *d) { if(d) d->refs++; return d; }
+static const char *dev_name(struct device *d) { assert(d); return "controller"; }
+static bool name_alloc_fail, action_alloc_fail;
+static char *kstrdup(const char *s, int flags) { return name_alloc_fail ? NULL : strdup(s); }
+static void nand_controller_init(struct nand_controller *c) { assert(!c->lock.held); }
+static int devm_add_action_or_reset(struct device *d, void (*action)(void *), void *data)
+{
+    if(action_alloc_fail) { action(data); return -ENOMEM; }
+    assert(!d->action); d->action=action; d->action_data=data; return 0;
+}
+static void release_devres(struct device *d)
+{ void (*action)(void *)=d->action; d->action=NULL; action(d->action_data); }
 static bool try_module_get(struct module *m) { if(!m) return true; if(!m->live) return false; m->refs++; return true; }
 static void module_put(struct module *m) { if(m) { assert(m->refs); m->refs--; } }
 static void kref_init(struct kref *r) { r->n=1; }
@@ -105,7 +129,7 @@ static unsigned npending;
 static bool delay_release;
 static void mtd_release(struct device *);
 static void put_device(struct device *d)
-{ assert(d->refs); if(!--d->refs && d->type) { if(delay_release) pending[npending++]=d; else mtd_release(d); } }
+{ if(!d) return; assert(d->refs); if(!--d->refs && d->type) { if(delay_release) pending[npending++]=d; else mtd_release(d); } }
 static void device_unregister(struct device *d)
 { assert(d->registered); d->registered=false; put_device(d); }
 static void drain_devices(void)

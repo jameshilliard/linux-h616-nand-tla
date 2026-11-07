@@ -6,10 +6,18 @@ collision=0
 case "$(/bin/busybox cat /proc/cmdline)" in
     *expect_collision=1*) collision=1 ;;
 esac
-if /bin/busybox insmod /retained_lifetime_test.ko expect_collision="$collision"; then
+if /bin/busybox insmod /retained_lifetime_test.ko expect_collision="$collision" &&
+   echo 1 > /sys/module/retained_lifetime_test/parameters/run; then
     /bin/busybox rmmod retained_lifetime_test
     echo "MTD-LIFETIME-QEMU: PASS"
 else
     echo "MTD-LIFETIME-QEMU: FAIL"
+fi
+if /bin/busybox insmod /raw_nand_lifetime_test.ko &&
+   echo 1 > /sys/module/raw_nand_lifetime_test/parameters/run; then
+    /bin/busybox rmmod raw_nand_lifetime_test
+    echo "RAW-NAND-LIFETIME-QEMU: PASS"
+else
+    echo "RAW-NAND-LIFETIME-QEMU: FAIL"
 fi
 /bin/busybox poweroff -f

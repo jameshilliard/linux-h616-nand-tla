@@ -48,6 +48,17 @@ def invariant_counterexample(returncode, log, name):
              'CounterExample written: trace' in log))
 
 
+def temporal_counterexample(returncode, log, name, *, unnamed=False):
+    """Require a liveness counterexample, not a deadlock or a tool failure."""
+    diagnostic = f"Temporal property {name} was violated." in log
+    # TLC 1.7.4 does not print the property's name. The generated configuration
+    # contains exactly one PROPERTY, so its generic diagnostic is unambiguous.
+    if unnamed:
+        diagnostic |= "Temporal properties were violated." in log
+    return (returncode == 13 and diagnostic and
+            "The following behavior constitutes a counter-example:" in log)
+
+
 def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None, toolchain=None):
     toolchain = SOURCE if toolchain is None else toolchain
     parser = argparse.ArgumentParser(description=__doc__)
@@ -135,8 +146,8 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None, toolchain=No
             rc = -1
         (case_dir / "tlc.log").write_text(log)
         if temporal:
-            matched = (rc == 13 and f"Temporal property {case['expected']} was violated." in log and
-                       "The following behavior constitutes a counter-example:" in log)
+            matched = temporal_counterexample(rc, log, case["expected"],
+                unnamed=toolchain["tlc_version"] == "1.7.4")
         elif case["expected"]:
             matched = invariant_counterexample(rc, log, case["expected"])
         else:

@@ -15,6 +15,7 @@ FILES = {
     "mtdpart.c": "drivers/mtd/mtdpart.c",
     "mtdchar.c": "drivers/mtd/mtdchar.c",
     "nand_base.c": "drivers/mtd/nand/raw/nand_base.c",
+    "nand_lifetime.c": "drivers/mtd/nand/raw/nand_lifetime.c",
     "sunxi_nand.c": "drivers/mtd/nand/raw/sunxi_nand.c",
 }
 FUNCTIONS = {
@@ -28,7 +29,10 @@ FUNCTIONS = {
     "mtdchar.c": ["mtdchar_open", "mtdchar_close"],
     "nand_base.c": ["nand_get_device", "nand_release_device", "nand_disconnect",
                     "nand_sync", "nand_suspend", "nand_resume"],
-    "sunxi_nand.c": ["sunxi_nfc_release", "sunxi_nfc_put", "sunxi_nand_get_device",
+    "nand_lifetime.c": ["nand_controller_release", "nand_controller_put",
+                        "devm_nand_controller_init", "nand_mtd_get_device",
+                        "nand_mtd_release", "nand_set_release"],
+    "sunxi_nand.c": ["sunxi_nfc_release",
                      "sunxi_nand_release", "sunxi_nand_chips_cleanup"],
 }
 

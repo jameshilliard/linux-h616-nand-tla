@@ -3,6 +3,7 @@
 """Explore candidate NAND disconnect/reference transitions and negative controls."""
 import sys
 import run as tlc
+from mtdchar_cases import TLC
 
 MODEL = dict(invariants=["LiveStorage", "ParentStorage", "DrainedHardware", "Exclusive"],
              actions=["Open", "ChipLock", "Check", "WakeWaiter", "ControllerLock",
@@ -33,11 +34,29 @@ def cases():
         result.append(dict(name="retained-number-" + ("fixed" if fixed else "early-reuse"),
             module="MtdRetainedNumber", kind="positive" if fixed else "mutation",
             expected=None if fixed else "NoNameCollision", constants=dict(HoldNumber=fixed)))
+    for chips in (1, 2):
+        result.append(dict(name=f"controller-{chips}-fixed", module="NandControllerLifetime",
+            kind="positive", expected=None, constants=dict(Chips=chips, RetainController=True,
+                RetainDevices=True, Drain=True, ReuseSlot=False)))
+    for name, field, value, expected in (
+            ("early-controller-free", "RetainController", False, "ControllerStorage"),
+            ("early-chip-free", "RetainDevices", False, "MetadataStorage"),
+            ("no-drain", "Drain", False, "HardwareDrained"),
+            ("reused-card-storage", "ReuseSlot", True, "HandleIsolation")):
+        constants = dict(Chips=1, RetainController=True, RetainDevices=True,
+                         Drain=True, ReuseSlot=False)
+        constants[field] = value
+        result.append(dict(name="controller-" + name, module="NandControllerLifetime",
+            kind="mutation", expected=expected, constants=constants))
     return result
 
 if __name__ == "__main__":
-    raise SystemExit(tlc.main(sys.argv[1:], cases=cases(),
+    raise SystemExit(tlc.main(sys.argv[1:], cases=cases(), toolchain=TLC,
         modules={"NandRetainedLifetime": MODEL,
                  "MtdRetainedNumber": dict(invariants=["NoNameCollision"],
                      actions=["LastMtdPut", "ConsumerPut", "ProviderRelease",
-                              "DeviceRelease", "RegisterReplacement"])}))
+                              "DeviceRelease", "RegisterReplacement"]),
+                 "NandControllerLifetime": dict(invariants=["MetadataStorage", "ControllerStorage",
+                     "HardwareDrained", "HandleIsolation", "Exclusive"], actions=["Read", "Complete",
+                     "Put", "Unpublish", "Disconnect", "DropChip", "DevicePut", "ChipRelease",
+                     "HardwareOff", "DropBinding", "ControllerRelease", "RegisterReplacement"])}))

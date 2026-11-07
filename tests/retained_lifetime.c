@@ -31,31 +31,88 @@ static void multi_chip_test(void)
 {
     struct mtd_notifier notifier={.remove=removal_io};
     INIT_LIST_HEAD(&notifier.list); list_add_tail(&notifier.list,&mtd_notifiers);
-    struct device parent={.refs=2};
+    struct device parent={.refs=1};
     struct device_node node={0};
     struct sunxi_nfc *nfc=calloc(1,sizeof(*nfc)); assert(nfc);
     struct file files[2]={{.f_mode=FMODE_WRITE},{.f_mode=FMODE_WRITE}};
     struct inode inodes[2]={{.minor=0},{.minor=2}};
-    nfc->dev=&parent; kref_init(&nfc->refcnt); INIT_LIST_HEAD(&nfc->chips);
+    nfc->dev=&parent; INIT_LIST_HEAD(&nfc->chips);
+    assert(!devm_nand_controller_init(&parent,&nfc->controller,sunxi_nfc_release));
     cleaned=0; delay_release=false; driver_module.live=true;
     for(unsigned i=0;i<2;i++) {
         struct sunxi_nand_chip *sn=calloc(1,sizeof(*sn)); assert(sn);
         struct mtd_info *m=nand_to_mtd(&sn->nand);
         sn->nand.controller=&nfc->controller;
         INIT_LIST_HEAD(&sn->node); list_add_tail(&sn->node,&nfc->chips);
-        m->np=&node; node.refs++; m->name=strdup("chip"); m->owner=&driver_module;
+        m->np=&node; m->name="chip"; m->owner=&driver_module; m->dev.parent=&parent;
         m->type=1; m->flags=MTD_WRITEABLE; m->_sync=nand_sync;
-        m->_get_device=sunxi_nand_get_device; INIT_LIST_HEAD(&m->partitions);
-        kref_get(&nfc->refcnt); mtd_set_release(m,sunxi_nand_release); publish(m,m,i);
+        INIT_LIST_HEAD(&m->partitions);
+        assert(!nand_set_release(&sn->nand,sunxi_nand_release)); publish(m,m,i);
         assert(!mtdchar_open(&inodes[i],&files[i]));
     }
-    sunxi_nand_chips_cleanup(nfc); sunxi_nfc_put(nfc);
+    sunxi_nand_chips_cleanup(nfc); release_devres(&parent);
     assert(notifier_reads==2); list_del(&notifier.list);
     assert(!mtdchar_close(&inodes[0],&files[0]));
     assert(cleaned==1 && parent.refs==2);
     assert(!mtdchar_close(&inodes[1],&files[1]));
     assert(cleaned==2 && parent.refs==1 && !node.refs);
     assert(!driver_module.refs && !core_module.refs);
+}
+
+struct embedded_fixture { struct nand_controller controller; struct nand_chip chip; };
+static unsigned controllers_freed;
+static void embedded_release(struct nand_controller *controller)
+{ controllers_freed++; free(container_of(controller,struct embedded_fixture,controller)); }
+
+static void embedded_test(bool devres_first)
+{
+    struct device parent={.refs=1};
+    struct embedded_fixture *f=calloc(1,sizeof(*f)); assert(f);
+    struct mtd_info *m=&f->chip.mtd;
+    unsigned before=controllers_freed;
+    driver_module.live=true; delay_release=false;
+    f->chip.controller=&f->controller; m->dev.parent=&parent; m->owner=&driver_module;
+    assert(!devm_nand_controller_init(&parent,&f->controller,embedded_release));
+    assert(!nand_set_release(&f->chip,NULL));
+    assert(!strcmp(m->name,"controller") && parent.refs==2);
+    nand_disconnect(&f->chip);
+    if(devres_first) release_devres(&parent);
+    assert(controllers_freed==before);
+    mtd_put_master(m);
+    if(!devres_first) { assert(controllers_freed==before); release_devres(&parent); }
+    assert(controllers_freed==before+1 && parent.refs==1 && !driver_module.refs);
+}
+
+static void prepare_failure_test(void)
+{
+    struct device parent={.refs=1};
+    struct embedded_fixture *f=calloc(1,sizeof(*f)); assert(f);
+    unsigned before=controllers_freed;
+    action_alloc_fail=true;
+    assert(devm_nand_controller_init(&parent,&f->controller,embedded_release)==-ENOMEM);
+    action_alloc_fail=false;
+    assert(controllers_freed==before+1 && !parent.action);
+    f=calloc(1,sizeof(*f)); assert(f);
+    f->chip.controller=&f->controller; f->chip.mtd.dev.parent=&parent;
+    assert(!devm_nand_controller_init(&parent,&f->controller,embedded_release));
+    name_alloc_fail=true;
+    assert(nand_set_release(&f->chip,NULL)==-ENOMEM);
+    name_alloc_fail=false;
+    assert(!f->chip.mtd.name && !f->chip.mtd.master.release);
+    assert(f->controller.refcnt.n==1 && parent.refs==1);
+    release_devres(&parent);
+    assert(controllers_freed==before+2);
+}
+
+static void unmanaged_controller_test(void)
+{
+    struct nand_controller controller={0};
+    struct sunxi_nand_chip *sn=calloc(1,sizeof(*sn)); assert(sn);
+    struct mtd_info *m=&sn->nand.mtd;
+    sn->nand.controller=&controller; m->name="unmanaged"; m->owner=&driver_module;
+    assert(!nand_set_release(&sn->nand,sunxi_nand_release));
+    nand_disconnect(&sn->nand); mtd_put_master(m);
+    assert(!driver_module.refs);
 }
 
 int main(void)
@@ -67,24 +124,25 @@ int main(void)
     for(unsigned writable=0;writable<2;writable++)
     for(unsigned close_first=0;close_first<2;close_first++)
     for(unsigned extra_device_ref=0;extra_device_ref<2;extra_device_ref++)
-    for(unsigned unload=0;unload<2;unload++) {
+    for(unsigned unload=0;unload<3;unload++) {
         if(!depth && !master_registered) continue;
         if(unload && !close_first) continue; /* Open handles pin the provider. */
         if(unload && extra_device_ref) continue;
         assert(!driver_module.refs && !core_module.refs && !npending);
-        struct device parent={.refs=2}; /* fixture and controller ownership */
-        struct device_node node={.refs=1}; /* retained flash node */
+        struct device parent={.refs=1}; /* fixture ownership */
+        struct device_node node={0};
         struct sunxi_nfc *nfc=calloc(1,sizeof(*nfc)); assert(nfc);
         struct sunxi_nand_chip *sn=calloc(1,sizeof(*sn)); assert(sn);
         struct nand_chip *chip=&sn->nand;
         struct mtd_info *master=nand_to_mtd(chip), *leaf=master;
-        kref_init(&nfc->refcnt); nfc->dev=&parent; INIT_LIST_HEAD(&nfc->chips);
+        nfc->dev=&parent; INIT_LIST_HEAD(&nfc->chips);
+        assert(!devm_nand_controller_init(&parent,&nfc->controller,sunxi_nfc_release));
         INIT_LIST_HEAD(&sn->node); list_add_tail(&sn->node,&nfc->chips);
         chip->controller=&nfc->controller; master->np=&node;
-        master->name=strdup("NAND master"); master->owner=&driver_module;
+        master->name="NAND master"; master->owner=&driver_module; master->dev.parent=&parent;
         master->type=1; master->flags=MTD_WRITEABLE; master->_sync=nand_sync;
-        master->_get_device=sunxi_nand_get_device; INIT_LIST_HEAD(&master->partitions);
-        kref_get(&nfc->refcnt); mtd_set_release(master,sunxi_nand_release);
+        INIT_LIST_HEAD(&master->partitions);
+        assert(!nand_set_release(chip,sunxi_nand_release));
         cleaned=part_freed=0; delay_release=delayed; driver_module.live=true;
         if(master_registered) publish(master,master,0);
         for(unsigned d=1;d<=depth;d++) leaf=new_partition(leaf,d);
@@ -104,10 +162,14 @@ int main(void)
         assert(!nand_suspend(master)); waiting_chip=chip; suspend_wait_hook=disconnect_waiter;
         assert(nand_get_device(chip)==-ENODEV); suspend_wait_hook=NULL;
         assert(nand_suspend(master)==-ENODEV); nand_resume(master);
-        assert(sunxi_nand_get_device(master)==-ENODEV);
-        if(unload) { assert(!driver_module.refs); driver_module.live=false; }
+        assert(nand_mtd_get_device(master)==-ENODEV);
+        if(unload) {
+            assert(!driver_module.refs);
+            driver_module.live=unload==2;
+            driver_module.state=unload==1 ? MODULE_STATE_GOING : MODULE_STATE_COMING;
+        }
         sunxi_nand_chips_cleanup(nfc); assert(list_empty(&nfc->chips));
-        sunxi_nfc_put(nfc); /* last devres action, after hardware teardown */
+        release_devres(&parent); /* last devres action, after hardware teardown */
         assert(mtdchar_open(&inode,&files[2])==-ENODEV);
         if(!close_first) {
             assert(!cleaned && parent.refs==2);
@@ -122,6 +184,7 @@ int main(void)
         drain_devices();
         assert(cleaned==1 && part_freed==depth && !node.refs && parent.refs==1);
         assert(!driver_module.refs && !core_module.refs);
+        driver_module.live=true; driver_module.state=MODULE_STATE_LIVE;
         for(unsigned i=0;i<16;i++) assert(!mtd_idr[i] && !mtd_ids[i]);
         cases++;
     }
@@ -129,6 +192,8 @@ int main(void)
     struct completion done={0}; struct device failed={.data=&done};
     mtd_dev_release_done(&failed); assert(done.done);
     multi_chip_test(); cases++; opens+=2;
+    embedded_test(false); embedded_test(true); prepare_failure_test(); unmanaged_controller_test();
+    cases+=4;
     printf("Retained lifetime: %u schedules, %u successful file opens/closes\n",cases,opens);
     puts("ALL CHECKS PASSED");
 }

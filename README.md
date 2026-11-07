@@ -87,8 +87,10 @@ including compound read failures and subsequent controller reuse. The
 open/close into NAND locks and expose close/sync within the known unbind issue.
 The independent lifetime RFC now has pinned candidate-source checks and a
 disconnect/reference model, including suspended waiters and nested partition
-ownership. Real kernel unbind/rebind and full registration fault injection
-remain outstanding; the model is not a proof of all MTD backend lifetimes.
+ownership. Real-kernel tests exercise unbind/rebind with synthetic controllers
+under KASAN and lockdep. Exhaustive registration fault injection and physical
+controller coverage remain outstanding; these checks do not prove all MTD
+backend lifetimes.
 
 The [2026-11-04 real H616 measurements](docs/HARDWARE-MEASUREMENTS-20261104.md)
 add a restricted diagnostic module, sanitized captures and offline replay.
@@ -238,6 +240,36 @@ python3 run_mtdchar.py
 python3 run_mtdchar_admission.py
 python3 run_mtdchar_series.py
 ```
+
+The retained-handle runners cover the separate raw-NAND lifetime RFC. Run
+`run_retained_model.py --download` for its pinned TLC 1.7.4 models, and
+`run_retained_lifetime.py` for the committed C-function snapshot under
+ASan/UBSan. The latter also accepts `--kernel-tree` to check another candidate.
+Its module-state cases distinguish live bindings from failed initialization
+and module unload: the latter two must finish deferred releases before module
+text can disappear.
+
+`NandControllerLifetime` checks two successive bindings with up to two chips
+sharing each controller. It covers retained MTD and device references,
+operation draining, independent controller/chip releases, and replacement-card
+isolation. Negative controls free either object too early, omit the drain, or
+reuse card storage. These are bounded ownership models, not simulations of
+every controller's interrupts, DMA aborts or hardware registers.
+
+`audit_retained_drivers.py --kernel-tree PATH` inventories all 52 raw-NAND
+scan-provider families and their ownership hooks, including the SmartMedia
+and BCM47xx scan wrappers. This structural check detects missing conversions;
+it does not prove each driver's error-path ordering. SPI NAND, OneNAND and
+other MTD technologies are outside this inventory.
+
+The modules under `tests/kernel/retained_lifetime/` exercise the real MTD core
+and raw-NAND helpers. The synthetic controller test scans two chips, retains
+handles and a bare device reference across unbind, checks that old reads fail,
+and probes a replacement controller before dropping those references. Its
+release counters check that both generations are reclaimed exactly once. Run
+the supplied initramfs `init` with a kernel built with raw NAND, MTD NVMEM,
+KASAN and lockdep; the tests do not access physical flash. The `run` module
+parameters execute after module initialization, while the module is live.
 
 The three mtdchar model/trace/admission runners independently pin stable
 TLA+ Tools v1.7.4; their first command downloads and verifies it. This avoids

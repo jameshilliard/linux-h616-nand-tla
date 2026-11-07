@@ -238,7 +238,7 @@ out_part:
 	return ret;
 }
 
-static int __init retained_test_init(void)
+static int retained_test_run(const char *val, const struct kernel_param *kp)
 {
 	int ret;
 
@@ -256,6 +256,16 @@ static int __init retained_test_init(void)
 	pr_info("retained-lifetime: %s (%u releases)\n", ret ? "FAIL" : "PASS",
 		releases);
 	return ret;
+}
+
+static const struct kernel_param_ops run_ops = {
+	.set = retained_test_run,
+};
+module_param_cb(run, &run_ops, NULL, 0200);
+
+static int __init retained_test_init(void)
+{
+	return 0;
 }
 
 static void __exit retained_test_exit(void)

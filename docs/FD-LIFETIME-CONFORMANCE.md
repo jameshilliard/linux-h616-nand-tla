@@ -72,7 +72,39 @@ An expected counterexample passes only when its specifically named invariant
 fails; parser errors, sanitizer failures and unrelated violations are failures.
 No live unbind, flash write or production kernel change is performed.
 
-## Independent RFC implementation
+## Current raw-NAND lifetime RFC
+
+The current `submit/rawnand-retained-handle-lifetime-v1` draft contains 56
+patches: MTD ownership, NAND disconnection, shared chip/controller lifetime
+helpers, Macronix OTP locking, and 52 controller-family conversions. It
+remains independent of the sunxi OOB series and uses the NAND-next base and
+posted module-reference prerequisite described below.
+
+The candidate snapshot is kernel commit
+`c8305b3be6de1844d6f55d0559abd675b61afb87`. The source-extracted harness now
+passes 125 schedules with 242 successful file opens/closes under ASan/UBSan.
+It includes helper allocation failures, embedded chips, unmanaged controllers,
+and module initialization/unload ownership. `audit_retained_drivers.py`
+inventories every raw-NAND scan provider; its presence checks do not prove
+the correctness of each driver's ordering.
+
+The 16 TLC configurations comprise seven positive cases and nine deliberate
+faults. The shared-controller extension checks two successive bindings with
+up to two chips each, including replacement-media isolation. The real-kernel
+synthetic tests pass under KASAN and lockdep, reclaiming six MTD backing objects
+and four NAND chips/two controllers across their respective scenarios. Object
+builds cover x86 compile-test and the PowerPC/MIPS-specific drivers.
+
+These are bounded ownership checks, not physical-controller or universal
+DMA-abort proofs. Exhaustive per-driver probe-failure injection and hardware
+validation remain outstanding. SPI NAND, OneNAND and other MTD technologies
+are outside this raw-NAND inventory. The common API still needs subsystem
+review; no patches have been mailed as part of this validation.
+
+## Historical sunxi-only RFC implementation
+
+The following records describe the earlier three-patch prototype. The
+current source snapshot, inventory and test counts are given above.
 
 `submit/rawnand-retained-handle-lifetime-v1` is an independent, b4-managed
 RFC draft based on NAND `next` at
@@ -126,8 +158,8 @@ open/close, raw-NAND disconnect/locking/sync/PM, and sunxi final-release
 functions. Unlike the original witness fixture, it frees heap objects so
 ASan can detect premature metadata access.
 
-The pinned function bodies in `reference/retained-lifetime.json` come from
-candidate commit `59e798e59e6774d3e57ed6cfb3e77bb0c3eda62e`. The manifest records
+The prototype's function snapshot was taken from candidate commit
+`59e798e59e6774d3e57ed6cfb3e77bb0c3eda62e`. The current manifest records
 the source paths, full-file hashes and per-function hashes without local
 workspace paths. Use `--kernel-tree` to check another applied candidate.
 
