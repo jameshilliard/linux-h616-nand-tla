@@ -238,6 +238,11 @@ python3 run_mtdchar.py
 python3 run_mtdchar_admission.py
 ```
 
+The three `run_mtdchar*` runners independently pin stable TLA+ Tools v1.7.4;
+their first command downloads and verifies it. This avoids the rolling
+prerelease download used by the historical suite. Its older pin remains
+unchanged, and its URL may now fail checksum validation on a fresh download.
+
 `--download` fetches the official TLA+ tools v1.8.0 prerelease asset and verifies
 its pinned SHA-256. The exact build and asset ID are recorded in `source.json`;
 an upstream prerelease replacement will fail verification, not silently change

@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 from boundary_common import HERE, bodies, check
+from mtdchar_cases import TLC
 import run as tlc
 
 REFERENCE = HERE / "reference/mtdchar-chunks"
@@ -109,6 +110,7 @@ def main():
         return 0
     opts = ["--timeout", str(args.timeout)] + (["--download"] if args.download else [])
     return tlc.main(opts, cases=trace_cases(new, old), modules={"NandMtdCharTrace": MODEL},
+                    toolchain=TLC,
                     metadata=dict(source_pin=pin, candidate_source_sha256=hashlib.sha256(
                         candidate.encode()).hexdigest(),
                         source_reports=[str(p.relative_to(HERE)) for p in (old_out, new_out)]))

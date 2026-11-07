@@ -23,7 +23,10 @@ jobs:
           python3 tests/test_tlc_result.py
           python3 tests/test_mtdchar.py
       - name: Explore page, chunk and failure transitions
-        run: python3 run_mtdchar_model.py --download
+        run: |
+          mkdir -p results
+          set -o pipefail
+          python3 run_mtdchar_model.py --download 2>&1 | tee results/mtdchar-model.log
       - name: Check actual C traces and sanitizer/coverage results
         run: python3 run_mtdchar.py
       - name: Reproduce the independent admission-statistics bug
@@ -34,6 +37,7 @@ jobs:
         with:
           name: mtdchar-validation
           path: |
+            results/*.log
             results/**/summary.json
             results/**/tlc.log
             results/**/trace*.json

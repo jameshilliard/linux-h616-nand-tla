@@ -23,6 +23,15 @@ python3 run_mtdchar.py
 python3 run_mtdchar_admission.py
 ```
 
+These dedicated runners pin the official stable TLA+ Tools v1.7.4 release
+(TLC 2.19), including its SHA-256 and source revision in `mtdchar_cases.py`.
+The initial local checks also passed with the repository's cached November 3
+v1.8.0 prerelease. That prerelease's download asset was replaced upstream, so
+fresh downloads fail the historical checksum; it is not used by this workflow.
+The older NAND suite's toolchain pin and historical records are unchanged.
+Stable TLC records counterexample states in `tlc.log` rather than JSON trace
+files. The harness still requires the named invariant and its actual trace.
+
 The first runner exhaustively explores a finite protocol. The second executes
 actual C functions under ASan/UBSan, compares bytes with independently indexed
 media, then checks their recorded backend calls against TLA+. Its separate

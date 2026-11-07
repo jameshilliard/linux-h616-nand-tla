@@ -48,10 +48,11 @@ def invariant_counterexample(returncode, log, name):
              'CounterExample written: trace' in log))
 
 
-def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
+def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None, toolchain=None):
+    toolchain = SOURCE if toolchain is None else toolchain
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jar", type=Path, default=Path(os.environ.get(
-        "TLA2TOOLS_JAR", HERE / ".tools" / "tla2tools.jar")))
+        "TLA2TOOLS_JAR", HERE / ".tools" / toolchain.get("tlc_cache_file", "tla2tools.jar"))))
     parser.add_argument("--download", action="store_true",
                         help="download the pinned TLC jar if absent")
     parser.add_argument("--case", default="", help="substring filter")
@@ -75,12 +76,12 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
     jar = args.jar.resolve()
     if not jar.exists() and args.download:
         jar.parent.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(SOURCE["tlc_url"], timeout=60) as response:
+        with urllib.request.urlopen(toolchain["tlc_url"], timeout=60) as response:
             data = response.read()
-        if hashlib.sha256(data).hexdigest() != SOURCE["tlc_sha256"]:
+        if hashlib.sha256(data).hexdigest() != toolchain["tlc_sha256"]:
             parser.error("downloaded jar checksum mismatch")
         jar.write_bytes(data)
-    if not jar.exists() or digest(jar) != SOURCE["tlc_sha256"]:
+    if not jar.exists() or digest(jar) != toolchain["tlc_sha256"]:
         parser.error("TLC jar missing or checksum mismatch; use --download or --jar")
     results = HERE / "results"
     results.mkdir(exist_ok=True)
@@ -117,8 +118,10 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
         (case_dir / "model.cfg").write_text(cfg)
         command = ["java", "-Xmx1g", "-XX:+UseParallelGC", "-cp", str(jar),
                    "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "0",
-                   "-coverage", "1", "-dumpTrace", "json", "trace",
-                   "-metadir", "states", "-config", "model.cfg", wrapper + ".tla"]
+                   "-coverage", "1"]
+        if toolchain.get("tlc_json_traces", True):
+            command += ["-dumpTrace", "json", "trace"]
+        command += ["-metadir", "states", "-config", "model.cfg", wrapper + ".tla"]
         start = time.monotonic()
         try:
             run = subprocess.run(command, cwd=case_dir, text=True,
@@ -164,7 +167,8 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None):
                                 reached=sorted(reached[module]), missing=missing)
     passed = all(r["matched"] for r in summary)
     coverage_ok = all(not c["enforced"] or not c["missing"] for c in coverage.values())
-    report = dict(driver_sha256=SOURCE["driver_sha256"], tlc_sha256=SOURCE["tlc_sha256"],
+    report = dict(driver_sha256=SOURCE["driver_sha256"], tlc_sha256=toolchain["tlc_sha256"],
+                  tlc_version=toolchain["tlc_version"],
                   results=summary, coverage=coverage, passed=passed and coverage_ok,
                   model_sha256={name: hashlib.sha256(data).hexdigest()
                                 for name, data in model_inputs.items()})

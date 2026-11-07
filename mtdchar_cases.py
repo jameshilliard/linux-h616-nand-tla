@@ -2,12 +2,20 @@
 """Exhaustive small requests, realistic ratios, mutations and assumptions."""
 from itertools import product
 
+# Official stable release, independently pinned from the historical NAND runs.
+# The rolling v1.8.0 prerelease replaces its asset in place, breaking downloads.
+TLC = dict(tlc_version="1.7.4", tlc_build="2024-08-08",
+           tlc_revision="5a47802b5c391f59ecdd44117981f4ff8c0656ba",
+           tlc_sha256="936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+           tlc_url="https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar",
+           tlc_cache_file="tla2tools-1.7.4.jar", tlc_json_traces=False)
+
 MODEL = dict(invariants=["BufferBounds", "ByteIdentity", "ExactlyOnce", "Progress",
                          "OwnedDuringIO", "ReturnedClean", "Complete", "EccPriority"],
              actions=["Validate", "AllocateData", "AllocateOob", "AllocationFailure",
                       "Loop", "Prepare", "CopyData", "CopyOob", "CopyFailure",
                       "Bounds", "Page", "BackendFailure", "BackendReturn",
-                      "Account", "Finish"])
+                      "Account", "Finish"], toolchain=TLC)
 
 
 def request(w=4, o=3, pages=2, start=4, data=20, spare=15,

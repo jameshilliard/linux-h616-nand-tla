@@ -5,7 +5,7 @@ import argparse
 import hashlib
 
 from boundary_common import HERE, bodies, check
-from run_mtdchar import REFERENCE, snapshot
+from run_mtdchar import TLC, snapshot
 import run as tlc
 
 
@@ -50,7 +50,7 @@ def main():
                  ("rejected-uninitialized", False, True, "DefinedStatistics"),
                  ("admitted-uninitialized", False, False, None),
                  ("rejected-initialized", True, True, None))]
-    return tlc.main(["--download"] if args.download else [], cases=cases,
+    return tlc.main(["--download"] if args.download else [], cases=cases, toolchain=TLC,
                     modules={"NandMtdCharStats": dict(invariants=["DefinedStatistics"],
                                                      actions=["Core", "Accumulate"])},
                     metadata=dict(source_pin=pin, wrapper_sha256=hashlib.sha256(wrapper.encode()).hexdigest(),

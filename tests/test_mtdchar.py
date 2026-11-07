@@ -5,11 +5,18 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mtdchar_cases import cases
+from mtdchar_cases import MODEL, TLC, cases
 from run_mtdchar import snapshot
 
 
 class MtdCharInputs(unittest.TestCase):
+    def test_stable_toolchain(self):
+        self.assertEqual(MODEL["toolchain"], TLC)
+        self.assertEqual(TLC["tlc_version"], "1.7.4")
+        self.assertEqual(TLC["tlc_sha256"],
+                         "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88")
+        self.assertFalse(TLC["tlc_json_traces"])
+
     def test_profiles(self):
         rows = cases()
         self.assertEqual(len({c["name"] for c in rows}), len(rows))

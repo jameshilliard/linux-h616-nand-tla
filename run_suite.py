@@ -42,7 +42,8 @@ def main():
     args=parser.parse_args()
     if args.module:
         return tlc.main([],cases=[c for c in CASES if c["module"]==args.module],
-                        modules={args.module:MODULES[args.module]})
+                        modules={args.module:MODULES[args.module]},
+                        toolchain=MODULES[args.module].get("toolchain"))
     if not args.candidate_source: parser.error("--candidate-source is required")
     if args.workers<1: parser.error("--workers must be positive")
     (HERE/"results").mkdir(exist_ok=True)
