@@ -27,6 +27,8 @@ def main():
     parser.add_argument("--expect-failure", action="store_true")
     parser.add_argument("--input-dtb", type=Path,
                         help="also check the real H616 board handoff DT")
+    parser.add_argument("--board-single-map", action="store_true",
+                        help="the board input uses BootROM-tagged fixed partitions")
     parser.add_argument("--output-dtb", type=Path,
                         help="save the alias-free board DT (requires --input-dtb)")
     args = parser.parse_args()
@@ -139,6 +141,24 @@ def main():
         cases.append(('nand@0 { reg = <0>; ' + wide + areas + ' };',
                       "/nand/nand@0/partitions", "/nand/nand@0/boot-areas",
                       1, 1, 15, error))
+    if "sunxi_fdt_restore_boot0_partitions(" in extracted:
+        for boot_props in ("", 'read-only;', 'status = "disabled";'):
+            for wide_cells in (False, True):
+                entries = "".join(boot_node(i, i * 0x40000, 0x40000, boot_props)
+                                  for i in range(4)).replace("boot0@", "partition@")
+                if wide_cells:
+                    import re
+                    entries = re.sub(r'reg = <(0x[0-9a-f]+) (0x[0-9a-f]+)>',
+                                     r'reg = <0 \1 0 \2>', entries)
+                single = ('partitions { compatible = "fixed-partitions"; ' +
+                          (wide if wide_cells else props) + entries + ' };')
+                cases.append(('nand@0 { reg = <0>; ' + props + single + ' };',
+                              "/nand/nand@0/partitions", "/sentinel", 1, 3, 0, 0))
+        for bad in (boot_node(0, 0x100, 0x40000), boot_node(0, 0x20000000, 0x40000),
+                    boot_node(0, 0, 0x40000) + boot_node(1, 0x100, 0x40000)):
+            single = 'partitions { compatible = "fixed-partitions"; ' + props + bad + ' };'
+            cases.append(('nand@0 { reg = <0>; ' + props + single + ' };',
+                          "/nand/nand@0/partitions", "/sentinel", 1, 3, 0, 1))
     with tempfile.TemporaryDirectory(prefix="uboot-partition-fixup-") as directory:
         work = Path(directory)
         (work / "fixup-under-test.c").write_text(extracted)
@@ -146,6 +166,10 @@ def main():
         exe = work / "check"
         flags = (["-DHAVE_BOOT0_FIXUP=1"]
                  if "sunxi_fdt_finalize_nand_partitions(" in extracted else [])
+        if "sunxi_fdt_restore_boot0_partitions(" in extracted:
+            flags.append("-DHAVE_SINGLE_MAP=1")
+        if 'fdt_setprop(blob, newoff, "read-only"' in extracted:
+            flags.append("-DHAVE_READ_ONLY=1")
         subprocess.run(["cc", "-g", "-O1", "-fsanitize=address,undefined", *flags,
                         "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
                         "-I" + str(work), str(fixture), "-lfdt", "-o", str(exe)], check=True)
@@ -169,7 +193,9 @@ def main():
             output = args.output_dtb or work / "board.dtb"
             result = subprocess.run(
                 [str(exe), str(args.input_dtb), str(output), parent + "/partitions",
-                 parent + "/boot-areas", "1", "1", "15", "0",
+                 "/chosen" if args.board_single_map else parent + "/boot-areas",
+                 "1", "3" if args.board_single_map else "1",
+                 "0" if args.board_single_map else "15", "0",
                  "allwinner,sun50i-h616-nand-controller"],
                 capture_output=True, text=True)
             print("Board DT:", "FAIL" if result.returncode else "PASS")

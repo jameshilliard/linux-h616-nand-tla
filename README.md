@@ -33,6 +33,10 @@ The [alias-free BootROM layout checks](docs/H616-RETAINED-LIFETIME-HARDWARE.md#a
 exercise U-Boot's OS partition fixup with libfdt and sanitizers, including
 legacy layouts and rejection of partial overlaps. These are extracted-code
 host checks, not an additional TLA+ proof or a new hardware result.
+The [single partition-map prototype](docs/BOOT0-PARTITION-MAP.md) places
+format-tagged BootROM regions alongside ordinary fixed partitions. Its
+extracted-code checks cover routing, geometry, overlap rejection, registration
+failures and preservation of the format tags through the bootloader handoff.
 The earlier [minimal v11 draft](docs/MINIMAL-V11.md) keeps v10's organization and
 checks the live scrambling flag in the ordinary marker callback. It uses
 one ordinary-format operations table and the original NAND-core BBT scan.

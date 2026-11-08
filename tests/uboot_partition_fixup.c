@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /* Host adapters for the actual U-Boot partition fixup implementation. */
 #include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -104,20 +105,65 @@ int main(int argc, char **argv)
 	int saved_size = snapshot(blob, argv[4], false);
 	unsigned int removed = strtoul(argv[7], NULL, 0);
 	bool expect_error = atoi(argv[8]);
+#ifdef HAVE_SINGLE_MAP
+	bool format[7] = {}, readonly[7] = {}, disabled[7] = {};
+	char labels[7][80] = {};
+	if (atoi(argv[6]) == 3 && !expect_error) {
+		int parent = fdt_path_offset(blob, argv[3]), node;
+		fdt_for_each_subnode(node, blob, parent) {
+			u64 start, size;
+			if (fdt_node_check_compatible(blob, node, "allwinner,sun50i-h616-nand-boot0"))
+				continue;
+			assert(!sunxi_fdt_nand_range(blob, node, &start, &size));
+			int i = start / 0x40000;
+			assert(i < 4);
+			format[i] = true;
+			readonly[i] = fdt_getprop(blob, node, "read-only", NULL) != NULL;
+			disabled[i] = !fdtdec_get_is_enabled(blob, node);
+			snprintf(labels[i], sizeof(labels[i]), "%s", (const char *)fdt_getprop(blob, node, "label", NULL));
+		}
+	}
+#endif
 	for (int pass = 0; pass < 2; pass++) {
+#ifdef HAVE_SINGLE_MAP
+		void *original = malloc(fdt_totalsize(blob));
+		assert(original);
+		memcpy(original, blob, fdt_totalsize(blob));
+		if (atoi(argv[6]) == 3) {
+			int ret = sunxi_fdt_fixup_nand_partitions(blob, nodes, 1);
+			if ((ret < 0) != expect_error)
+				fprintf(stderr, "fixup returned %d, expected_error=%d, pass=%d\n", ret, expect_error, pass);
+			assert((ret < 0) == expect_error);
+			goto verify;
+		}
+#endif
 		if (atoi(argv[5]))
 			assert(!sunxi_fdt_prepare_fixed_partitions(blob, nodes, 1));
 		fdt_fixup_mtdparts(blob, nodes, 1);
 		if (atoi(argv[6])) {
-			int ret = sunxi_fdt_finalize_nand_partitions(blob, nodes, 1);
+			int ret = sunxi_fdt_finalize_nand_partitions(blob,
+#ifdef HAVE_SINGLE_MAP
+								  original,
+#endif
+								  nodes, 1);
 
 			assert((ret < 0 && ret != -FDT_ERR_NOTFOUND) == expect_error);
 			if (!ret && !expect_error) {
 				/* The post-fixup helper alone must also be idempotent. */
-				assert(!sunxi_fdt_finalize_nand_partitions(blob, nodes, 1));
+				assert(!sunxi_fdt_finalize_nand_partitions(blob,
+#ifdef HAVE_SINGLE_MAP
+									 original,
+#endif
+									 nodes, 1));
 			}
 		}
+#ifdef HAVE_SINGLE_MAP
+verify:
+#endif
 		assert(snapshot(blob, argv[4], true) == saved_size);
+#ifdef HAVE_SINGLE_MAP
+		free(original);
+#endif
 		if (expect_error)
 			continue;
 		int parent = fdt_path_offset(blob, argv[3]), off, index = 0, count = 0;
@@ -130,13 +176,25 @@ int main(int argc, char **argv)
 			while (removed & (1U << index))
 				index++;
 			assert(index < 7 && label && reg && len == 2 * cells * sizeof(*reg));
-			assert(!strcmp(label, parts[index].name));
+#ifdef HAVE_SINGLE_MAP
+			if (format[index]) {
+				assert(!strcmp(label, labels[index]));
+				assert(!fdt_node_check_compatible(blob, off, "allwinner,sun50i-h616-nand-boot0"));
+				assert((fdt_getprop(blob, off, "read-only", NULL) != NULL) == readonly[index]);
+				assert(!fdtdec_get_is_enabled(blob, off) == disabled[index]);
+			} else
+#endif
+				assert(!strcmp(label, parts[index].name));
 			assert(fdtdec_get_number(reg, cells) == parts[index].offset);
 			assert(fdtdec_get_number(reg + cells, cells) == parts[index].size);
-			if (atoi(argv[6]) == 1 && index == 6)
+			if ((atoi(argv[6]) == 1 || atoi(argv[6]) == 3) && index == 6)
 				assert(!fdt_node_check_compatible(blob, off, "linux,ubi"));
 			if (index == 5)
+#ifdef HAVE_READ_ONLY
+				assert(fdt_getprop(blob, off, "read-only", NULL));
+#else
 				assert(fdt_getprop(blob, off, "read_only", NULL));
+#endif
 			count++;
 			index++;
 		}

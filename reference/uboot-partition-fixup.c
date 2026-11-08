@@ -158,7 +158,7 @@ add_sub:
 		/* Check MTD_WRITEABLE_CMD flag */
 		if (part->mask_flags & 1) {
 add_ro:
-			ret = fdt_setprop(blob, newoff, "read_only", NULL, 0);
+			ret = fdt_setprop(blob, newoff, "read-only", NULL, 0);
 			if (ret == -FDT_ERR_NOSPACE) {
 				ret = fdt_increase_size(blob, 512);
 				if (!ret)
@@ -306,6 +306,13 @@ static int sunxi_fdt_prepare_fixed_partitions(void *blob,
 					fdt_find_or_add_subnode(blob, chip, "partitions");
 				if (partitions < 0)
 					return partitions;
+				address_cells =
+					fdt_getprop_u32_default_node(blob, partitions, 0,
+								     "#address-cells",
+								     address_cells);
+				size_cells =
+					fdt_getprop_u32_default_node(blob, partitions, 0,
+								     "#size-cells", size_cells);
 
 				ret = fdt_setprop_string(blob, partitions, "compatible",
 							 "fixed-partitions");
@@ -333,7 +340,8 @@ static int sunxi_fdt_mark_ubi_partition(void *blob, int partitions)
 	fdt_for_each_subnode(part, blob, partitions) {
 		const char *label = fdt_getprop(blob, part, "label", NULL);
 
-		if (!label || strcmp(label, "UBI"))
+		if (!label || strcmp(label, "UBI") ||
+		    !fdt_node_check_compatible(blob, part, "allwinner,sun50i-h616-nand-boot0"))
 			continue;
 
 		ret = fdt_setprop_string(blob, part, "compatible", "linux,ubi");
@@ -425,7 +433,88 @@ restart:
 	return 0;
 }
 
+static int sunxi_fdt_restore_boot0_partitions(void *blob, const void *original,
+					      int chip, int partitions)
+{
+	char path[256];
+	int old_chip, old_parts, boot, earlier, part, prop, ret;
+
+	ret = fdt_get_path(blob, chip, path, sizeof(path));
+	if (ret)
+		return ret;
+	old_chip = fdt_path_offset(original, path);
+	if (old_chip < 0)
+		return old_chip;
+	old_parts = fdt_subnode_offset(original, old_chip, "partitions");
+	if (old_parts == -FDT_ERR_NOTFOUND)
+		return 0;
+	if (old_parts < 0)
+		return old_parts;
+
+	fdt_for_each_subnode(boot, original, old_parts) {
+		u64 boot_start, boot_size;
+		bool found = false;
+
+		if (fdt_node_check_compatible(original, boot, "allwinner,sun50i-h616-nand-boot0"))
+			continue;
+		ret = sunxi_fdt_nand_range(original, boot, &boot_start, &boot_size);
+		if (ret)
+			return ret;
+		fdt_for_each_subnode(earlier, original, old_parts) {
+			u64 start, size;
+
+			if (earlier == boot)
+				break;
+			if (fdt_node_check_compatible(original, earlier,
+						      "allwinner,sun50i-h616-nand-boot0"))
+				continue;
+			ret = sunxi_fdt_nand_range(original, earlier, &start, &size);
+			if (ret)
+				return ret;
+			if (start < boot_start + boot_size && boot_start < start + size)
+				return -FDT_ERR_BADVALUE;
+		}
+		fdt_for_each_subnode(part, blob, partitions) {
+			u64 start, size;
+
+			ret = sunxi_fdt_nand_range(blob, part, &start, &size);
+			if (ret)
+				return ret;
+			if (start >= boot_start + boot_size || boot_start >= start + size)
+				continue;
+			if (start != boot_start || size != boot_size || found)
+				return -FDT_ERR_BADVALUE;
+			found = true;
+
+			fdt_for_each_property_offset(prop, original, boot) {
+				const char *name;
+				const void *value;
+				int len;
+
+				value = fdt_getprop_by_offset(original, prop, &name, &len);
+				if (!value)
+					return len;
+				/* Keep the cell encoding of the new partition table. */
+				if (!strcmp(name, "reg") || !strcmp(name, "name"))
+					continue;
+				ret = fdt_setprop(blob, part, name, value, len);
+				if (ret == -FDT_ERR_NOSPACE) {
+					ret = fdt_increase_size(blob, len + strlen(name) + 32);
+					if (!ret)
+						ret = fdt_setprop(blob, part, name, value, len);
+				}
+				if (ret)
+					return ret;
+			}
+		}
+		if (!found)
+			return -FDT_ERR_BADVALUE;
+	}
+	return 0;
+}
+
 static int sunxi_fdt_finalize_nand_partitions(void *blob,
+					      const void *original,
 					      const struct node_info *nodes,
 					      int node_count)
 {
@@ -454,6 +543,10 @@ static int sunxi_fdt_finalize_nand_partitions(void *blob,
 				if (partitions < 0)
 					return partitions;
 
+				ret = sunxi_fdt_restore_boot0_partitions(blob, original,
+									 chip, partitions);
+				if (ret)
+					return ret;
 				ret = sunxi_fdt_remove_boot0_partitions(blob, chip, partitions);
 				if (ret)
 					return ret;
@@ -468,4 +561,29 @@ static int sunxi_fdt_finalize_nand_partitions(void *blob,
 	}
 
 	return found ? 0 : -FDT_ERR_NOTFOUND;
+}
+
+static int sunxi_fdt_fixup_nand_partitions(void *blob, const struct node_info *nodes,
+					   int node_count)
+{
+	void *original;
+	int ret, size = fdt_totalsize(blob);
+
+	/* The generic fixup replaces nodes, including their format properties. */
+	original = malloc(size);
+	if (!original)
+		return -ENOMEM;
+	memcpy(original, blob, size);
+	ret = sunxi_fdt_prepare_fixed_partitions(blob, nodes, node_count);
+	if (ret && ret != -FDT_ERR_NOTFOUND)
+		goto out;
+	fdt_fixup_mtdparts(blob, nodes, node_count);
+	ret = sunxi_fdt_finalize_nand_partitions(blob, original, nodes, node_count);
+	if (ret == -FDT_ERR_NOTFOUND)
+		ret = 0;
+out:
+	if (ret)
+		memcpy(blob, original, size);
+	free(original);
+	return ret;
 }
