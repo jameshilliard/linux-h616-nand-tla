@@ -36,6 +36,7 @@ struct mtd_info {
     struct { struct list_head node; } part;
     struct {
         struct lock partitions_lock;
+        bool unregistering;
         struct kref life_refcnt;
         void (*release)(struct mtd_info *);
         struct module *release_owner;
@@ -67,6 +68,8 @@ struct sunxi_nfc { struct nand_controller controller; struct device *dev; struct
 #define mtd_has_partitions(m) (!list_empty(&(m)->partitions))
 #define mtd_get_of_node(m) ((m)->np)
 #define CONFIG_MTD_VIRT_CONCAT 0
+#define CONFIG_MTD_PARTITIONED_MASTER 0
+#define IS_ENABLED(x) (x)
 #define IS_REACHABLE(x) (x)
 #define WARN_ON(x) assert(!(x))
 #define READ_ONCE(x) (x)

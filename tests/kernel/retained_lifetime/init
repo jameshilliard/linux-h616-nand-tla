@@ -35,6 +35,15 @@ if /bin/busybox insmod /otp_lifetime_test.ko &&
 else
     echo "OTP-LIFETIME-QEMU: FAIL"
 fi
+if [ -f /review_lifetime_test.ko ]; then
+    if /bin/busybox insmod /review_lifetime_test.ko &&
+       echo 1 > /sys/module/review_lifetime_test/parameters/run &&
+       /bin/busybox rmmod review_lifetime_test; then
+        echo "REVIEW-LIFETIME-QEMU: PASS"
+    else
+        echo "REVIEW-LIFETIME-QEMU: FAIL"
+    fi
+fi
 if [ -f /mtd.ko ]; then
     for mod in nand nandcore mtd; do
         if /bin/busybox rmmod "$mod"; then

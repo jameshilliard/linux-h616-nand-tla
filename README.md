@@ -26,7 +26,10 @@ The [late manufacturer-init checks](docs/BOUNDARY-VALIDATION.md#late-manufacture
 exercise a scrambling flag set after controller attach. They reproduce the
 ordinary-format marker regression in the pinned submission and check the v11
 correction against existing-image reads and new-write representation separately.
-The [minimal v11 draft](docs/MINIMAL-V11.md) keeps v10's organization and
+The [current verification index](docs/CURRENT-DRIVER.md) describes the
+29-patch v11 draft, the independently applicable existing-driver prefix,
+and the [prerequisite review corrections](docs/PREREQUISITE-REVIEW-V2.md).
+The earlier [minimal v11 draft](docs/MINIMAL-V11.md) keeps v10's organization and
 checks the live scrambling flag in the ordinary marker callback. It uses
 one ordinary-format operations table and the original NAND-core BBT scan.
 The experimental [single-install policy checks](docs/BOUNDARY-VALIDATION.md#single-install-oob-policy)

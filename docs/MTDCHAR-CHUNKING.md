@@ -1,5 +1,34 @@
 # MTD character-device page/OOB chunking
 
+## Review correction: complete the OOB tail
+
+The four-patch v2 draft adds `6c4f993ed125` to the posted three-patch v1.
+It continues after the data stream finishes, switches remaining operations
+to OOB-only mode, advances beyond a final partial data page, and limits
+OOB-only writes to one page for raw NAND. The pinned correction lives in
+`reference/mtdchar-chunks-v2/`; its digest is checked before applying it to
+the unchanged v1 function snapshot in a temporary directory.
+
+Run `python3 run_mtdchar.py --v2` to reproduce the new checks. The source
+bodies reconstructed this way match the integrated candidate exactly.
+The v2 command is self-contained for CI; the default command and three-stage
+runner retain the earlier version as a control. The model's `CompleteOob`
+parameter distinguishes the two algorithms explicitly.
+
+The v2 matrix passes 5,771 transfers, including 300 short-data/long-OOB
+cases, with no mismatch. Four focused v1 cases reproduce truncated OOB
+completion. All 17 bounded protocol expectations and nine source-trace
+expectations pass. The allocation, user-copy, transport and ECC checks,
+24 partial failures, 18 request edges, 81 ECC sequences and 1,375,584
+arithmetic cases also pass. Six harness unit tests pass. These are bounded
+host/model results, not physical NAND or unrestricted C proofs.
+
+The corrected revision is not yet posted to the mailing list and is not
+declared as a published prerequisite. The historical results below retain
+their original source identifiers, bounds and counts.
+
+## Historical three-patch validation
+
 This extension validates the independent mtdchar page/OOB chunking fixes,
 not the Boot0 mapper or the sunxi controller implementation. The current
 submission draft is a three-patch v1 series. The source snapshot includes

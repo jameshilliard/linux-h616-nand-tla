@@ -64,6 +64,7 @@ struct file { void *private_data; };
 static struct mtd_info *mtd_get_master(struct mtd_info *mtd) { return mtd; }
 static u32 mtd_div_by_ws(u64 n, struct mtd_info *mtd) { return n / mtd->writesize; }
 static u32 mtd_mod_by_ws(u64 n, struct mtd_info *mtd) { return n % mtd->writesize; }
+#define DIV_ROUND_UP_ULL(n, d) (((uint64_t)(n) + (d) - 1) / (d))
 static u32 mtd_oobavail(struct mtd_info *mtd, struct mtd_oob_ops *ops)
 {
 	return ops->mode == MTD_OPS_AUTO_OOB ? mtd->oobavail : mtd->oobsize;
@@ -110,3 +111,6 @@ static int chunk_copy(void *to, const void *from, size_t len)
 #define kvfree(p) chunk_free(p)
 #define copy_from_user chunk_copy
 #define copy_to_user chunk_copy
+#ifndef CHECK_TAIL_CONTROL
+#define CHECK_TAIL_CONTROL 0
+#endif

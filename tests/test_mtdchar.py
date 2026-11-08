@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mtdchar_cases import MODEL, TLC, cases
-from run_mtdchar import snapshot
+from run_mtdchar import snapshot, v2_candidate
 from run_mtdchar_series import compare, stages
 from run_core import extract
 
@@ -60,6 +60,15 @@ class MtdCharInputs(unittest.TestCase):
                             extract(second, "mtdchar_read_ioctl"))
         self.assertEqual(extract(first, "mtdchar_write_ioctl"),
                          extract(second, "mtdchar_write_ioctl"))
+
+    def test_v2_pin(self):
+        src, _ = snapshot()
+        candidate = v2_candidate(src["candidate.c"])
+        self.assertIn("mtdchar_next_offset", candidate)
+        for name in ("mtdchar_read_ioctl", "mtdchar_write_ioctl"):
+            body = extract(candidate, name)
+            self.assertIn("while (req.len > 0 || req.ooblen > 0)", body)
+            self.assertIn(".datbuf = req.len ? datbuf : NULL", body)
 
     def test_split_regression_gate(self):
         row = dict(width=64, spare=16, avail=8, erase=256, size=4096,

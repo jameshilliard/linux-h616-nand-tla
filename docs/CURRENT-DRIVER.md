@@ -1,6 +1,25 @@
 # Current sunxi driver verification
 
-## Current submission draft: minimal late-initialization correction
+## Current submission draft: BootROM views and reviewed prerequisites
+
+The 29-patch v11 draft is now `d657df3765d2`, with driver digest
+`60f5efccbeaeda4f8ccefc3e07be396bb5557dac147310a6ff244a58e4aa81d3`.
+Patches 1–24 prepare and fix the existing driver, patches 25–27 add shared
+serialization and BootROM views, and patches 28–29 add the vendor format.
+The BootROM patch now includes interface documentation for physical and
+logical geometry, raw records, bad-block reporting and native aliases.
+This documentation-only update preserves the driver used by the
+[retained-lifetime hardware tests](H616-RETAINED-LIFETIME-HARDWARE.md).
+
+The [prerequisite review update](PREREQUISITE-REVIEW-V2.md) records the new
+mtdchar and lifetime corrections, their validation and remaining limits.
+A separate 24-patch prefix applies directly to the NAND base without either
+generic series. The combined preparation snapshot includes the corrected
+local prerequisites, but those revisions still need mailing-list publication
+before they can replace the submission's posted dependency references.
+No new physical-board results are attributed to the corrected prerequisites.
+
+## Earlier submission draft: minimal late-initialization correction
 
 The 26-patch v11 draft ends at `82d7d88fc332`, with driver digest
 `6a4e8c05d61e02a09275a4b434203df33e0ea2be48b5c33d6454329e35f5e02b`.

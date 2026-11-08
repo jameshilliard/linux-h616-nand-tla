@@ -70,7 +70,13 @@ if __name__ == "__main__":
                 assert hashlib.sha256(body.encode()).hexdigest() == entry["functions_sha256"][fn]
             src[name] = "\n\n".join(entry["functions"].values())
     code, proto, hashes = bodies(src, FUNCTIONS)
+    # Retain the historical pin as a control while checking revised callbacks.
+    external_owner = "__module_get" not in extract(src["mtdcore.c"], "mtd_otp_nvmem_get")
+    disconnected_pm_ok = "-ENODEV" not in extract(src["nand_base.c"], "nand_suspend")
+    defines = (f"#define EXTERNAL_OTP_OWNER {int(external_owner)}\n"
+               f"#define DISCONNECTED_PM_OK {int(disconnected_pm_ok)}\n")
     check("retained-lifetime", {"check.c":
+        defines +
         (HERE / "tests/boundary_list.h").read_text() +
         (HERE / "tests/retained_lifetime.h").read_text() + proto + "\n" + code +
         '\n#line 1 "retained_lifetime.c"\n' +

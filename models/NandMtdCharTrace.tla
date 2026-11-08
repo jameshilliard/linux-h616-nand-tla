@@ -3,11 +3,12 @@
 \* Check actual extracted ioctl calls against both the modeled planner and an
 \* independent stream-address oracle. Fatal-return progress is not committed.
 EXTENDS Integers, Sequences
-CONSTANTS Trials, Mutation, CheckPlan
+CONSTANTS Trials, Mutation, CheckPlan, CompleteOob
 VARIABLES r, s
 vars == <<r,s>>
 Planner == INSTANCE NandMtdCharChunks
-           WITH Requests <- <<>>, Faults <- FALSE, Mutation <- "none"
+           WITH Requests <- <<>>, Faults <- FALSE, Mutation <- "none",
+                CompleteOob <- CompleteOob
 Min(a,b) == IF a < b THEN a ELSE b
 Max(a,b) == IF a > b THEN a ELSE b
 Cover(n,w) == IF n = 0 THEN 0 ELSE (n-1) \div w + 1
@@ -41,8 +42,7 @@ Step ==
            !.lastPage = IF rows > 0 THEN first+rows-1 ELSE @,
            !.dd = @ + IF ok THEN rd ELSE 0,
            !.od = @ + IF ok THEN ro ELSE 0,
-           !.at = @ + IF ~ok THEN 0 ELSE IF r.hasData
-                      THEN rd ELSE (ro \div r.avail)*r.width,
+           !.at = IF ~ok THEN @ ELSE Planner!NextOffset(s.at,rd,ro),
            !.code = c[6], !.i = @+1]
 Finish == /\ s.pc = "step" /\ s.i > Len(r.calls)
           /\ s' = [s EXCEPT !.pc = "done"]
@@ -56,5 +56,7 @@ SourceOnce == s.unique
 SourceReturn == s.pc = "done" =>
                 (r.code = s.code /\
                  (~r.read \/ r.reported = <<s.dd,s.od>>))
+SourceComplete == (CompleteOob /\ s.pc = "done" /\ r.code \in {0,-117,-74}) =>
+                  (s.dd = r.data /\ s.od = r.oob)
 Terminates == <> (s.pc = "done")
 =============================================================================

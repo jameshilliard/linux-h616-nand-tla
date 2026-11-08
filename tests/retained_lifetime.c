@@ -129,6 +129,7 @@ static void otp_test(bool master_registered, bool reverse)
     sn->nand.controller=&controller; m->name="OTP"; m->owner=&driver_module;
     m->dev.parent=&parent; m->np=&node; INIT_LIST_HEAD(&m->partitions);
     assert(!nand_set_release(&sn->nand,sunxi_nand_release));
+    if(EXTERNAL_OTP_OWNER) { __module_get(THIS_MODULE); __module_get(THIS_MODULE); }
     mtd_otp_nvmem_get(m); mtd_otp_nvmem_get(m);
     m->otp_user_nvmem=&providers[0]; m->otp_factory_nvmem=&providers[1];
     if(master_registered) publish(m,m,0);
@@ -140,9 +141,11 @@ static void otp_test(bool master_registered, bool reverse)
     assert(cleaned==before && core_module.refs==2 && driver_module.refs==1);
     unsigned first=reverse?1:0, last=first^1;
     mtd_otp_nvmem_put(providers[first].mtd);
+    if(EXTERNAL_OTP_OWNER) { assert(core_module.refs==2); module_put(THIS_MODULE); }
     assert(cleaned==before && core_module.refs==1);
     assert(nand_get_device(&sn->nand)==-ENODEV);
     mtd_otp_nvmem_put(providers[last].mtd);
+    if(EXTERNAL_OTP_OWNER) { assert(core_module.refs==1); module_put(THIS_MODULE); }
     assert(cleaned==before+1 && !core_module.refs && !driver_module.refs);
     assert(parent.refs==1 && !node.refs);
 }
@@ -193,7 +196,7 @@ int main(void)
         /* A suspended reader wakes when disconnect occurs, without resume. */
         assert(!nand_suspend(master)); waiting_chip=chip; suspend_wait_hook=disconnect_waiter;
         assert(nand_get_device(chip)==-ENODEV); suspend_wait_hook=NULL;
-        assert(nand_suspend(master)==-ENODEV); nand_resume(master);
+        assert(nand_suspend(master)==(DISCONNECTED_PM_OK ? 0 : -ENODEV)); nand_resume(master);
         assert(nand_mtd_get_device(master)==-ENODEV);
         if(unload) {
             assert(!driver_module.refs);

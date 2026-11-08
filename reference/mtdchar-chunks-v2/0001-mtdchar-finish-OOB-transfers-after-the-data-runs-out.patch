@@ -1,0 +1,130 @@
+From 6c4f993ed12558b02098620784b3df1056809e96 Mon Sep 17 00:00:00 2001
+From: James Hilliard <james.hilliard1@gmail.com>
+Date: Sat, 7 Nov 2026 19:39:03 -0700
+Subject: [PATCH] mtdchar: finish OOB transfers after the data runs out
+
+A combined request can consume all of its data while OOB still needs
+another buffer-sized chunk. The ioctl loop then stops because the user
+data pointer remains non-NULL. MEMREAD reports a short OOB count and
+MEMWRITE can return success without programming the remaining OOB.
+
+Continue until both streams are exhausted. Limit combined operations to
+the pages covered by their data and pass a NULL data buffer for the
+remaining OOB-only operations. Advance past the pages visited by either
+stream, including a final partial data page. Limit OOB-only writes to one
+page, as required by the raw NAND write interface.
+
+Fixes: 6420ac0af95d ("mtdchar: prevent unbounded allocation in MEMWRITE ioctl")
+Fixes: 095bb6e44eb1 ("mtdchar: add MEMREAD ioctl")
+Cc: stable@vger.kernel.org
+Signed-off-by: James Hilliard <james.hilliard1@gmail.com>
+---
+ drivers/mtd/mtdchar.c | 41 +++++++++++++++++++++++++----------------
+ 1 file changed, 25 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/mtd/mtdchar.c b/drivers/mtd/mtdchar.c
+index 85e98905f732..cbbc258109f5 100644
+--- a/drivers/mtd/mtdchar.c
++++ b/drivers/mtd/mtdchar.c
+@@ -613,6 +613,20 @@ static int mtdchar_adjust_io_lengths(struct mtd_info *mtd, uint64_t start,
+ 	return 0;
+ }
+ 
++static u64 mtdchar_next_offset(struct mtd_info *mtd, u64 start,
++			       struct mtd_oob_ops *ops)
++{
++	u64 next = start + ops->retlen;
++	u64 pages;
++
++	if (!ops->oobretlen)
++		return next;
++
++	pages = DIV_ROUND_UP_ULL(ops->oobretlen, mtd_oobavail(mtd, ops));
++	return max(next, start - mtd_mod_by_ws(start, mtd) +
++		   pages * mtd->writesize);
++}
++
+ static noinline_for_stack int
+ mtdchar_write_ioctl(struct mtd_info *mtd, struct mtd_write_req __user *argp)
+ {
+@@ -662,12 +676,12 @@ mtdchar_write_ioctl(struct mtd_info *mtd, struct mtd_write_req __user *argp)
+ 		}
+ 	}
+ 
+-	while (req.len > 0 || (!usr_data && req.ooblen > 0)) {
++	while (req.len > 0 || req.ooblen > 0) {
+ 		struct mtd_oob_ops ops = {
+ 			.mode = req.mode,
+ 			.len = min_t(size_t, req.len, datbuf_len),
+ 			.ooblen = min_t(size_t, req.ooblen, oobbuf_len),
+-			.datbuf = datbuf,
++			.datbuf = req.len ? datbuf : NULL,
+ 			.oobbuf = oobbuf,
+ 		};
+ 
+@@ -684,6 +698,10 @@ mtdchar_write_ioctl(struct mtd_info *mtd, struct mtd_write_req __user *argp)
+ 		if (ret)
+ 			break;
+ 
++		/* Raw NAND accepts only one page per OOB-only write. */
++		if (!ops.len)
++			ops.ooblen = min_t(size_t, ops.ooblen, mtd_oobavail(mtd, &ops));
++
+ 		/*
+ 		 * For writes which are not OOB-only, adjust the amount of OOB
+ 		 * data written according to the number of data pages written.
+@@ -703,11 +721,7 @@ mtdchar_write_ioctl(struct mtd_info *mtd, struct mtd_write_req __user *argp)
+ 		if (ret)
+ 			break;
+ 
+-		if (usr_data)
+-			req.start += ops.retlen;
+-		else
+-			req.start += (u64)(ops.oobretlen / mtd_oobavail(mtd, &ops)) *
+-				     mtd->writesize;
++		req.start = mtdchar_next_offset(mtd, req.start, &ops);
+ 		req.len -= ops.retlen;
+ 		usr_data += ops.retlen;
+ 
+@@ -782,13 +796,13 @@ mtdchar_read_ioctl(struct mtd_info *mtd, struct mtd_read_req __user *argp)
+ 		}
+ 	}
+ 
+-	while (req.len > 0 || (!usr_data && req.ooblen > 0)) {
++	while (req.len > 0 || req.ooblen > 0) {
+ 		struct mtd_req_stats stats;
+ 		struct mtd_oob_ops ops = {
+ 			.mode = req.mode,
+ 			.len = min_t(size_t, req.len, datbuf_len),
+ 			.ooblen = min_t(size_t, req.ooblen, oobbuf_len),
+-			.datbuf = datbuf,
++			.datbuf = req.len ? datbuf : NULL,
+ 			.oobbuf = oobbuf,
+ 			.stats = &stats,
+ 		};
+@@ -806,8 +820,7 @@ mtdchar_read_ioctl(struct mtd_info *mtd, struct mtd_read_req __user *argp)
+ 		ret = mtdchar_adjust_io_lengths(mtd, req.start, &ops, req.ooblen);
+ 		if (ret)
+ 			break;
+-		if (ops.len < req.len)
+-			adjust_oob_length(mtd, req.start, &ops);
++		adjust_oob_length(mtd, req.start, &ops);
+ 
+ 		ret = mtd_read_oob(mtd, (loff_t)req.start, &ops);
+ 
+@@ -826,11 +839,7 @@ mtdchar_read_ioctl(struct mtd_info *mtd, struct mtd_read_req __user *argp)
+ 			break;
+ 		}
+ 
+-		if (usr_data)
+-			req.start += ops.retlen;
+-		else
+-			req.start += (u64)(ops.oobretlen / mtd_oobavail(mtd, &ops)) *
+-				     mtd->writesize;
++		req.start = mtdchar_next_offset(mtd, req.start, &ops);
+ 		req.len -= ops.retlen;
+ 		usr_data += ops.retlen;
+ 
+-- 
+2.53.0
+

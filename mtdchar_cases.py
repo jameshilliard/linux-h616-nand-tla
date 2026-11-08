@@ -33,7 +33,7 @@ def cases():
         result.append(dict(module="NandMtdCharChunks", name="mtdchar-"+name,
                            expected=expected, kind=kind,
                            constants=dict(Requests=tuple(rows), Faults=faults,
-                                          Mutation=mutation)))
+                                          Mutation=mutation, CompleteOob=True)))
 
     # Every input length/column, not just whole-page payloads, for each ratio.
     for w, o, pages in ((2, 1, 2), (2, 3, 2), (2, 5, 1), (4, 3, 2)):
@@ -48,7 +48,7 @@ def cases():
             fault_rows.append(request(o=o, avail=avail if o else 0, data=data,
                                       spare=spare, read=read, symmetric=sym))
     add("all-fault-positions", fault_rows, faults=True)
-    # Requested spare larger than payload is a historical partial-success ABI.
+    # Spare may outlast the payload; success must complete both streams.
     add("excess-oob-and-eof", [request(data=d, spare=o, start=start, read=read,
                                       symmetric=sym, size=24)
         for d, o, start, read, sym in product((0, 1, 4, 9), (0, 1, 4, 20),

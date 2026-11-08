@@ -191,7 +191,7 @@ static bool io_case(bool read, unsigned int mode, size_t start,
 					max(geom.erasesize, geom.oobsize));
 		if (!baseline && first_oob < olen)
 			first_oob -= first_oob % o;
-		if (!symmetric && !dlen && first_oob > o) {
+		if (!CHECK_OOB_TAILS && !symmetric && !dlen && first_oob > o) {
 			assert(ret == -EINVAL && !calls);
 			good = true;
 		} else {
@@ -289,6 +289,26 @@ static void matrix(void)
 			size_t pages = variant == 2 ? 65 : 3;
 			size_t start = 2 * geom.writesize + (variant == 0 ? 512 : 0);
 			io_case(true, mode, start, pages * geom.writesize, (pages + 2) * per);
+		}
+	}
+	/* Data may end within the first page while OOB needs several chunks. */
+	if (CHECK_OOB_TAILS || getenv("CHECK_OOB_TAIL_MATRIX")) {
+		for (unsigned int g = 0; g < sizeof(geometries) / sizeof(*geometries); g++) {
+			unsigned int w = geometries[g][0], o = geometries[g][1], e = geometries[g][2];
+			for (unsigned int backend = 0; backend < 2; backend++) {
+				symmetric = backend;
+				for (unsigned int read = 0; read < 2; read++) {
+					for (unsigned int mode = 0; mode <= MTD_OPS_RAW; mode++) {
+						for (unsigned int variant = 0; variant < 5; variant++) {
+							setup(w, o, e, 1100, read);
+							size_t per = mode == MTD_OPS_AUTO_OOB ? o / 2 : o;
+							size_t start = w * 2 + (variant & 1 ? w / 2 : 0);
+							size_t data = variant == 4 ? 0 : (variant < 2 ? 1 : w + 1);
+							io_case(read, mode, start, data, 1025 * per - variant);
+						}
+					}
+				}
+			}
 		}
 	}
 }
@@ -429,7 +449,7 @@ static void request_edges(void)
 			case 1: start = UINT64_MAX - 1; expected = -EINVAL; break;
 			case 2: start = geom.size; data_len = oob_len = 0; break;
 			case 3: data_len = oob_len = 0; break;
-			case 4: data_len = 0; break; /* non-NULL data: legacy no-op */
+			case 4: data_len = 0; break; /* non-NULL empty data buffer */
 			case 5: dp = 0; break; /* ignore data length with NULL pointer */
 			case 6: op = 0; break;
 			case 7: data_len += 1ULL << 32; oob_len += 1ULL << 32; break;
@@ -445,8 +465,11 @@ static void request_edges(void)
 				.usr_data=dp, .usr_oob=op, .mode=MTD_OPS_RAW};
 			int ret = read ? mtdchar_read_ioctl(&geom, &rd) : mtdchar_write_ioctl(&geom, &wr);
 			assert(ret == expected && !live_allocs);
-			if (expected || variant == 2 || variant == 3 || variant == 4)
+			if (expected || variant == 2 || variant == 3 ||
+			    (variant == 4 && !CHECK_OOB_TAILS))
 				assert(!calls);
+			if (variant == 4 && CHECK_OOB_TAILS)
+				assert(calls == 1 && completed_oob == 5);
 			/* Compatibility checks, not endorsements of this old u32 ABI. */
 			if (read && variant == 5)
 				assert(rd.len == data_len && rd.ooblen == 5);
@@ -538,6 +561,23 @@ int main(int argc, char **argv)
 		assert(trace_file);
 	}
 	setvbuf(stdout, NULL, _IONBF, 0);
+	if (CHECK_TAIL_CONTROL || (argc > 1 && !strcmp(argv[1], "v1-tail-control"))) {
+		baseline = true;
+		symmetric = false;
+		for (unsigned int read = 0; read < 2; read++) {
+			for (unsigned int extra = 0; extra < 2; extra++) {
+				setup(1024, 1152, 64, 64, read);
+				assert(!io_case(read, MTD_OPS_RAW, 0, 1 + extra * 1024,
+					       3 * 1152));
+			}
+		}
+		assert(failures == 4);
+		free(medium);
+		if (trace_file)
+			assert(!fclose(trace_file));
+		puts("MTDCHAR V1 TAIL CONTROL CHECKS PASSED (four failures reproduced)");
+		return 0;
+	}
 	matrix();
 	printf("%u complete-I/O cases, %u mismatches%s\n", cases, failures,
 	       baseline ? " (baseline reproductions)" : "");

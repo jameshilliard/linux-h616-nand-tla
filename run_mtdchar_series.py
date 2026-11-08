@@ -56,7 +56,7 @@ def main():
     actual = [path.read_text() for path in args.sources] if args.sources else expected
     for number, (source, reference) in enumerate(zip(actual, expected), 1):
         names = [name for name in FUNCTIONS
-                 if name != "mtdchar_adjust_io_lengths" or number == 3]
+                 if name + "(" in reference]
         for name in names:
             if extract(source, name) != extract(reference, name):
                 raise ValueError(f"patch {number}: {name} does not match the pinned split")

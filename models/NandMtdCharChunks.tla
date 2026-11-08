@@ -4,7 +4,7 @@
 \* lifetime are outside this model. Byte identity is checked by address, not
 \* by a write/read round trip. Each Page action represents one backend page.
 EXTENDS Integers, Sequences, FiniteSets
-CONSTANTS Requests, Faults, Mutation
+CONSTANTS Requests, Faults, Mutation, CompleteOob
 VARIABLES r, s
 vars == <<r, s>>
 Min(a,b) == IF a < b THEN a ELSE b
@@ -14,9 +14,15 @@ Ocap == IF Mutation = "small-oob-buffer" THEN r.erase
         ELSE Max(r.erase,r.spare)
 Dbuf == Min(r.data,r.erase)
 Obuf == Min(r.oob,Ocap)
-More == s.dleft > 0 \/ (~r.hasData /\ s.oleft > 0)
+More == s.dleft > 0 \/ ((CompleteOob \/ ~r.hasData) /\ s.oleft > 0)
 BackendMore == s.rd < s.pd \/
-    ((r.symmetric \/ ~r.hasData) /\ s.ro < s.po)
+    ((r.symmetric \/ (IF CompleteOob THEN s.pd = 0 ELSE ~r.hasData)) /\ s.ro < s.po)
+NextOffset(a,d,o) ==
+    IF Mutation = "no-oob-advance" THEN a+d
+    ELSE IF CompleteOob THEN
+        IF o = 0 THEN a+d
+        ELSE Max(a+d,a-(a % r.width)+((o-1) \div r.avail+1)*r.width)
+    ELSE a + IF r.hasData THEN d ELSE (o \div r.avail)*r.width
 
 \* The source changes these limits in this order. The identity oracle below
 \* does not use this planner to decide which bytes a request should address.
@@ -31,10 +37,12 @@ Plan(a,d,o) ==
         d2 == IF split /\ d1 > 0 /\ Mutation # "uncoupled-data"
               THEN Min(d1,(o1 \div r.avail)*r.width - (a % r.width))
               ELSE d1
-        limit == ~r.read \/ (d2 < d /\ Mutation # "uncoupled-read-oob")
+        limit == ~r.read \/ ((CompleteOob \/ d2 < d) /\ Mutation # "uncoupled-read-oob")
         o2 == IF limit /\ d2 > 0 /\ o1 > 0
               THEN Min(o1,Cover(a,d2,r.width)*r.avail) ELSE o1
-    IN [data |-> d2, oob |-> o2]
+        o3 == IF CompleteOob /\ ~r.read /\ d2 = 0
+              THEN Min(o2,r.avail) ELSE o2
+    IN [data |-> d2, oob |-> o3]
 
 Init ==
     /\ r \in {Requests[i] : i \in 1..Len(Requests)}
@@ -100,7 +108,8 @@ Bounds ==
     /\ s.pc = "bounds"
     /\ LET invalid == s.at+s.pd > r.size \/
                       s.po > (r.size \div r.width - s.row)*r.avail \/
-                      (~r.read /\ ~r.symmetric /\ ~r.hasData /\ s.po > r.avail)
+                      (~r.read /\ ~r.symmetric /\
+                       (IF CompleteOob THEN s.pd = 0 ELSE ~r.hasData) /\ s.po > r.avail)
        IN s' = [s EXCEPT !.pc = IF invalid THEN "finish" ELSE "backend",
                          !.code = IF invalid THEN "invalid" ELSE "ok"]
 Page ==
@@ -138,8 +147,7 @@ ShortSuccess ==
 Account ==
     /\ UNCHANGED r
     /\ s.pc = "account"
-    /\ s' = [s EXCEPT !.at = @ + IF r.hasData \/ Mutation = "no-oob-advance"
-                                 THEN s.rd ELSE (s.ro \div r.avail)*r.width,
+    /\ s' = [s EXCEPT !.at = NextOffset(s.at,s.rd,s.ro),
                       !.dleft = @-s.rd, !.oleft = @-s.ro,
                       !.dd = @+s.rd, !.od = @+s.ro,
                       !.progress = @ /\ s.rd+s.ro > 0, !.pc = "loop"]
@@ -170,8 +178,8 @@ OwnedDuringIO == s.pc \in {"copy-data","copy-oob","bounds","backend","account"} 
                   (s.po = 0 \/ "oob" \in s.owned))
 ReturnedClean == s.pc = "done" => s.owned = {}
 Complete == (s.pc = "done" /\ s.code \in {"ok","clean","bad"} /\
-             (r.data > 0 \/ ~r.hasData) /\
-             (~r.hasData \/ r.oob <= Cover(r.start,r.data,r.width)*r.avail)) =>
+             (CompleteOob \/ ((r.data > 0 \/ ~r.hasData) /\
+              (~r.hasData \/ r.oob <= Cover(r.start,r.data,r.width)*r.avail)))) =>
             (s.dd = r.data /\ s.od = r.oob)
 EccPriority == (s.pc = "done" /\ s.code \in {"ok","clean","bad"}) =>
               (s.bad => s.code = "bad") /\
