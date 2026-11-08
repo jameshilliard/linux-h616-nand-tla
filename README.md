@@ -85,12 +85,14 @@ page/OOB callers to DMA, interrupt recovery and persistent-media observations,
 including compound read failures and subsequent controller reuse. The
 [file-lifetime checks](docs/FD-LIFETIME-CONFORMANCE.md) follow actual MTD
 open/close into NAND locks and expose close/sync within the known unbind issue.
-The independent lifetime RFC now has pinned candidate-source checks and a
+The independent lifetime series now has pinned candidate-source checks and a
 disconnect/reference model, including suspended waiters and nested partition
 ownership. Real-kernel tests exercise unbind/rebind with synthetic controllers
-under KASAN and lockdep. Exhaustive registration fault injection and physical
-controller coverage remain outstanding; these checks do not prove all MTD
-backend lifetimes.
+under KASAN and lockdep. The [H616 retained-lifetime hardware run](docs/H616-RETAINED-LIFETIME-HARDWARE.md)
+adds real-controller removal/reprobe with retained native/Boot0 file descriptors
+and NVMEM consumers, followed by bounded read/write checks and raw restoration.
+Exhaustive registration fault injection and other physical controllers remain
+outside that run; these checks do not prove all MTD backend lifetimes.
 
 The [2026-11-04 real H616 measurements](docs/HARDWARE-MEASUREMENTS-20261104.md)
 add a restricted diagnostic module, sanitized captures and offline replay.
