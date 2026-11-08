@@ -131,3 +131,65 @@ A separate pre-existing fixup issue remains: it emits `read_only`, while the
 Linux fixed-partition parser expects `read-only`. No write was attempted to
 test that protection, and the successful handoff checks do not establish
 read-only enforcement. The other limits listed above still apply.
+
+## Alias-free BootROM layout: host validation
+
+The subsequent board integration removes native partitions whose physical
+ranges exactly match enabled BootROM regions in the OS device tree. U-Boot's
+own partition map and DTs without enabled BootROM regions retain their legacy
+layout. Partial overlaps and an empty remaining native partition table abort
+the handoff; the latter prevents Linux falling back to a whole-chip native MTD.
+
+The resulting Linux device names and geometry are:
+
+| Device | Physical main-area range | Logical size | Data / raw OOB per page |
+| --- | --- | --- | --- |
+| `boot0-0` | `0x000000..0x040000` | 128 KiB | 1024 / 1152 bytes |
+| `boot0-1` | `0x040000..0x080000` | 128 KiB | 1024 / 1152 bytes |
+| `boot0-2` | `0x080000..0x0c0000` | 128 KiB | 1024 / 1152 bytes |
+| `boot0-3` | `0x0c0000..0x100000` | 128 KiB | 1024 / 1152 bytes |
+| `uboot` | `0x100000..0x500000` | 4 MiB | 2048 / 128 bytes |
+| `securestorage` | `0x500000..0x540000` | 256 KiB | 2048 / 128 bytes |
+| `UBI` | `0x540000..0x10000000` | remainder | 2048 / 128 bytes |
+
+There are no native `spl-*` aliases. MTD indices are not stable identifiers.
+The integration explicitly disables `CONFIG_MTD_PARTITIONED_MASTER`; it does
+not pass a legacy `mtdparts=` override on the Linux command line.
+
+Run the pinned extracted-code regression with a C compiler, libfdt development
+headers and `dtc` installed:
+
+```sh
+python3 run_uboot_partitions.py
+```
+
+Use `--source /path/to/u-boot` to extract a candidate instead, and
+`--revision REV --expect-failure` to check the preceding implementation.
+The pinned functions come from downstream U-Boot commit
+`6e3cd31c20178feaa627c8ddad50402dd423730d`; their SHA-256 is
+`b6118f7f35d1bd234e539c3107d3d3ddf5a90c736d7cb2636be0eb6830848aed`.
+
+All 50 synthetic layouts passed under ASan/UBSan, with the complete fixup
+repeated twice and the finalization helper checked independently for
+idempotence. Cases cover reordered siblings, legacy/direct partitions,
+disabled/unknown boot regions, malformed registers, partial overlaps,
+wide native address cells, and rejection of removal of every native
+partition. The preceding implementation fails 34 of these cases. A saved
+hardware handoff DT also passed: its four BootROM subtrees were unchanged
+and exactly the three expected native partitions remained.
+
+Separate host checks ran extracted mtdchar, libmtd and SWUpdate flash-worker
+code with the corrected mtdchar v2 implementation. Both the existing 112-page
+encoded SPL image and a complete 128-page raw slot transferred correctly with
+five input chunk sizes. Raw records remain 2176 bytes; the BootROM view changes
+the data/OOB split, not their concatenation. The SWUpdate manifest therefore
+uses `boot0-*` with its existing raw/OOB flags and encoded image. Six name
+resolution tests cover legacy aliases, alias-free devices, changed indices,
+missing/duplicate names and wrong geometry.
+
+This follow-up did not boot the new layout or erase/program hardware. The
+earlier hardware results above validate the mapper, not this new handoff.
+SWUpdate top-level setup is reproduced by the host fixture rather than
+executed in full. Its existing EIO relocation and FF-page omission policies
+are unchanged. A legacy running kernel without BootROM devices cannot use
+the new manifest; migration must first boot a mapper-capable kernel.
