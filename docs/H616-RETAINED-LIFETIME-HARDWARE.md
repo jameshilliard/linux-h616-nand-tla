@@ -77,9 +77,9 @@ was an initramfs-unpacking OOM, not a retained-object test failure.
 The installed downstream U-Boot partition fixup also interfered with the new
 `boot-areas` DT subtree and reintroduced UBI auto-attachment. The successful
 test used its volatile `skip_board_fixup=1` setting and checked the actual
-running MTD layout and absence of attached UBI devices. Preserving the Boot0
-nodes in the normal firmware handoff remains an integration follow-up; this
-run does not validate that unmodified bootloader handoff.
+running MTD layout and absence of attached UBI devices. This first run did not
+validate the normal bootloader handoff; the follow-up below addresses that
+integration separately.
 
 This adds physical H616 coverage to the synthetic-controller and bounded-model
 checks. It does not establish correctness for every interleaving, all other
@@ -89,3 +89,45 @@ allocation-failure unwind or power loss. Native read/write and Boot0 tests use
 normal callbacks; explicit PIO/MDMA forcing and fault injection from earlier
 hardware campaigns were not repeated here. Outstanding mailing-list review
 items remain separate from these runtime results.
+
+## Normal partition-fixup follow-up
+
+The U-Boot fixup now resolves the native partition container before modifying
+the tree and uses the same node for deletion and insertion. Explicit
+`partitions` nodes take precedence over first-child traversal. The board's
+UBI tagging is restricted to the native partition entries, leaving the
+separate `boot-areas` subtree unchanged.
+
+An extracted-code host harness exercises the actual fixup and board helpers
+with libfdt, ASan and UBSan. All 16 layouts pass two successive fixups,
+including both sibling orders, missing and empty native containers,
+unrelated controller children and legacy direct-partition layouts. The
+unchanged implementation fails 10 of these layouts. This is executable
+regression coverage, not a new formal-model result.
+
+The corrected U-Boot was booted from temporary SD media through the signed
+SPL storage-reader path. The same diagnostic Linux image then booted with
+the normal board fixup enabled. The actual handed-off DT retained all four
+Boot0 entries and contained exactly seven native partitions. The native UBI
+partition automatically attached at boot and after each controller reprobe.
+
+After explicitly detaching UBI before each removal, another 20 retained-FD
+cycles passed with 5,136 native reads and 659 Boot0 reads matching their
+baselines. Five retained-NVMEM consumer cycles also passed. Old handles
+remained disconnected after reprobe, metadata ioctls remained accessible,
+and replacement devices returned the expected contents. There were no
+KASAN/lockdep reports, and the requested kmemleak scan was empty. These FD
+cycles ran separately to allow UBI detachment between them, so this follow-up
+did not repeat the alternating final-close order covered by the first run.
+
+All four Boot0 views again matched their decoded and raw baselines, a final
+64 MiB native read completed, and the SPL, U-Boot and secure-storage contents
+matched their backups. This follow-up performed no explicit NAND
+erase/program operations; normal UBI attachment may perform flash bookkeeping.
+The original SD boot area was restored and verified, and the board returned
+to its original NAND firmware.
+
+A separate pre-existing fixup issue remains: it emits `read_only`, while the
+Linux fixed-partition parser expects `read-only`. No write was attempted to
+test that protection, and the successful handoff checks do not establish
+read-only enforcement. The other limits listed above still apply.
