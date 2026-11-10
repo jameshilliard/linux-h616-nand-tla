@@ -115,7 +115,7 @@ static void unmanaged_controller_test(void)
     assert(!driver_module.refs);
 }
 
-/* Execute the actual MTD OTP pin/drop/remove callbacks with provider shims. */
+/* Execute the actual MTD OTP pin/drop and unregister paths with provider shims. */
 static void otp_test(bool master_registered, bool reverse)
 {
     struct device parent={.refs=1};
@@ -134,9 +134,12 @@ static void otp_test(bool master_registered, bool reverse)
     m->otp_user_nvmem=&providers[0]; m->otp_factory_nvmem=&providers[1];
     if(master_registered) publish(m,m,0);
     assert(!mtd_device_unregister(m));
-    mtd_otp_nvmem_remove(m); /* Outer unwind must not unregister twice. */
-    assert(!providers[0].registered && !providers[1].registered);
+#if HAS_OTP_CLEANUP_HELPER
+    /* The historical helper also supports repeated cleanup. */
+    mtd_otp_nvmem_remove(m);
     assert(!m->otp_user_nvmem && !m->otp_factory_nvmem);
+#endif
+    assert(!providers[0].registered && !providers[1].registered);
     nand_disconnect(&sn->nand); mtd_put_master(m);
     assert(cleaned==before && core_module.refs==2 && driver_module.refs==1);
     unsigned first=reverse?1:0, last=first^1;

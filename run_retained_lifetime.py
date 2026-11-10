@@ -48,6 +48,8 @@ if __name__ == "__main__":
         parser.error("--update-reference requires --kernel-tree")
     if args.kernel_tree:
         src = {name: (args.kernel_tree / path).read_text() for name, path in FILES.items()}
+        if "mtd_otp_nvmem_remove(" not in src["mtdcore.c"]:
+            FUNCTIONS["mtdcore.c"].remove("mtd_otp_nvmem_remove")
         if args.update_reference:
             if subprocess.check_output(["git", "status", "--porcelain"], cwd=args.kernel_tree):
                 parser.error("commit the candidate before snapshotting it")
@@ -62,6 +64,8 @@ if __name__ == "__main__":
             reference.write_text(json.dumps(payload, indent=2) + "\n")
     else:
         payload = json.loads(reference.read_text())
+        if "mtd_otp_nvmem_remove" not in payload["files"]["mtdcore.c"]["functions"]:
+            FUNCTIONS["mtdcore.c"].remove("mtd_otp_nvmem_remove")
         src = {}
         for name, names in FUNCTIONS.items():
             entry = payload["files"][name]
@@ -73,8 +77,10 @@ if __name__ == "__main__":
     # Retain the historical pin as a control while checking revised callbacks.
     external_owner = "__module_get" not in extract(src["mtdcore.c"], "mtd_otp_nvmem_get")
     disconnected_pm_ok = "-ENODEV" not in extract(src["nand_base.c"], "nand_suspend")
+    otp_cleanup_helper = "mtd_otp_nvmem_remove" in FUNCTIONS["mtdcore.c"]
     defines = (f"#define EXTERNAL_OTP_OWNER {int(external_owner)}\n"
-               f"#define DISCONNECTED_PM_OK {int(disconnected_pm_ok)}\n")
+               f"#define DISCONNECTED_PM_OK {int(disconnected_pm_ok)}\n"
+               f"#define HAS_OTP_CLEANUP_HELPER {int(otp_cleanup_helper)}\n")
     check("retained-lifetime", {"check.c":
         defines +
         (HERE / "tests/boundary_list.h").read_text() +
@@ -85,5 +91,6 @@ if __name__ == "__main__":
             "Actual candidate get/put, close/sync, disconnect and release function bodies",
             "Heap objects are freed, so ASan detects premature object access",
             "Registration, device refs, module refs and devres are explicit host shims",
+            "Repeated OTP cleanup is checked only for the historical idempotent helper",
             "Sequential schedules; SMP lock/disconnect interleavings checked separately by TLC",
             "Does not cover virtual concatenation, real sysfs unbind or hardware execution"])
