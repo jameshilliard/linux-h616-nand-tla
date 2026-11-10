@@ -44,8 +44,11 @@ class CounterexampleResult(unittest.TestCase):
     def test_infrastructure(self):
         for rc in (-1, 0, 12, 13):
             for log in ('HARNESS TIMEOUT', 'Error: Parsing or semantic analysis failed.',
-                        'Error: TLC threw an unexpected exception.', ''):
+                        'Error: TLC threw an unexpected exception.',
+                        'Error: Java ran out of memory.', ''):
                 self.assertFalse(invariant_counterexample(rc, log, 'ExactState'))
+                self.assertFalse(temporal_counterexample(rc, log, 'Terminates',
+                                                        unnamed=True))
 
 
 if __name__ == '__main__':

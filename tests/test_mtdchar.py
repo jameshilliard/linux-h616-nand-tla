@@ -6,7 +6,8 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mtdchar_cases import MODEL, TLC, cases
-from run_mtdchar import snapshot, v2_candidate
+from run_mtdchar import (TRACE_BATCH_STEPS, immutable, snapshot, trace_batches,
+                         trace_cases, v2_candidate)
 from run_mtdchar_series import compare, stages
 from run_core import extract
 
@@ -79,6 +80,49 @@ class MtdCharInputs(unittest.TestCase):
             compare([row], [dict(row, good=False)])
         with self.assertRaisesRegex(ValueError, "differs"):
             compare([row], [dict(row, width=128)])
+
+    def test_trace_batch_boundaries(self):
+        rows = [dict(calls=[None] * n) for n in (0, 1, 1, 4, 0)]
+        batches = list(trace_batches(rows, max_steps=8))
+        self.assertEqual(batches, [rows[:3], rows[3:]])
+        self.assertEqual([r for batch in batches for r in batch], rows)
+        self.assertEqual(list(trace_batches([], max_steps=8)), [])
+        with self.assertRaisesRegex(ValueError, "positive"):
+            list(trace_batches(rows, max_steps=0))
+
+    def test_trace_batch_keeps_long_trace(self):
+        rows = [dict(calls=[None] * n) for n in (1, 10, 0)]
+        batches = list(trace_batches(rows, max_steps=8))
+        self.assertEqual(batches, [[row] for row in rows])
+        self.assertIs(batches[1][0], rows[1])
+
+    def test_trace_cases_preserve_inputs_and_controls(self):
+        rows = [dict(width=width, read=True, hasData=True, data=width,
+                     oob=1, calls=[[i * width, width, 1, width, 1, 0]
+                                  for i in range(1025)], reported=[width, 1])
+                for _ in range(10) for width in (512, 64)]
+        baseline = [dict(rows[0], hasData=False, data=0)]
+        for complete in (False, True):
+            configurations = trace_cases(rows, baseline, complete)
+            self.assertEqual(len({c["name"] for c in configurations}),
+                             len(configurations))
+            positive = [c for c in configurations if c["kind"] == "positive"]
+            self.assertGreater(len(positive), 2)
+            expected = [immutable(r) for w in (64, 512) for r in rows
+                        if r["width"] == w]
+            self.assertEqual([r for c in positive for r in c["constants"]["Trials"]],
+                             expected)
+            for c in positive:
+                constants = c["constants"]
+                self.assertEqual(constants["CompleteOob"], complete)
+                self.assertTrue(constants["CheckPlan"])
+                self.assertIsNone(c["expected"])
+                self.assertLessEqual(sum(len(r["calls"]) + 2
+                                         for r in constants["Trials"]),
+                                     TRACE_BATCH_STEPS)
+            controls = [c for c in configurations if c["kind"] != "positive"]
+            self.assertEqual([c["expected"] for c in controls],
+                             ["SourceBytes", "SourcePlan", "SourceBytes", "SourceReturn"])
 
 
 if __name__ == "__main__":

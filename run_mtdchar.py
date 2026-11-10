@@ -24,6 +24,7 @@ FUNCTIONS = ["adjust_oob_length", "mtdchar_adjust_io_lengths", "mtdchar_next_off
 MODEL = dict(invariants=["SourcePlan", "SourceBytes", "SourceBounds", "SourceOnce",
                          "SourceReturn", "SourceComplete"], actions=["Next"],
              dependencies=["NandMtdCharChunks"])
+TRACE_BATCH_STEPS = 8192
 
 
 def snapshot():
@@ -87,6 +88,23 @@ def immutable(row):
                 reported=tuple(row["reported"]))
 
 
+def trace_batches(rows, max_steps=TRACE_BATCH_STEPS):
+    """Bound TLC inputs without splitting or dropping an execution trace."""
+    if max_steps <= 0:
+        raise ValueError("trace batch budget must be positive")
+    batch, steps = [], 0
+    for row in rows:
+        # Include initialization and Finish as well as the recorded calls.
+        cost = len(row["calls"]) + 2
+        if batch and steps + cost > max_steps:
+            yield batch
+            batch, steps = [], 0
+        batch.append(row)
+        steps += cost
+    if batch:
+        yield batch
+
+
 def trace_cases(candidate, baseline, complete_oob=False):
     cases = []
 
@@ -97,10 +115,13 @@ def trace_cases(candidate, baseline, complete_oob=False):
                                          CheckPlan=plan, Mutation="none",
                                          CompleteOob=complete_oob if complete is None else complete)))
 
-    # Separate configurations avoid a gigantic TLC wrapper and retain a clear
-    # geometry/backend coverage record. Every generated C case is checked.
+    # OOB-only tails can contain thousands of calls per trace. Bound each
+    # wrapper by its steps, not just geometry, to fit TLC's 1-GiB heap.
+    # Every complete trace is still checked with the same invariants.
     for width in sorted({r["width"] for r in candidate}):
-        add("w"+str(width), [r for r in candidate if r["width"] == width])
+        rows = (r for r in candidate if r["width"] == width)
+        for index, batch in enumerate(trace_batches(rows)):
+            add(f"w{width}-{index:03d}", batch)
     old_oob = [r for r in baseline if not r["hasData"] and r["read"]
                and len(r["calls"]) > 1]
     add("baseline-oob-repeat", old_oob, expected="SourceBytes", plan=False,

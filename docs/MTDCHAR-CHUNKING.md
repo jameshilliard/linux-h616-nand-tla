@@ -79,6 +79,16 @@ call traces. The admission runner exercises the real MTD admission wrapper and
 a separate statistics model. The series runner checks intermediate sources
 with the same C oracle. None of these commands accesses hardware.
 
+Source-trace checks partition each geometry into batches of at most 8,192
+steps (recorded calls plus initialization and completion). A single longer
+trace stays intact in its own batch. This keeps the generated TLC inputs
+within the runner's 1-GiB heap for the current matrix, including long OOB-only
+tails. Every input trace, invariant and termination check is retained; the
+batches do not shorten executions or sample the request domain. Unit tests
+check exact input preservation, batch boundaries and the negative controls.
+The model keeps its selected trial unchanged throughout an execution, so
+there are no cross-trial transitions lost by checking batches separately.
+
 The new workflow runs these checks in GitHub Actions. They are also included
 in the appropriate full-suite runners; `run_suite.py`'s sunxi candidate argument
 does not silently replace the separately pinned mtdchar candidate.
