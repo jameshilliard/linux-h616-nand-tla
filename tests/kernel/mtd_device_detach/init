@@ -1,0 +1,60 @@
+#!/bin/sh
+export PATH=/bin
+/bin/busybox --install -s /bin
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+
+fail() {
+	echo "MTD-DETACH-QEMU: FAIL ($*)"
+	poweroff -f
+	exit 1
+}
+
+insmod /mtd.ko || fail mtd
+insmod /mtd_detach_holder.ko || fail holder
+insmod /mtd_detach_provider.ko || fail provider
+holder=/sys/module/mtd_detach_holder/parameters/command
+echo 1 > "$holder" || fail acquire
+exec 3</dev/mtd2 || fail open
+dd bs=1 count=1 <&3 >/dev/null || fail initial_read
+echo 1 > /sys/module/mtd_detach_provider/parameters/command || fail disconnect
+if dd bs=1 count=1 <&3 >/dev/null; then
+	fail "disconnected MTD still readable"
+fi
+exec 3<&-
+rmmod mtd_detach_provider || fail provider_unload
+rmmod mtd || fail "bare device or NVMEM handle pins MTD core"
+echo 2 > "$holder" || fail stale_access
+# Reuse MTD numbers and NVMEM names while the old devices remain referenced.
+insmod /mtd.ko || fail reload_core
+insmod /mtd_detach_provider.ko retain_devices=0 || fail replacement
+rmmod mtd_detach_provider || fail replacement_unload
+rmmod mtd || fail replacement_core_unload
+echo 3 > "$holder" || fail final_put
+sleep 8
+rmmod mtd_detach_holder || fail holder_unload
+echo "MTD-DETACH-QEMU: nested handles and module unload PASS"
+
+insmod /mtd.ko || fail rollback_mtd
+insmod /mtd_detach_holder.ko || fail rollback_holder
+/load_fail /mtd_detach_provider.ko || fail "provider initialization rollback"
+rmmod mtd || fail rollback_core_unload
+echo 4 > "$holder" || fail rollback_devices
+echo 3 > "$holder" || fail rollback_final_put
+sleep 8
+rmmod mtd_detach_holder || fail rollback_holder_unload
+echo "MTD-DETACH-QEMU: initialization rollback PASS"
+
+insmod /mtd.ko || fail raw_mtd
+insmod /nandcore.ko || fail nandcore
+insmod /nand.ko || fail nand
+insmod /raw_nand_detach_test.ko || fail raw_fixture
+echo 1 > /sys/module/raw_nand_detach_test/parameters/run || fail raw_scan_unbind_rebind
+rmmod raw_nand_detach_test || fail raw_unload
+rmmod nand || fail nand_unload
+rmmod nandcore || fail nandcore_unload
+rmmod mtd || fail raw_core_unload
+sleep 8
+echo "MTD-DETACH-QEMU: PASS"
+poweroff -f

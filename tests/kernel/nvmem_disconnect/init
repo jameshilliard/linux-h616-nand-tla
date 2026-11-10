@@ -1,0 +1,44 @@
+#!/bin/sh
+export PATH=/bin
+/bin/busybox --install -s /bin
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+
+fail() {
+	echo "NVMEM-DETACH-QEMU: FAIL ($*)"
+	poweroff -f
+	exit 1
+}
+
+for phase in 1 2 3; do
+	insmod /nvmem_detach_holder.ko || fail holder
+	insmod /nvmem_detach_provider.ko || fail provider
+	param=/sys/module/nvmem_detach_holder/parameters
+	echo 1 > "$param/command" || fail acquire
+	echo "$phase" > "$param/phase" || fail phase
+	echo 2 > "$param/command" || fail start
+	count=0
+	while [ "$(cat "$param/command")" != 1 ]; do
+		count=$((count + 1))
+		[ "$count" -lt 100 ] || fail entered
+		sleep 0.02
+	done
+	rmmod nvmem_detach_provider &
+	remover=$!
+	sleep 0.2
+	kill -0 "$remover" || fail "unregister did not drain phase $phase"
+	echo 3 > "$param/command" || fail unblock
+	wait "$remover" || fail "module pinned instead of detached"
+	echo 4 > "$param/command" || fail "late consumer access phase $phase"
+	# Reuse the same provider name while the previous bare device is retained.
+	insmod /nvmem_detach_provider.ko || fail replacement
+	rmmod nvmem_detach_provider || fail replacement_remove
+	echo 5 > "$param/command" || fail final_put
+	rmmod nvmem_detach_holder || fail holder_remove
+	echo "NVMEM-DETACH-QEMU: phase $phase PASS"
+done
+# Let DEBUG_KOBJECT_RELEASE run after both fixture modules have unloaded.
+sleep 8
+echo "NVMEM-DETACH-QEMU: PASS"
+poweroff -f

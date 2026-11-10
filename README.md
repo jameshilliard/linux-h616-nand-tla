@@ -105,10 +105,14 @@ and NVMEM consumers, followed by bounded read/write checks and raw restoration.
 Exhaustive registration fault injection and other physical controllers remain
 outside that run; these checks do not prove all MTD backend lifetimes.
 
-The [device release-owner checks](docs/DEVICE-RELEASE-OWNER.md) distinguish
+The historical [device release-owner checks](docs/DEVICE-RELEASE-OWNER.md) distinguish
 callback return from its final module reference drop. They reproduce the
 self-put race, check the opt-in device-core ordering, and exercise concurrent
 unload with an independently held device and a blocked release callback.
+The [disconnected-lifetime experiment](#disconnected-lifetime-experiment)
+instead separates class-device allocation from provider metadata and drains
+NVMEM callbacks before provider teardown, following the v2 review. Its checks
+are separate from the preserved sent-series models.
 
 The [2026-11-04 real H616 measurements](docs/HARDWARE-MEASUREMENTS-20261104.md)
 add a restricted diagnostic module, sanitized captures and offline replay.
@@ -470,6 +474,89 @@ and fails if any extracted core function was not executed.
 The codec runner invokes `run_c.py` with generated binary vectors; it and the
 ONFI boundary fixture currently require a little-endian host. It records parity/image/correction results rather
 than claiming exhaustive branch coverage of the BCH library.
+
+## Disconnected-lifetime experiment
+
+This is a prototype following
+[Greg's v2 lifetime review](https://lore.kernel.org/r/2026111037-stir-hermit-cb21@gregkh/),
+not a submitted replacement series. It separates retained data from provider
+code instead of extending `struct device` with a module owner. The historical
+release-owner snapshots above remain unchanged.
+
+The experimental kernel changes are `2b4b7896cbfd` (NVMEM callback retirement)
+and `d1d4ac783828` (separate MTD class-device allocation), based on the sent v2
+tip `43c1e06d81de`. Kernel source correspondence checks require a checkout of
+the prototype; the abstract models can run independently.
+
+| Object | Lifetime in the experiment |
+| --- | --- |
+| NVMEM provider callbacks/context | Unregister closes admission and waits for SRCU readers, including cell post-processing and DT fixups. |
+| Retained NVMEM consumers | Keep core metadata; subsequent I/O returns `-ENODEV`. |
+| MTD backing data and nested partitions | Explicit metadata references remain independent of bare device references. Existing MTD handle/module ownership is retained. |
+| MTD class and class devices | A small built-in MTD component owns class data and final device release, even with `CONFIG_MTD=m`. |
+
+`NvmemDisconnect.tla` separates reader entry, admission, callback return,
+post-processing, SRCU exit, disconnect, drain and provider unload. Two positive
+cases and four mutations check that no provider callback or context is used
+after retirement. SRCU's grace-period contract is assumed, not proved in LKMM.
+
+`MtdDetachedDevice.tla` models nested metadata ownership, a retained hidden
+concatenation component, open handles, delayed device/class release and module
+unload. Four positive cases cover two depths and normal/failed-initialization
+teardown. Five mutations remove a required parent reference, embed retained
+device storage in freed metadata, retain a late module callback, allow an API
+caller to disappear during its epilogue, or place class data in module storage.
+API caller residency is an explicit contract; the model does not establish
+that every kernel caller satisfies it.
+
+```sh
+python3 run_nvmem_disconnect.py --download
+python3 run_mtd_detached_device.py --download
+python3 run_nvmem_disconnect.py --kernel-tree ../linux
+python3 run_mtd_detached_device.py --kernel-tree ../linux
+```
+
+The kernel fixtures use disposable QEMU devices, not real flash. NVMEM tests
+block read, write and post-processing callbacks while removing the provider,
+then exercise stale consumers and reuse the provider name before final device
+release. MTD tests retain nested devices and an open file across disconnection,
+unload the provider and MTD core, reuse the device numbers, and exercise module
+initialization rollback. A synthetic raw NAND controller additionally checks
+unbind/rebind with old handles and independent device references.
+
+```sh
+python3 run_detached_lifetime_kernel.py --suite nvmem \
+  --kernel-tree ../linux --kernel-build ../build-x86 \
+  --busybox ../busybox-static
+python3 run_detached_lifetime_kernel.py --suite mtd \
+  --kernel-tree ../linux --kernel-build ../build-x86 \
+  --busybox ../busybox-static
+```
+
+The kernel build must be configured for x86-64 QEMU with MTD and raw NAND as
+modules, NVMEM built-in, an initramfs console, sysfs, procfs and devtmpfs.
+The recorded runs enable `CONFIG_MTD_PARTITIONED_MASTER`, KASAN, lockdep and
+`CONFIG_DEBUG_KOBJECT_RELEASE`. The latter also requires the debug-object timer
+options; verify the resulting configuration rather than just requesting it.
+Each runner saves build/QEMU logs and its result under `results/`.
+
+All 15 model expectations matched. The MTD and NVMEM kernel cases passed with
+the diagnostic configuration, and an x86 allmodconfig build of `drivers/mtd/`
+and the external cobalt MTD user passed with `W=1`. Delayed-release testing
+first reproduced a crash in `class_release()`: moving only the device release
+callback was insufficient because the class object was still module data.
+Moving that class data into the built-in component fixed the tested failure;
+the class-storage mutation preserves the counterexample.
+
+The review used the general kernel, locking, allocation, driver-core/kobject/
+sysfs/debugfs and false-positive lifetime guidance from Sashiko's prompts at
+`ffa8b3489407dd5cea6558fcffb6a4667131f1d3`.
+This is not full-series validation. Dynamic NVMEM layout bind/unbind,
+exhaustive post-publication registration faults, runtime virtual-concat
+composition, other architectures and external clients relying on bare
+`dev_get_drvdata()` still need audit. The prototype also leaves NVMEM's legacy
+configuration owner field in place for source compatibility. No real hardware
+test is claimed for these experimental changes.
 
 ## Interpreting the result
 
