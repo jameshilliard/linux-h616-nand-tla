@@ -105,6 +105,11 @@ and NVMEM consumers, followed by bounded read/write checks and raw restoration.
 Exhaustive registration fault injection and other physical controllers remain
 outside that run; these checks do not prove all MTD backend lifetimes.
 
+The [device release-owner checks](docs/DEVICE-RELEASE-OWNER.md) distinguish
+callback return from its final module reference drop. They reproduce the
+self-put race, check the opt-in device-core ordering, and exercise concurrent
+unload with an independently held device and a blocked release callback.
+
 The [2026-11-04 real H616 measurements](docs/HARDWARE-MEASUREMENTS-20261104.md)
 add a restricted diagnostic module, sanitized captures and offline replay.
 They confirm count/SRAM/BCH contracts but disprove the earlier continuous

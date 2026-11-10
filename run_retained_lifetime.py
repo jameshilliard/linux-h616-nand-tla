@@ -76,9 +76,11 @@ if __name__ == "__main__":
     code, proto, hashes = bodies(src, FUNCTIONS)
     # Retain the historical pin as a control while checking revised callbacks.
     external_owner = "__module_get" not in extract(src["mtdcore.c"], "mtd_otp_nvmem_get")
+    external_device_owner = "module_put(THIS_MODULE)" not in extract(src["mtdcore.c"], "mtd_release")
     disconnected_pm_ok = "-ENODEV" not in extract(src["nand_base.c"], "nand_suspend")
     otp_cleanup_helper = "mtd_otp_nvmem_remove" in FUNCTIONS["mtdcore.c"]
     defines = (f"#define EXTERNAL_OTP_OWNER {int(external_owner)}\n"
+               f"#define EXTERNAL_DEVICE_OWNER {int(external_device_owner)}\n"
                f"#define DISCONNECTED_PM_OK {int(disconnected_pm_ok)}\n"
                f"#define HAS_OTP_CLEANUP_HELPER {int(otp_cleanup_helper)}\n")
     check("retained-lifetime", {"check.c":

@@ -1,5 +1,5 @@
 {
-  "commit": "5d12373b7f294c6dcbf30530a4ff7b5b353ecd61",
+  "commit": "0616d31fc15aec566d9223a9bce2628c14928922",
   "files": {
     "mtd.h": {
       "path": "include/linux/mtd/mtd.h",
@@ -15,7 +15,7 @@
     },
     "mtdcore.c": {
       "path": "drivers/mtd/mtdcore.c",
-      "source_sha256": "edc00ec0743ae6e550c81b79bfff5fe8a120544a30d375dbe7e7a38ac431b7de",
+      "source_sha256": "0bcb5720f14075def56a4c7a0592c19415d40ecd12b66eec10a3fb7af58ca158",
       "functions": {
         "__mtd_next_device": "struct mtd_info *__mtd_next_device(int i)\n{\n\tstruct mtd_info *mtd;\n\n\twhile ((mtd = idr_get_next(&mtd_idr, &i))) {\n\t\tif (mtd->registered)\n\t\t\treturn mtd;\n\t\ti++;\n\t}\n\n\treturn NULL;\n}",
         "mtd_master_release": "static void mtd_master_release(struct kref *ref)\n{\n\tstruct mtd_info *master = container_of(ref, struct mtd_info,\n\t\t\t\t\t     master.life_refcnt);\n\tstruct completion *done = master->master.release_done;\n\tstruct module *owner = master->master.release_owner;\n\n\tmaster->master.release(master);\n\tif (done)\n\t\tcomplete(done);\n\telse\n\t\tmodule_put(owner);\n}",
@@ -23,7 +23,7 @@
         "mtd_put_lifetime": "void mtd_put_lifetime(struct mtd_info *master)\n{\n\tif (master->master.release)\n\t\tkref_put(&master->master.life_refcnt, mtd_master_release);\n}",
         "mtd_set_release": "void mtd_set_release(struct mtd_info *master,\n\t\t     void (*release)(struct mtd_info *mtd))\n{\n\tkref_init(&master->master.life_refcnt);\n\tmaster->master.release = release;\n}",
         "mtd_put_master": "void mtd_put_master(struct mtd_info *master)\n{\n\tDECLARE_COMPLETION_ONSTACK(done);\n\n\tif ((!master->owner || READ_ONCE(master->owner->state) == MODULE_STATE_LIVE) &&\n\t    try_module_get(master->owner)) {\n\t\tmaster->master.release_owner = master->owner;\n\t\tmtd_put_lifetime(master);\n\t} else {\n\t\tmaster->master.release_done = &done;\n\t\tmtd_put_lifetime(master);\n\t\twait_for_completion(&done);\n\t}\n}",
-        "mtd_release": "static void mtd_release(struct device *dev)\n{\n\tstruct mtd_info *mtd = dev_get_drvdata(dev);\n\tstruct mtd_info *master = mtd->ref_master;\n\tstruct mtd_info *parent = mtd->parent;\n\n\t/* Retained NVMEM providers use the MTD number in their device name. */\n\tida_free(&mtd_ids, mtd->index);\n\tof_node_put(mtd_get_of_node(mtd));\n\n\tif (mtd_is_partition(mtd))\n\t\trelease_mtd_partition(mtd);\n\n\tif (master) {\n\t\t/* Nested partitions can outlive device_del() of their parents. */\n\t\tif (parent && parent != master)\n\t\t\tput_device(&parent->dev);\n\t\tmtd_put_lifetime(master);\n\t}\n\tmodule_put(THIS_MODULE);\n}",
+        "mtd_release": "static void mtd_release(struct device *dev)\n{\n\tstruct mtd_info *mtd = dev_get_drvdata(dev);\n\tstruct mtd_info *master = mtd->ref_master;\n\tstruct mtd_info *parent = mtd->parent;\n\n\t/* Retained NVMEM providers use the MTD number in their device name. */\n\tida_free(&mtd_ids, mtd->index);\n\tof_node_put(mtd_get_of_node(mtd));\n\n\tif (mtd_is_partition(mtd))\n\t\trelease_mtd_partition(mtd);\n\n\tif (master) {\n\t\t/* Nested partitions can outlive device_del() of their parents. */\n\t\tif (parent && parent != master)\n\t\t\tput_device(&parent->dev);\n\t\tmtd_put_lifetime(master);\n\t}\n}",
         "mtd_device_release": "static void mtd_device_release(struct kref *kref)\n{\n\tstruct mtd_info *mtd = container_of(kref, struct mtd_info, refcnt);\n\tbool is_partition = mtd_is_partition(mtd);\n\tbool managed = mtd->ref_master;\n\n\t/* The table mutex is held by the registration or handle put path. */\n\tidr_remove(&mtd_idr, mtd->index);\n\tdevice_destroy(&mtd_class, MTD_DEVT(mtd->index) + 1);\n\n\tdebugfs_remove_recursive(mtd->dbg.dfs_dir);\n\n\t/* Try to remove the NVMEM provider */\n\tnvmem_unregister(mtd->nvmem);\n\n\tdevice_unregister(&mtd->dev);\n\n\t/*\n\t *  Clear dev so mtd can be safely re-registered later if desired.\n\t *  Should not be done for partition,\n\t *  as it was already destroyed in device_unregister().\n\t */\n\tif (!is_partition && !managed)\n\t\tmemset(&mtd->dev, 0, sizeof(mtd->dev));\n}",
         "del_mtd_device": "int del_mtd_device(struct mtd_info *mtd)\n{\n\tint ret;\n\tstruct mtd_notifier *not;\n\n\tmutex_lock(&mtd_table_mutex);\n\n\tif (idr_find(&mtd_idr, mtd->index) != mtd || !mtd->registered) {\n\t\tret = -ENODEV;\n\t\tgoto out_error;\n\t}\n\n\t/* No need to get a refcount on the module containing\n\t\tthe notifier, since we hold the mtd_table_mutex */\n\tlist_for_each_entry(not, &mtd_notifiers, list)\n\t\tnot->remove(mtd);\n\n\tmtd->registered = false;\n\tkref_put(&mtd->refcnt, mtd_device_release);\n\tret = 0;\n\nout_error:\n\tmutex_unlock(&mtd_table_mutex);\n\treturn ret;\n}",
         "get_mtd_device": "struct mtd_info *get_mtd_device(struct mtd_info *mtd, int num)\n{\n\tstruct mtd_info *ret = NULL, *other;\n\tint err = -ENODEV;\n\n\tmutex_lock(&mtd_table_mutex);\n\n\tif (num == -1) {\n\t\tmtd_for_each_device(other) {\n\t\t\tif (other == mtd) {\n\t\t\t\tret = mtd;\n\t\t\t\tbreak;\n\t\t\t}\n\t\t}\n\t} else if (num >= 0) {\n\t\tret = idr_find(&mtd_idr, num);\n\t\tif (mtd && mtd != ret)\n\t\t\tret = NULL;\n\t}\n\n\tif (!ret) {\n\t\tret = ERR_PTR(err);\n\t\tgoto out;\n\t}\n\n\terr = __get_mtd_device(ret);\n\tif (err)\n\t\tret = ERR_PTR(err);\nout:\n\tmutex_unlock(&mtd_table_mutex);\n\treturn ret;\n}",
@@ -42,7 +42,7 @@
         "mtd_put_lifetime": "9ec4506e7bbea9d2608d1965949fc1121369f6e6e009f95c3ec2c9bb8ef5dc37",
         "mtd_set_release": "cd3894e3397d878ca9fd04bfe9aae201dc195d4f32a5078aba1c154d381d65e8",
         "mtd_put_master": "0b4581bbff27e0bd8e55743bbb6b105be20afd96cc91b9b080b7a7aafd2acd19",
-        "mtd_release": "99f9df8c7b0ee6566c561a0495b7684631b60226be3a5ff77f6df202404e4f3f",
+        "mtd_release": "be0bee4e3d32a5207bfea1c7ffef318d342d0ee1762ab2a5992139f267c7fc5c",
         "mtd_device_release": "1e46aa7cfec64fa0d3c3b8df9c83c71ac48f4a1e0488a50b32bbe276b5280e81",
         "del_mtd_device": "46cf8539549dcf8b7b34e40b81c44ee158730283b1c1decc3e90a3221ac2c34a",
         "get_mtd_device": "d2282833f0e11a7391d6d7b2f7833c249988b128f9b0dd770b092694eaf2e395",

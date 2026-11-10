@@ -15,6 +15,7 @@ struct device_node { unsigned refs; };
 struct device {
     bool registered; unsigned refs; void *type, *data;
     struct device *parent;
+    struct module *release_owner;
     void (*action)(void *); void *action_data;
 };
 struct mtd_info {
@@ -134,12 +135,18 @@ static struct device *pending[32];
 static unsigned npending;
 static bool delay_release;
 static void mtd_release(struct device *);
+static void device_release_shim(struct device *d)
+{
+    struct module *owner=d->release_owner;
+    mtd_release(d);
+    module_put(owner);
+}
 static void put_device(struct device *d)
-{ if(!d) return; assert(d->refs); if(!--d->refs && d->type) { if(delay_release) pending[npending++]=d; else mtd_release(d); } }
+{ if(!d) return; assert(d->refs); if(!--d->refs && d->type) { if(delay_release) pending[npending++]=d; else device_release_shim(d); } }
 static void device_unregister(struct device *d)
 { assert(d->registered); d->registered=false; put_device(d); }
 static void drain_devices(void)
-{ while(npending) mtd_release(pending[--npending]); }
+{ while(npending) device_release_shim(pending[--npending]); }
 #define ERR_PTR(e) ((void *)(intptr_t)(e))
 #define IS_ERR(p) ((intptr_t)(p)<0 && (intptr_t)(p)>=-4095)
 #define PTR_ERR(p) ((int)(intptr_t)(p))

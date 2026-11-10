@@ -10,6 +10,7 @@ if [ -f /mtd.ko ]; then
         fi
     done
 fi
+if [ -f /retained_lifetime_test.ko ]; then
 collision=0
 case "$(/bin/busybox cat /proc/cmdline)" in
     *expect_collision=1*) collision=1 ;;
@@ -35,6 +36,7 @@ if /bin/busybox insmod /otp_lifetime_test.ko &&
 else
     echo "OTP-LIFETIME-QEMU: FAIL"
 fi
+fi
 if [ -f /review_lifetime_test.ko ]; then
     if /bin/busybox insmod /review_lifetime_test.ko &&
        echo 1 > /sys/module/review_lifetime_test/parameters/run &&
@@ -52,6 +54,48 @@ if [ -f /virt_concat_lifetime.ko ]; then
     else
         echo "CONCAT-LIFETIME-QEMU: FAIL"
     fi
+fi
+if [ -f /device_release_owner.ko ]; then
+    for mode in 0 1 2; do
+        ok=1
+        /bin/busybox insmod /device_release_holder.ko || ok=0
+        /bin/busybox insmod /device_release_owner.ko || ok=0
+        echo "$mode" > /sys/module/device_release_owner/parameters/prepare || ok=0
+        if /bin/busybox rmmod device_release_owner 2>/dev/null; then
+            echo "DEVICE-RELEASE-OWNER: FAIL (unloaded with retained device)"
+            /bin/busybox poweroff -f
+        fi
+        echo 1 > /sys/module/device_release_holder/parameters/command || ok=0
+        entered=0
+        for attempt in $(/bin/busybox seq 1 200); do
+            if [ "$(/bin/busybox cat /sys/module/device_release_holder/parameters/command)" = 1 ]; then
+                entered=1
+                break
+            fi
+            /bin/busybox sleep 0.1
+        done
+        [ "$entered" = 1 ] || ok=0
+        if /bin/busybox rmmod device_release_owner 2>/dev/null; then
+            echo "DEVICE-RELEASE-OWNER: FAIL (unloaded inside release callback)"
+            /bin/busybox poweroff -f
+        fi
+        echo 2 > /sys/module/device_release_holder/parameters/command || ok=0
+        unloaded=0
+        for attempt in $(/bin/busybox seq 1 200); do
+            if /bin/busybox rmmod device_release_owner 2>/dev/null; then
+                unloaded=1
+                break
+            fi
+            /bin/busybox sleep 0.1
+        done
+        [ "$unloaded" = 1 ] || ok=0
+        /bin/busybox rmmod device_release_holder || ok=0
+        if [ "$ok" = 1 ]; then
+            echo "DEVICE-RELEASE-OWNER: PASS (mode $mode)"
+        else
+            echo "DEVICE-RELEASE-OWNER: FAIL (mode $mode)"
+        fi
+    done
 fi
 if [ -f /mtd.ko ]; then
     for mod in nand nandcore mtd; do

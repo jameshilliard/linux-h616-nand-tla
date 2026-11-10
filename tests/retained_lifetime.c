@@ -3,6 +3,7 @@ static void publish(struct mtd_info *m, struct mtd_info *master, unsigned index)
 {
     m->index=index; m->registered=true; m->dev.registered=true;
     m->dev.type=&mtd_class; m->dev.data=m; m->dev.refs=1;
+    if(EXTERNAL_DEVICE_OWNER) m->dev.release_owner=THIS_MODULE;
     kref_init(&m->refcnt); m->ref_master=master; mtd_get_lifetime(master);
     if(m->parent && m->parent!=master) m->parent->dev.refs++;
     assert(!mtd_ids[index]); mtd_ids[index]=true;
