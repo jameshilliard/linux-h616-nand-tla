@@ -7,3 +7,5 @@
 Module.symvers
 modules.order
 .tmp_versions/
+/concat_fixture.c
+/concat_fixture.dtb

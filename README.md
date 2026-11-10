@@ -246,6 +246,7 @@ python3 run_fd_locking.py
 python3 run_fd_lifetime.py
 python3 run_retained_lifetime.py
 python3 run_retained_model.py
+python3 run_concat_lifetime.py
 python3 run_hardware.py
 python3 run_measured_requests.py
 python3 run_mtdchar_model.py --download
@@ -293,6 +294,23 @@ The OTP module also tests retained user/factory consumers, provider module
 references, a bare NVMEM device reference, a consumer acquired before failed
 probe, and OTP/NVMEM registration errors. Successful runs must unload each
 test module before reporting success.
+
+`run_concat_lifetime.py` checks two virtual-concat component slots and a
+replacement binding. It models staging, completed registration, immutable
+published component sets, file and NVMEM references, failed probes and final
+backing release. Negative controls remove the backing or component pin,
+publish before registration finishes, or leave a failed probe staged. These
+checks assume opt-in backing ownership and serialized staging; they do not
+model legacy unmanaged MTD allocation or hardware I/O.
+
+Build the optional `virt_concat_lifetime` test module with
+`CONFIG_RETAINED_CONCAT_TEST=m` and a kernel with `CONFIG_MTD_VIRT_CONCAT=y`
+(which requires `CONFIG_MTD_PARTITIONED_MASTER=y`). Its private DT fixture
+requires OF dynamic/overlay support and an empty DT, as on the QEMU x86 test
+machine. It checks reverse probe order, appended offsets, retained MTD/NVMEM
+handles, rebind isolation, failed registration and concurrent removal of
+both masters. No physical flash is accessed. The injected DT is intentionally
+kept until the disposable guest shuts down.
 
 The three mtdchar model/trace/admission runners independently pin stable
 TLA+ Tools v1.7.4; their first command downloads and verifies it. This avoids

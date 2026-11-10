@@ -44,6 +44,15 @@ if [ -f /review_lifetime_test.ko ]; then
         echo "REVIEW-LIFETIME-QEMU: FAIL"
     fi
 fi
+if [ -f /virt_concat_lifetime.ko ]; then
+    if /bin/busybox insmod /virt_concat_lifetime.ko &&
+       echo 1 > /sys/module/virt_concat_lifetime/parameters/run &&
+       /bin/busybox rmmod virt_concat_lifetime; then
+        echo "CONCAT-LIFETIME-QEMU: PASS"
+    else
+        echo "CONCAT-LIFETIME-QEMU: FAIL"
+    fi
+fi
 if [ -f /mtd.ko ]; then
     for mod in nand nandcore mtd; do
         if /bin/busybox rmmod "$mod"; then

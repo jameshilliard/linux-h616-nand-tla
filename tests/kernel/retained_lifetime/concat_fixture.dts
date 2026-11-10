@@ -1,0 +1,10 @@
+/dts-v1/;
+
+/ {
+	part_a: part-a {
+		part-concat-next = <&part_b>;
+	};
+	part_b: part-b {
+		phandle = <0xf001>;
+	};
+};
