@@ -54,7 +54,14 @@ static int command_set(const char *val, const struct kernel_param *kp)
 		if (count != 3)
 			return -EINVAL;
 		for (i = 0; i < count; i++) {
+			guard(device)(devices[i]);
+
 			if (device_is_registered(devices[i]) || dev_get_drvdata(devices[i]))
+				return -EINVAL;
+			if (!devices[i]->type || strcmp(devices[i]->type->name, "mtd") ||
+			    !devices[i]->class || !devices[i]->class->pm ||
+			    devices[i]->class->pm->suspend(devices[i]) ||
+			    devices[i]->class->pm->resume(devices[i]))
 				return -EINVAL;
 			pr_info("MTD-DETACH: retained device %s after core unload\n",
 				dev_name(devices[i]));

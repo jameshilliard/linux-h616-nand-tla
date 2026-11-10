@@ -28,6 +28,7 @@ jobs:
         run: |
           python3 run_nvmem_disconnect.py --download
           python3 run_mtd_detached_device.py --download
+          python3 run_mtd_pm_detach.py --download
           python3 run_callback_retirement.py --download
       - name: Execute the candidate C implementation with sanitizers
         run: python3 run_retained_lifetime.py

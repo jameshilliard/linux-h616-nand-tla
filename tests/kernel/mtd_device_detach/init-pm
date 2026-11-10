@@ -1,0 +1,14 @@
+#!/bin/sh
+export PATH=/bin
+/bin/busybox --install -s /bin
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+if insmod /mtd.ko && insmod /mtd_pm_detach_test.ko &&
+   rmmod mtd_pm_detach_test && rmmod mtd; then
+	echo "MTD-PM-DETACH-QEMU: PASS"
+else
+	echo "MTD-PM-DETACH-QEMU: FAIL"
+fi
+sleep 8
+poweroff -f

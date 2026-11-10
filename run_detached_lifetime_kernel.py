@@ -23,8 +23,14 @@ def main():
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--accel", choices=("tcg", "kvm"), default="tcg")
     parser.add_argument("--suite", choices=("nvmem", "mtd"), default="nvmem")
+    parser.add_argument("--mtd-pm-only", action="store_true",
+                        help="run only the MTD class-PM removal interleaving")
     args = parser.parse_args()
     tree, build = args.kernel_tree.resolve(), args.kernel_build.resolve()
+    if args.mtd_pm_only and args.suite != "mtd":
+        parser.error("--mtd-pm-only requires --suite mtd")
+    if args.suite == "mtd" and "CONFIG_PM_SLEEP=y\n" not in (build / ".config").read_text():
+        parser.error("the MTD PM-retirement test requires CONFIG_PM_SLEEP=y")
     source = HERE / "tests/kernel" / ("nvmem_disconnect" if args.suite == "nvmem"
                                     else "mtd_device_detach")
     out = Path(tempfile.mkdtemp(prefix=f"{args.suite}-detach-kernel-", dir=HERE / "results"))
@@ -43,7 +49,7 @@ def main():
         (root / directory).mkdir(parents=True)
     shutil.copy2(args.busybox, root / "bin/busybox")
     (root / "bin/sh").symlink_to("busybox")
-    shutil.copyfile(source / "init", root / "init")
+    shutil.copyfile(source / ("init-pm" if args.mtd_pm_only else "init"), root / "init")
     (root / "init").chmod(0o755)
     for name in ("holder", "provider"):
         shutil.copy2(out / f"modules/{args.suite}_detach_{name}.ko", root)
@@ -53,6 +59,7 @@ def main():
         shutil.copy2(build / "drivers/mtd/nand/raw/nand.ko", root)
         shutil.copy2(out / "modules/raw_nand_detach_test.ko", root)
         shutil.copy2(out / "modules/virt_concat_detach.ko", root)
+        shutil.copy2(out / "modules/mtd_pm_detach_test.ko", root)
         run(["cc", "-static", "-O2", "-Wall", "-Wextra", "-Werror",
              str(source / "load_fail.c"), "-o", str(root / "load_fail")], "userspace-build.log")
     names = subprocess.check_output(["find", ".", "-print0"], cwd=root)
@@ -65,7 +72,10 @@ def main():
          "-append", "console=ttyS0 panic=-1 oops=panic", "-nographic", "-no-reboot",
          "-nic", "none"], "qemu.log", timeout=args.timeout)
     log = (out / "qemu.log").read_text()
-    if args.suite == "nvmem":
+    if args.mtd_pm_only:
+        markers = ["MTD-PM-DETACH: active callback drained and later callbacks blocked PASS",
+                   "MTD-PM-DETACH-QEMU: PASS"]
+    elif args.suite == "nvmem":
         markers = [f"NVMEM-DETACH-QEMU: phase {phase} PASS" for phase in (1, 2, 3)]
         markers += ["NVMEM-DETACH-QEMU: PASS"]
         markers += ["NVMEM-DETACH-QEMU: layout unbind and rebind PASS"]
@@ -74,6 +84,7 @@ def main():
                    "MTD-DETACH: final device puts after core unload",
                    "MTD-DETACH-QEMU: nested handles and module unload PASS",
                    "MTD-DETACH-QEMU: initialization rollback PASS",
+                   "MTD-PM-DETACH: active callback drained and later callbacks blocked PASS",
                    "concat-lifetime: PASS",
                    "raw-nand-lifetime: PASS", "MTD-DETACH-QEMU: PASS"]
     bad = re.findall(r".*(?:BUG:|WARNING:|: FAIL|Call Trace:|Kernel panic|"
@@ -87,8 +98,9 @@ def main():
         kernel_config_sha256=hashlib.sha256((build / ".config").read_bytes()).hexdigest(),
         kernel_config=[line for line in (build / ".config").read_text().splitlines()
                        if re.match(r"CONFIG_(?:MTD(?:_.*)?|NVMEM(?:_.*)?|KASAN(?:_.*)?|"
-                                   r"PROVE_LOCKING|DEBUG_KOBJECT_RELEASE)=", line)],
+                                   r"PM(?:_.*)?|SUSPEND|PROVE_LOCKING|DEBUG_KOBJECT_RELEASE)=", line)],
         suite=args.suite,
+        mtd_pm_only=args.mtd_pm_only,
         scope="Synthetic callback draining and retained device/consumer references; "
               "not a complete MTD redesign"), indent=2) + "\n")
     print("PASS" if passed else "FAIL", out)

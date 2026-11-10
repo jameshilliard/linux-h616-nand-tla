@@ -487,7 +487,7 @@ The kernel changes cover NVMEM callback retirement, separately allocated MTD
 class devices, and virtual-concat disconnection. They are carried by
 `submit/rawnand-retained-handle-lifetime-v3`, based on NAND-next
 `30daaf3e7897` and its posted prerequisites. The reviewed candidate tip is
-`8673c9f0af42a6b6eef2359a2829d7d82f59ceb9`. Source-correspondence runners
+`a7881de8792602f297b39905eba1e90d78217acc`. Source-correspondence runners
 record the exact kernel commit and checked function hashes. The abstract
 models can run independently of the kernel checkout.
 
@@ -496,7 +496,8 @@ models can run independently of the kernel checkout.
 | NVMEM provider callbacks/context | Unregister closes admission and waits for SRCU readers, including cell post-processing and DT fixups. |
 | Retained NVMEM consumers | Keep core metadata; subsequent I/O returns `-ENODEV`. |
 | MTD backing data and nested partitions | Explicit metadata references remain independent of bare device references. Existing MTD handle/module ownership is retained. |
-| MTD class and class devices | A small built-in MTD component owns class data and final device release, even with `CONFIG_MTD=m`. |
+| MTD class and class devices | A small built-in MTD component owns class data, the device type, PM dispatch and final device release, even with `CONFIG_MTD=m`. |
+| MTD class PM callbacks | Detachment takes the device lock to drain active callbacks and clear the backing association. Later callbacks are harmless without retaining an MTD handle. |
 
 `NvmemDisconnect.tla` separates reader entry, admission, callback return,
 post-processing, SRCU exit, disconnect, drain and provider unload. Two positive
@@ -512,6 +513,14 @@ caller to disappear during its epilogue, or place class data in module storage.
 API caller residency is an explicit contract; the model does not establish
 that every kernel caller satisfies it.
 
+`MtdPMDetach.tla` separates the initial lock inside `device_del()`, removal
+from the PM list, a queued callback's device-lock acquisition, callback return,
+backing detachment and metadata release. Two positive cases and two mutations
+check that detachment both drains admitted callbacks and stops later backing
+access. It assumes the device mutex contract rather than proving the full PM
+scheduler. MTD's PM dispatch and device-type storage remain built in so retained
+devices do not expose module-owned tables.
+
 `CallbackRetirement.tla` adds two generations of callback-backed metadata,
 representing layout cells and virtual concatenations. Two positive cases and
 four mutations check retained handles, callback draining, disconnection checks
@@ -522,9 +531,11 @@ including panic writes and OOB-layout callbacks, and cell callback retirement.
 ```sh
 python3 run_nvmem_disconnect.py --download
 python3 run_mtd_detached_device.py --download
+python3 run_mtd_pm_detach.py --download
 python3 run_callback_retirement.py --download
 python3 run_nvmem_disconnect.py --kernel-tree ../linux
 python3 run_mtd_detached_device.py --kernel-tree ../linux
+python3 run_mtd_pm_detach.py --kernel-tree ../linux
 python3 run_callback_retirement.py --kernel-tree ../linux
 ```
 
@@ -534,11 +545,15 @@ then exercise stale consumers and reuse the provider name before final device
 release. Dynamic layout tests hold post-processing active while unbinding,
 rebind the layout, and check that the new cell works while the retained old cell
 stays disconnected. MTD tests retain nested devices and an open file across
-disconnection,
-unload the provider and MTD core, reuse the device numbers, and exercise module
-initialization rollback. A synthetic raw NAND controller additionally checks
-unbind/rebind with old handles and independent device references. Virtual-concat
-tests cover concurrent removal of managed and unmanaged component masters,
+disconnection, unload the provider and MTD core, reuse the device numbers, and
+exercise module initialization rollback. The PM fixture admits a class callback
+after `device_del()` releases its initial lock, holds it while removal progresses,
+and checks that backing retirement waits. It reproduced premature retirement
+before the fix. Retained-device tests also invoke the built-in PM callbacks
+after the provider and MTD core modules have unloaded. A synthetic raw NAND
+controller additionally checks unbind/rebind with old handles and independent
+device references. Virtual-concat tests cover concurrent removal of managed and
+unmanaged component masters,
 rebind and partially published registrations, with 25 iterations per mode.
 
 ```sh
@@ -552,7 +567,9 @@ python3 run_detached_lifetime_kernel.py --suite mtd \
 
 The kernel build must be configured for x86-64 QEMU with MTD and raw NAND as
 modules, virtual concatenation enabled, NVMEM and its layout support built-in,
-OF and flattened-DT support, an initramfs console, sysfs, procfs and devtmpfs.
+OF and flattened-DT support, system sleep (`CONFIG_PM_SLEEP=y`), an initramfs
+console, sysfs, procfs and devtmpfs. The runner rejects an MTD configuration
+without system sleep; `--mtd-pm-only` isolates the PM removal interleaving.
 The fixture builds also require `dtc` from the kernel build and host `xxd`.
 The recorded runs enable `CONFIG_MTD_PARTITIONED_MASTER`, KASAN, lockdep and
 `CONFIG_DEBUG_KOBJECT_RELEASE`. The latter also requires the debug-object timer
@@ -563,7 +580,7 @@ DT nodes are deliberately retained until the disposable VM exits. They can
 produce missing `of_node` sysfs-link messages because they are not installed
 in the global firmware tree; they do not represent a hardware DT test.
 
-All 21 model expectations matched. The expanded MTD and NVMEM kernel cases
+All 25 model expectations matched. The expanded MTD and NVMEM kernel cases
 passed with the diagnostic configuration, and x86 allmodconfig builds of
 `drivers/mtd/`, `drivers/nvmem/`, the PTP OCP and cobalt MTD users passed with
 `W=1`. i386, MIPS and PowerPC MTD/NVMEM builds also passed, including the
@@ -575,7 +592,7 @@ Moving that class data into the built-in component fixed the tested failure;
 the class-storage mutation preserves the counterexample.
 
 The review used the general kernel, locking, allocation, driver-core/kobject/
-sysfs/debugfs and false-positive lifetime guidance from Sashiko's prompts at
+sysfs/debugfs, PM and false-positive lifetime guidance from Sashiko's prompts at
 `ffa8b3489407dd5cea6558fcffb6a4667131f1d3`.
 The structural inventory checks 52 raw-NAND driver families, but it is not a
 proof of their hardware teardown. Exhaustive post-publication allocation-fault

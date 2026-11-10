@@ -47,6 +47,8 @@ rmmod mtd_detach_holder || fail rollback_holder_unload
 echo "MTD-DETACH-QEMU: initialization rollback PASS"
 
 insmod /mtd.ko || fail raw_mtd
+insmod /mtd_pm_detach_test.ko || fail pm_detach
+rmmod mtd_pm_detach_test || fail pm_detach_unload
 insmod /nandcore.ko || fail nandcore
 insmod /nand.ko || fail nand
 insmod /raw_nand_detach_test.ko || fail raw_fixture

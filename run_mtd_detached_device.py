@@ -16,7 +16,7 @@ def source_check(tree):
     shell = (tree / "drivers/mtd/mtddevice.c").read_text()
     device = (tree / "include/linux/device.h").read_text()
     functions = {name: extract(core, name) for name in
-                 ("mtd_data_release", "mtd_device_release", "add_mtd_device")}
+                 ("mtd_data_release", "mtd_device_release", "mtd_device_detach", "add_mtd_device")}
     functions["mtd_class_device_release"] = extract(shell, "mtd_class_device_release")
     assert "release_owner" not in device
     assert "obj-$(CONFIG_MTD_DEVICE)" in (tree / "drivers/Makefile").read_text()
@@ -26,8 +26,8 @@ def source_check(tree):
     assert "mtd_class_device_alloc" in functions["add_mtd_device"]
     release = functions["mtd_device_release"]
     assert release.index("nvmem_unregister") < release.index("device_del")
-    assert release.index("device_del") < release.index("dev_set_drvdata")
-    assert release.index("dev_set_drvdata") < release.index("mtd_put_data")
+    assert release.index("device_del") < release.index("mtd_device_detach")
+    assert release.index("mtd_device_detach") < release.index("mtd_put_data")
     assert "mtd_put_data(parent)" in functions["mtd_data_release"]
     final = functions["mtd_class_device_release"]
     assert "kfree(dev)" in final and "of_node_put" in final
