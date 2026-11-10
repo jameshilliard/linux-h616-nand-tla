@@ -54,6 +54,9 @@ echo 1 > /sys/module/raw_nand_detach_test/parameters/run || fail raw_scan_unbind
 rmmod raw_nand_detach_test || fail raw_unload
 rmmod nand || fail nand_unload
 rmmod nandcore || fail nandcore_unload
+insmod /virt_concat_detach.ko || fail concat_fixture
+echo 1 > /sys/module/virt_concat_detach/parameters/run || fail concat_checks
+rmmod virt_concat_detach || fail concat_unload
 rmmod mtd || fail raw_core_unload
 sleep 8
 echo "MTD-DETACH-QEMU: PASS"

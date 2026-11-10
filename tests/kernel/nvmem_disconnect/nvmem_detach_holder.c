@@ -66,6 +66,7 @@ static DECLARE_WORK(reader, read_work);
 static int command_set(const char *val, const struct kernel_param *kp)
 {
 	struct nvmem_device *late;
+	struct nvmem_cell *new_cell;
 	unsigned int command;
 	u8 byte = 0xa5;
 	void *buf;
@@ -134,6 +135,25 @@ static int command_set(const char *val, const struct kernel_param *kp)
 		held_device = NULL;
 		pr_info("NVMEM-DETACH: final bare device put after provider unload\n");
 		return 0;
+	case 6:
+		if (nvmem_device_read(held, 0, 1, &byte) != 1)
+			return -EINVAL;
+		buf = nvmem_cell_read(held_cell, &len);
+		if (!IS_ERR(buf)) {
+			kfree(buf);
+			return -EINVAL;
+		}
+		return PTR_ERR(buf) == -ENODEV ? 0 : -EINVAL;
+	case 7:
+		new_cell = nvmem_cell_get(consumer, "token");
+		if (IS_ERR(new_cell))
+			return PTR_ERR(new_cell);
+		buf = nvmem_cell_read(new_cell, &len);
+		ret = IS_ERR(buf) ? PTR_ERR(buf) : 0;
+		if (!IS_ERR(buf))
+			kfree(buf);
+		nvmem_cell_put(new_cell);
+		return ret;
 	default:
 		return -EINVAL;
 	}

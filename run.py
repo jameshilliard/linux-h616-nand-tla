@@ -125,7 +125,8 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None, toolchain=No
         if temporal:
             cfg += "PROPERTY " + case["expected"] + "\n"
         elif not case["expected"]:
-            cfg += "PROPERTY Terminates\n"
+            for prop in spec.get("properties", ["Terminates"]):
+                cfg += "PROPERTY " + prop + "\n"
         (case_dir / "model.cfg").write_text(cfg)
         command = ["java", "-Xmx1g", "-XX:+UseParallelGC", "-cp", str(jar),
                    "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "0",

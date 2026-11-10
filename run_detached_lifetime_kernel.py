@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--busybox", required=True, type=Path,
                         help="statically linked x86-64 BusyBox executable")
     parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--accel", choices=("tcg", "kvm"), default="tcg")
     parser.add_argument("--suite", choices=("nvmem", "mtd"), default="nvmem")
     args = parser.parse_args()
     tree, build = args.kernel_tree.resolve(), args.kernel_build.resolve()
@@ -50,26 +52,29 @@ def main():
         shutil.copy2(build / "drivers/mtd/nand/nandcore.ko", root)
         shutil.copy2(build / "drivers/mtd/nand/raw/nand.ko", root)
         shutil.copy2(out / "modules/raw_nand_detach_test.ko", root)
+        shutil.copy2(out / "modules/virt_concat_detach.ko", root)
         run(["cc", "-static", "-O2", "-Wall", "-Wextra", "-Werror",
              str(source / "load_fail.c"), "-o", str(root / "load_fail")], "userspace-build.log")
     names = subprocess.check_output(["find", ".", "-print0"], cwd=root)
     archive = subprocess.run(["cpio", "--null", "-o", "-H", "newc", "--owner=0:0"],
                              cwd=root, input=names, capture_output=True, check=True).stdout
     (out / "initramfs.cpio").write_bytes(archive)
-    run(["qemu-system-x86_64", "-machine", "accel=tcg", "-cpu", "max", "-m", "2048",
+    run(["qemu-system-x86_64", "-machine", f"accel={args.accel}", "-cpu", "max", "-m", "2048",
          "-smp", "4", "-kernel", str(build / "arch/x86/boot/bzImage"),
          "-initrd", str(out / "initramfs.cpio"),
          "-append", "console=ttyS0 panic=-1 oops=panic", "-nographic", "-no-reboot",
-         "-nic", "none"], "qemu.log", timeout=120)
+         "-nic", "none"], "qemu.log", timeout=args.timeout)
     log = (out / "qemu.log").read_text()
     if args.suite == "nvmem":
         markers = [f"NVMEM-DETACH-QEMU: phase {phase} PASS" for phase in (1, 2, 3)]
         markers += ["NVMEM-DETACH-QEMU: PASS"]
+        markers += ["NVMEM-DETACH-QEMU: layout unbind and rebind PASS"]
     else:
         markers = ["MTD-DETACH: provider metadata freed", "MTD-DETACH: provider unloaded",
                    "MTD-DETACH: final device puts after core unload",
                    "MTD-DETACH-QEMU: nested handles and module unload PASS",
                    "MTD-DETACH-QEMU: initialization rollback PASS",
+                   "concat-lifetime: PASS",
                    "raw-nand-lifetime: PASS", "MTD-DETACH-QEMU: PASS"]
     bad = re.findall(r".*(?:BUG:|WARNING:|: FAIL|Call Trace:|Kernel panic|"
                      r"possible circular locking|possible recursive locking).*", log)

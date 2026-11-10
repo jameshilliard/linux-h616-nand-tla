@@ -1,0 +1,8 @@
+/dts-v1/;
+/ {
+	provider {
+		nvmem-layout {
+			compatible = "test,detach-layout";
+		};
+	};
+};

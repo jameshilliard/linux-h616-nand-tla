@@ -38,6 +38,37 @@ for phase in 1 2 3; do
 	rmmod nvmem_detach_holder || fail holder_remove
 	echo "NVMEM-DETACH-QEMU: phase $phase PASS"
 done
+insmod /nvmem_detach_holder.ko || fail layout_holder
+insmod /nvmem_detach_provider.ko dynamic=1 || fail layout_provider
+param=/sys/module/nvmem_detach_holder/parameters
+echo 1 > "$param/command" || fail layout_acquire
+echo 3 > "$param/phase"
+echo 2 > "$param/command" || fail layout_start
+count=0
+while [ "$(cat "$param/command")" != 1 ]; do
+	count=$((count + 1))
+	[ "$count" -lt 100 ] || fail layout_entered
+	sleep 0.02
+done
+for path in /sys/bus/nvmem-layout/devices/*; do
+	layout=${path##*/}
+done
+echo "$layout" > /sys/bus/nvmem-layout/drivers/detach-layout/unbind &
+remover=$!
+sleep 0.2
+kill -0 "$remover" || fail layout_drain
+echo 3 > "$param/command" || fail layout_unblock
+wait "$remover" || fail layout_unbind
+echo 0 > "$param/phase"
+echo 6 > "$param/command" || fail retired_cell
+echo "$layout" > /sys/bus/nvmem-layout/drivers/detach-layout/bind || fail layout_rebind
+echo 7 > "$param/command" || fail replacement_cell
+echo 6 > "$param/command" || fail old_cell_revived
+rmmod nvmem_detach_provider || fail layout_provider_unload
+echo 4 > "$param/command" || fail layout_stale_consumer
+echo 5 > "$param/command" || fail layout_bare_put
+rmmod nvmem_detach_holder || fail layout_holder_unload
+echo "NVMEM-DETACH-QEMU: layout unbind and rebind PASS"
 # Let DEBUG_KOBJECT_RELEASE run after both fixture modules have unloaded.
 sleep 8
 echo "NVMEM-DETACH-QEMU: PASS"

@@ -477,18 +477,21 @@ than claiming exhaustive branch coverage of the BCH library.
 
 ## Disconnected-lifetime experiment
 
-This is a prototype following
+This checks the v3 redesign following
 [Greg's v2 lifetime review](https://lore.kernel.org/r/2026111037-stir-hermit-cb21@gregkh/),
-not a submitted replacement series. It separates retained data from provider
+prepared for submission. It separates retained data from provider
 code instead of extending `struct device` with a module owner. The historical
 release-owner snapshots above remain unchanged.
 
-The experimental kernel changes are `2b4b7896cbfd` (NVMEM callback retirement)
-and `d1d4ac783828` (separate MTD class-device allocation), based on the sent v2
-tip `43c1e06d81de`. Kernel source correspondence checks require a checkout of
-the prototype; the abstract models can run independently.
+The kernel changes cover NVMEM callback retirement, separately allocated MTD
+class devices, and virtual-concat disconnection. They are carried by
+`submit/rawnand-retained-handle-lifetime-v3`, based on NAND-next
+`30daaf3e7897` and its posted prerequisites. The reviewed candidate tip is
+`8673c9f0af42a6b6eef2359a2829d7d82f59ceb9`. Source-correspondence runners
+record the exact kernel commit and checked function hashes. The abstract
+models can run independently of the kernel checkout.
 
-| Object | Lifetime in the experiment |
+| Object | Lifetime in the redesign |
 | --- | --- |
 | NVMEM provider callbacks/context | Unregister closes admission and waits for SRCU readers, including cell post-processing and DT fixups. |
 | Retained NVMEM consumers | Keep core metadata; subsequent I/O returns `-ENODEV`. |
@@ -509,20 +512,34 @@ caller to disappear during its epilogue, or place class data in module storage.
 API caller residency is an explicit contract; the model does not establish
 that every kernel caller satisfies it.
 
+`CallbackRetirement.tla` adds two generations of callback-backed metadata,
+representing layout cells and virtual concatenations. Two positive cases and
+four mutations check retained handles, callback draining, disconnection checks
+and replacement identity. This is a safety model: it makes no fairness or
+termination claim. Its source checks cover every concat forwarding operation,
+including panic writes and OOB-layout callbacks, and cell callback retirement.
+
 ```sh
 python3 run_nvmem_disconnect.py --download
 python3 run_mtd_detached_device.py --download
+python3 run_callback_retirement.py --download
 python3 run_nvmem_disconnect.py --kernel-tree ../linux
 python3 run_mtd_detached_device.py --kernel-tree ../linux
+python3 run_callback_retirement.py --kernel-tree ../linux
 ```
 
 The kernel fixtures use disposable QEMU devices, not real flash. NVMEM tests
 block read, write and post-processing callbacks while removing the provider,
 then exercise stale consumers and reuse the provider name before final device
-release. MTD tests retain nested devices and an open file across disconnection,
+release. Dynamic layout tests hold post-processing active while unbinding,
+rebind the layout, and check that the new cell works while the retained old cell
+stays disconnected. MTD tests retain nested devices and an open file across
+disconnection,
 unload the provider and MTD core, reuse the device numbers, and exercise module
 initialization rollback. A synthetic raw NAND controller additionally checks
-unbind/rebind with old handles and independent device references.
+unbind/rebind with old handles and independent device references. Virtual-concat
+tests cover concurrent removal of managed and unmanaged component masters,
+rebind and partially published registrations, with 25 iterations per mode.
 
 ```sh
 python3 run_detached_lifetime_kernel.py --suite nvmem \
@@ -534,15 +551,24 @@ python3 run_detached_lifetime_kernel.py --suite mtd \
 ```
 
 The kernel build must be configured for x86-64 QEMU with MTD and raw NAND as
-modules, NVMEM built-in, an initramfs console, sysfs, procfs and devtmpfs.
+modules, virtual concatenation enabled, NVMEM and its layout support built-in,
+OF and flattened-DT support, an initramfs console, sysfs, procfs and devtmpfs.
+The fixture builds also require `dtc` from the kernel build and host `xxd`.
 The recorded runs enable `CONFIG_MTD_PARTITIONED_MASTER`, KASAN, lockdep and
 `CONFIG_DEBUG_KOBJECT_RELEASE`. The latter also requires the debug-object timer
 options; verify the resulting configuration rather than just requesting it.
-Each runner saves build/QEMU logs and its result under `results/`.
+Each runner saves build/QEMU logs and its result under `results/`. Pass
+`--accel kvm` when available; the default is software emulation. Private fixture
+DT nodes are deliberately retained until the disposable VM exits. They can
+produce missing `of_node` sysfs-link messages because they are not installed
+in the global firmware tree; they do not represent a hardware DT test.
 
-All 15 model expectations matched. The MTD and NVMEM kernel cases passed with
-the diagnostic configuration, and an x86 allmodconfig build of `drivers/mtd/`
-and the external cobalt MTD user passed with `W=1`. Delayed-release testing
+All 21 model expectations matched. The expanded MTD and NVMEM kernel cases
+passed with the diagnostic configuration, and x86 allmodconfig builds of
+`drivers/mtd/`, `drivers/nvmem/`, the PTP OCP and cobalt MTD users passed with
+`W=1`. i386, MIPS and PowerPC MTD/NVMEM builds also passed, including the
+PowerPC-only raw-NAND drivers. Each of the six core patches built individually
+against x86 allmodconfig. Delayed-release testing
 first reproduced a crash in `class_release()`: moving only the device release
 callback was insufficient because the class object was still module data.
 Moving that class data into the built-in component fixed the tested failure;
@@ -551,12 +577,13 @@ the class-storage mutation preserves the counterexample.
 The review used the general kernel, locking, allocation, driver-core/kobject/
 sysfs/debugfs and false-positive lifetime guidance from Sashiko's prompts at
 `ffa8b3489407dd5cea6558fcffb6a4667131f1d3`.
-This is not full-series validation. Dynamic NVMEM layout bind/unbind,
-exhaustive post-publication registration faults, runtime virtual-concat
-composition, other architectures and external clients relying on bare
-`dev_get_drvdata()` still need audit. The prototype also leaves NVMEM's legacy
-configuration owner field in place for source compatibility. No real hardware
-test is claimed for these experimental changes.
+The structural inventory checks 52 raw-NAND driver families, but it is not a
+proof of their hardware teardown. Exhaustive post-publication allocation-fault
+injection, weak-memory analysis and runtime validation of every controller
+remain outside this coverage. PTP OCP's bare-device lookup now acquires an MTD
+handle; the model does not automatically discover equivalent misuse by other
+clients. NVMEM's legacy configuration owner field remains for source
+compatibility. No real hardware test is claimed for this redesign.
 
 ## Interpreting the result
 
