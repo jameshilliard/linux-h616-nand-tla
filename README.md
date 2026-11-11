@@ -487,7 +487,7 @@ The kernel changes cover NVMEM callback retirement, separately allocated MTD
 class devices, and virtual-concat disconnection. They are carried by
 `submit/rawnand-retained-handle-lifetime-v3`, based on NAND-next
 `30daaf3e7897` and its posted prerequisites. The reviewed candidate tip is
-`a7881de8792602f297b39905eba1e90d78217acc`. Source-correspondence runners
+`10e5deade14d7349fe4b584d05ff5f834d270d5a`. Source-correspondence runners
 record the exact kernel commit and checked function hashes. The abstract
 models can run independently of the kernel checkout.
 
@@ -498,6 +498,8 @@ models can run independently of the kernel checkout.
 | MTD backing data and nested partitions | Explicit metadata references remain independent of bare device references. Existing MTD handle/module ownership is retained. |
 | MTD class and class devices | A small built-in MTD component owns class data, the device type, PM dispatch and final device release, even with `CONFIG_MTD=m`. |
 | MTD class PM callbacks | Detachment takes the device lock to drain active callbacks and clear the backing association. Later callbacks are harmless without retaining an MTD handle. |
+| Raw NAND controller code | Disconnection drains hardware operations and completes NAND/controller cleanup before driver removal returns. Retained handles do not pin the controller module. |
+| Raw NAND chip/controller allocations | NAND core owns final allocation release. Names and OOB-layout regions are copied before publication, so metadata queries do not call an unloaded controller. Ordinary MTD handles retain NAND core. |
 
 `NvmemDisconnect.tla` separates reader entry, admission, callback return,
 post-processing, SRCU exit, disconnect, drain and provider unload. Two positive
@@ -528,6 +530,25 @@ and replacement identity. This is a safety model: it makes no fairness or
 termination claim. Its source checks cover every concat forwarding operation,
 including panic writes and OOB-layout callbacks, and cell callback retirement.
 
+`NandDataCodeLifetime.tla` checks the boundary between synchronous NAND cleanup
+and delayed data release. It includes the bad-block-marking operation's
+chip-lock drops, a second hardware user, suspended waiters, retained layout
+queries, controller unload and final core-owned free. Four positive cases
+cover one/two users and suspended/active operation. Five mutations remove
+hardware draining, bad-block-operation draining, layout snapshots, core-only
+release or the disconnect wakeup. The model assumes ordinary MTD references
+keep NAND core loaded and assumes the mutex/refcount contracts; it does not
+prove weak-memory behavior or arbitrary controller-specific callbacks.
+
+`run_nand_storage.py` extracts all functions in `nand_lifetime.c` and executes
+them with ASan/UBSan. It covers embedded and separate chip allocations, shared
+controllers, either final-put order, name/layout snapshots, layout enumeration
+errors, allocation failures and devres registration failure. Its explicit API
+shims isolate ownership; the real-kernel fixtures check integration. The
+committed snapshot lets CI run without a kernel checkout. The older
+`run_retained_lifetime.py` snapshot remains historical evidence for the previous
+design, not validation of the new final-release path.
+
 ```sh
 python3 run_nvmem_disconnect.py --download
 python3 run_mtd_detached_device.py --download
@@ -537,6 +558,8 @@ python3 run_nvmem_disconnect.py --kernel-tree ../linux
 python3 run_mtd_detached_device.py --kernel-tree ../linux
 python3 run_mtd_pm_detach.py --kernel-tree ../linux
 python3 run_callback_retirement.py --kernel-tree ../linux
+python3 run_nand_data_code.py --kernel-tree ../linux --download
+python3 run_nand_storage.py --kernel-tree ../linux
 ```
 
 The kernel fixtures use disposable QEMU devices, not real flash. NVMEM tests
@@ -552,7 +575,10 @@ and checks that backing retirement waits. It reproduced premature retirement
 before the fix. Retained-device tests also invoke the built-in PM callbacks
 after the provider and MTD core modules have unloaded. A synthetic raw NAND
 controller additionally checks unbind/rebind with old handles and independent
-device references. Virtual-concat tests cover concurrent removal of managed and
+device references, then unloads the controller module with a read/write MTD
+file still open. Metadata queries remain valid, while reads and bad-block
+queries return `-ENODEV`; closing the file exercises the disconnected sync
+path. Virtual-concat tests cover concurrent removal of managed and
 unmanaged component masters,
 rebind and partially published registrations, with 25 iterations per mode.
 
@@ -580,7 +606,8 @@ DT nodes are deliberately retained until the disposable VM exits. They can
 produce missing `of_node` sysfs-link messages because they are not installed
 in the global firmware tree; they do not represent a hardware DT test.
 
-All 25 model expectations matched. The expanded MTD and NVMEM kernel cases
+All 25 original model expectations and nine data/code-lifetime expectations
+matched. The expanded MTD and NVMEM kernel cases
 passed with the diagnostic configuration, and x86 allmodconfig builds of
 `drivers/mtd/`, `drivers/nvmem/`, the PTP OCP and cobalt MTD users passed with
 `W=1`. i386, MIPS and PowerPC MTD/NVMEM builds also passed, including the

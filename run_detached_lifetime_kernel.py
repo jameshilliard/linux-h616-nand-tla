@@ -62,6 +62,8 @@ def main():
         shutil.copy2(out / "modules/mtd_pm_detach_test.ko", root)
         run(["cc", "-static", "-O2", "-Wall", "-Wextra", "-Werror",
              str(source / "load_fail.c"), "-o", str(root / "load_fail")], "userspace-build.log")
+        run(["cc", "-static", "-O2", "-Wall", "-Wextra", "-Werror",
+             str(source / "retained_fd.c"), "-o", str(root / "retained_fd")], "retained-fd-build.log")
     names = subprocess.check_output(["find", ".", "-print0"], cwd=root)
     archive = subprocess.run(["cpio", "--null", "-o", "-H", "newc", "--owner=0:0"],
                              cwd=root, input=names, capture_output=True, check=True).stdout
@@ -86,6 +88,7 @@ def main():
                    "MTD-DETACH-QEMU: initialization rollback PASS",
                    "MTD-PM-DETACH: active callback drained and later callbacks blocked PASS",
                    "concat-lifetime: PASS",
+                   "MTD-DETACH-QEMU: raw NAND controller unload with retained FD PASS",
                    "raw-nand-lifetime: PASS", "MTD-DETACH-QEMU: PASS"]
     bad = re.findall(r".*(?:BUG:|WARNING:|: FAIL|Call Trace:|Kernel panic|"
                      r"possible circular locking|possible recursive locking).*", log)

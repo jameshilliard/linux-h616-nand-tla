@@ -54,6 +54,14 @@ insmod /nand.ko || fail nand
 insmod /raw_nand_detach_test.ko || fail raw_fixture
 echo 1 > /sys/module/raw_nand_detach_test/parameters/run || fail raw_scan_unbind_rebind
 rmmod raw_nand_detach_test || fail raw_unload
+insmod /raw_nand_detach_test.ko publish=1 || fail raw_publish
+exec 3<>/dev/mtd0 || fail raw_open
+dd bs=1 count=1 <&3 >/dev/null || fail raw_read
+# Module exit removes the controller while the NAND-core-owned FD stays open.
+rmmod raw_nand_detach_test || fail "retained FD pins controller module"
+/retained_fd 3 || fail raw_after_module_unload
+exec 3<&-
+echo "<6>MTD-DETACH-QEMU: raw NAND controller unload with retained FD PASS" > /dev/kmsg
 rmmod nand || fail nand_unload
 rmmod nandcore || fail nandcore_unload
 insmod /virt_concat_detach.ko || fail concat_fixture
