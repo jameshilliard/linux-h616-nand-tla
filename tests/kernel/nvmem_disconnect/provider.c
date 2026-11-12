@@ -18,6 +18,12 @@ static struct device *parent;
 static struct nvmem_device *provider;
 static bool dynamic;
 module_param(dynamic, bool, 0400);
+static bool pin_owner;
+module_param(pin_owner, bool, 0400);
+static bool wp;
+module_param(wp, bool, 0400);
+static bool fail_register;
+module_param(fail_register, bool, 0400);
 extern unsigned char layout_fixture_dtb[];
 extern unsigned int layout_fixture_dtb_len;
 
@@ -114,14 +120,15 @@ static int prepare_layout(struct nvmem_config *config)
 
 static int __init provider_init(void)
 {
+	static const struct nvmem_keepout invalid_keepout = { .start = 2, .end = 1 };
 	struct nvmem_cell_info cell = {
 		.name = "token", .offset = 0, .bytes = 1,
 		.read_post_process = test_postprocess,
 	};
 	struct nvmem_config config = {
 		.name = "nvmem-detach-fixture", .id = NVMEM_DEVID_NONE,
-		.owner = THIS_MODULE, .size = 8, .word_size = 1, .stride = 1,
-		.ignore_wp = true, .reg_read = test_read, .reg_write = test_write,
+		.size = 8, .word_size = 1, .stride = 1,
+		.reg_read = test_read, .reg_write = test_write,
 		.cells = &cell, .ncells = 1,
 	};
 	int ret;
@@ -137,6 +144,12 @@ static int __init provider_init(void)
 	context->value = 0xa5;
 	config.dev = parent;
 	config.priv = context;
+	config.owner = pin_owner ? THIS_MODULE : NULL;
+	config.ignore_wp = !wp;
+	if (fail_register) {
+		config.keepout = &invalid_keepout;
+		config.nkeepout = 1;
+	}
 	cell.priv = context;
 	if (dynamic) {
 		ret = prepare_layout(&config);

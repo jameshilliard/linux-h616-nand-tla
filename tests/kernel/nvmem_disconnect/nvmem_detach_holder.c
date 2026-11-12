@@ -2,6 +2,8 @@
 /* This module has no symbol dependency on the provider being unloaded. */
 #include <linux/completion.h>
 #include <linux/device.h>
+#include <linux/gpio/driver.h>
+#include <linux/gpio/machine.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/slab.h>
@@ -18,6 +20,35 @@ static DECLARE_COMPLETION(entered);
 static DECLARE_COMPLETION(proceed);
 static DECLARE_COMPLETION(finished);
 module_param(phase, uint, 0600);
+
+static int wp_value;
+
+static int wp_direction(struct gpio_chip *chip, unsigned int offset)
+{
+	return GPIO_LINE_DIRECTION_OUT;
+}
+
+static int wp_set(struct gpio_chip *chip, unsigned int offset, int value)
+{
+	wp_value = value;
+	return 0;
+}
+
+static int wp_get(struct gpio_chip *chip, unsigned int offset)
+{
+	return wp_value;
+}
+
+static struct gpio_chip wp_chip = {
+	.label = "nvmem-detach-wp", .owner = THIS_MODULE, .base = -1, .ngpio = 1,
+	.get_direction = wp_direction, .direction_output = wp_set,
+	.get = wp_get, .set = wp_set,
+};
+
+static struct gpiod_lookup_table wp_lookup = {
+	.dev_id = "nvmem-detach-provider",
+	.table = { GPIO_LOOKUP("nvmem-detach-wp", 0, "wp", GPIO_ACTIVE_HIGH), {} },
+};
 
 static struct nvmem_cell_lookup lookup = {
 	.nvmem_name = "nvmem-detach-fixture", .cell_name = "token",
@@ -154,6 +185,14 @@ static int command_set(const char *val, const struct kernel_param *kp)
 			kfree(buf);
 		nvmem_cell_put(new_cell);
 		return ret;
+	case 8:
+		if (!held || !held_cell)
+			return -EINVAL;
+		nvmem_cell_put(held_cell);
+		held_cell = NULL;
+		nvmem_device_put(held);
+		held = NULL;
+		return 0;
 	default:
 		return -EINVAL;
 	}
@@ -171,9 +210,18 @@ module_param_cb(command, &command_ops, NULL, 0600);
 
 static int __init holder_init(void)
 {
+	int ret;
+
 	consumer = root_device_register("nvmem-detach-consumer");
 	if (IS_ERR(consumer))
 		return PTR_ERR(consumer);
+	wp_chip.parent = consumer;
+	ret = gpiochip_add_data(&wp_chip, NULL);
+	if (ret) {
+		root_device_unregister(consumer);
+		return ret;
+	}
+	gpiod_add_lookup_table(&wp_lookup);
 	nvmem_add_cell_lookups(&lookup, 1);
 	return 0;
 }
@@ -188,6 +236,8 @@ static void __exit holder_exit(void)
 		nvmem_device_put(held);
 	put_device(held_device);
 	nvmem_del_cell_lookups(&lookup, 1);
+	gpiod_remove_lookup_table(&wp_lookup);
+	gpiochip_remove(&wp_chip);
 	root_device_unregister(consumer);
 }
 

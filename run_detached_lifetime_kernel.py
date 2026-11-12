@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--accel", choices=("tcg", "kvm"), default="tcg")
+    parser.add_argument("--cpu", default="max", help="QEMU CPU model (default: max)")
     parser.add_argument("--suite", choices=("nvmem", "mtd"), default="nvmem")
     parser.add_argument("--mtd-pm-only", action="store_true",
                         help="run only the MTD class-PM removal interleaving")
@@ -29,6 +30,8 @@ def main():
     tree, build = args.kernel_tree.resolve(), args.kernel_build.resolve()
     if args.mtd_pm_only and args.suite != "mtd":
         parser.error("--mtd-pm-only requires --suite mtd")
+    if args.suite == "nvmem" and "CONFIG_GPIOLIB=y\n" not in (build / ".config").read_text():
+        parser.error("the NVMEM WP GPIO reprobe test requires CONFIG_GPIOLIB=y")
     if args.suite == "mtd" and "CONFIG_PM_SLEEP=y\n" not in (build / ".config").read_text():
         parser.error("the MTD PM-retirement test requires CONFIG_PM_SLEEP=y")
     source = HERE / "tests/kernel" / ("nvmem_disconnect" if args.suite == "nvmem"
@@ -68,7 +71,7 @@ def main():
     archive = subprocess.run(["cpio", "--null", "-o", "-H", "newc", "--owner=0:0"],
                              cwd=root, input=names, capture_output=True, check=True).stdout
     (out / "initramfs.cpio").write_bytes(archive)
-    run(["qemu-system-x86_64", "-machine", f"accel={args.accel}", "-cpu", "max", "-m", "2048",
+    run(["qemu-system-x86_64", "-machine", f"accel={args.accel}", "-cpu", args.cpu, "-m", "2048",
          "-smp", "4", "-kernel", str(build / "arch/x86/boot/bzImage"),
          "-initrd", str(out / "initramfs.cpio"),
          "-append", "console=ttyS0 panic=-1 oops=panic", "-nographic", "-no-reboot",
@@ -81,6 +84,8 @@ def main():
         markers = [f"NVMEM-DETACH-QEMU: phase {phase} PASS" for phase in (1, 2, 3)]
         markers += ["NVMEM-DETACH-QEMU: PASS"]
         markers += ["NVMEM-DETACH-QEMU: layout unbind and rebind PASS"]
+        markers += ["NVMEM-DETACH-QEMU: legacy provider owner preserved PASS"]
+        markers += ["NVMEM-DETACH-QEMU: registration rollback releases GPIO PASS"]
     else:
         markers = ["MTD-DETACH: provider metadata freed", "MTD-DETACH: provider unloaded",
                    "MTD-DETACH: final device puts after core unload",
@@ -89,6 +94,7 @@ def main():
                    "MTD-PM-DETACH: active callback drained and later callbacks blocked PASS",
                    "concat-lifetime: PASS",
                    "MTD-DETACH-QEMU: raw NAND controller unload with retained FD PASS",
+                   "MTD-DETACH-QEMU: NVMEM pins NAND core, not controller PASS",
                    "raw-nand-lifetime: PASS", "MTD-DETACH-QEMU: PASS"]
     bad = re.findall(r".*(?:BUG:|WARNING:|: FAIL|Call Trace:|Kernel panic|"
                      r"possible circular locking|possible recursive locking).*", log)
@@ -103,6 +109,7 @@ def main():
                        if re.match(r"CONFIG_(?:MTD(?:_.*)?|NVMEM(?:_.*)?|KASAN(?:_.*)?|"
                                    r"PM(?:_.*)?|SUSPEND|PROVE_LOCKING|DEBUG_KOBJECT_RELEASE)=", line)],
         suite=args.suite,
+        qemu_cpu=args.cpu,
         mtd_pm_only=args.mtd_pm_only,
         scope="Synthetic callback draining and retained device/consumer references; "
               "not a complete MTD redesign"), indent=2) + "\n")

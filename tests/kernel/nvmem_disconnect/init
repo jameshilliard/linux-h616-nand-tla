@@ -11,9 +11,19 @@ fail() {
 	exit 1
 }
 
+insmod /nvmem_detach_holder.ko || fail gpio_rollback_holder
+if insmod /nvmem_detach_provider.ko wp=1 fail_register=1; then
+	fail "invalid registration succeeded"
+fi
+insmod /nvmem_detach_provider.ko wp=1 || fail "failed registration retained GPIO"
+rmmod nvmem_detach_provider || fail gpio_rollback_provider_put
+rmmod nvmem_detach_holder || fail gpio_rollback_holder_put
+echo "NVMEM-DETACH-QEMU: registration rollback releases GPIO PASS"
+
 for phase in 1 2 3; do
 	insmod /nvmem_detach_holder.ko || fail holder
-	insmod /nvmem_detach_provider.ko || fail provider
+	insmod /nvmem_detach_provider.ko wp=1 || fail provider
+	echo 0 > /sys/bus/nvmem/devices/nvmem-detach-fixture/force_ro || fail writable
 	param=/sys/module/nvmem_detach_holder/parameters
 	echo 1 > "$param/command" || fail acquire
 	echo "$phase" > "$param/phase" || fail phase
@@ -32,12 +42,24 @@ for phase in 1 2 3; do
 	wait "$remover" || fail "module pinned instead of detached"
 	echo 4 > "$param/command" || fail "late consumer access phase $phase"
 	# Reuse the same provider name while the previous bare device is retained.
-	insmod /nvmem_detach_provider.ko || fail replacement
+	insmod /nvmem_detach_provider.ko wp=1 || fail "replacement GPIO still held"
 	rmmod nvmem_detach_provider || fail replacement_remove
 	echo 5 > "$param/command" || fail final_put
 	rmmod nvmem_detach_holder || fail holder_remove
 	echo "NVMEM-DETACH-QEMU: phase $phase PASS"
 done
+insmod /nvmem_detach_holder.ko || fail pinned_holder
+insmod /nvmem_detach_provider.ko pin_owner=1 || fail pinned_provider
+param=/sys/module/nvmem_detach_holder/parameters
+echo 1 > "$param/command" || fail pinned_acquire
+if rmmod nvmem_detach_provider; then
+	fail "legacy provider owner no longer pinned"
+fi
+echo 8 > "$param/command" || fail pinned_consumer_put
+rmmod nvmem_detach_provider || fail pinned_provider_put
+echo 5 > "$param/command" || fail pinned_bare_put
+rmmod nvmem_detach_holder || fail pinned_holder_put
+echo "NVMEM-DETACH-QEMU: legacy provider owner preserved PASS"
 insmod /nvmem_detach_holder.ko || fail layout_holder
 insmod /nvmem_detach_provider.ko dynamic=1 || fail layout_provider
 param=/sys/module/nvmem_detach_holder/parameters

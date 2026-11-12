@@ -27,8 +27,11 @@ def source_check(tree):
     assert body.index("nvmem_disconnect") < body.index("device_del") < body.index("kref_put")
     assert "priv_put" not in bodies["nvmem_release"]
     assert "module_put" not in bodies["nvmem_release"]
-    assert "try_module_get" not in bodies["nvmem_device_match"]
-    assert "module_put" not in bodies["nvmem_device_put"]
+    assert "try_module_get(nvmem->owner)" in bodies["nvmem_device_match"]
+    assert "module_put(nvmem->owner)" in bodies["nvmem_device_put"]
+    disconnect = bodies["nvmem_disconnect"]
+    assert disconnect.index("synchronize_srcu") < disconnect.index("gpiod_put")
+    assert "gpiod_put" not in bodies["nvmem_release"]
     return dict(kernel_commit=subprocess.check_output(["git", "rev-parse", "HEAD"],
                 cwd=tree, text=True).strip(),
                 dirty=bool(subprocess.check_output(["git", "diff", "--name-only"], cwd=tree)),
