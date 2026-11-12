@@ -189,6 +189,8 @@ static int flow_event(enum flow_point point) {
 }
 static void *devm_kzalloc(void *dev, size_t n, unsigned flags)
 { return allocation_failure ? NULL : calloc(1, n); }
+static void *kzalloc(size_t n, unsigned flags)
+{ return allocation_failure ? NULL : calloc(1, n); }
 static const void *memchr_inv(const void *data, int value, size_t n) {
     const u8 *p = data;
     for (size_t i = 0; i < n; i++) if (p[i] != (u8)value) return p + i;
