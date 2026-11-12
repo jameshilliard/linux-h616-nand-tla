@@ -1,6 +1,23 @@
 # Current sunxi driver verification
 
-## Current submission draft: posted prerequisite refresh
+## Current submission draft: partition-local boot-format selector
+
+The 30-patch v11 draft ends at `3ae44d13a5ec`. Its driver SHA-256 is
+`743467c6dab9d8fbbb850edb245bc11e89b46631d30fd72007e241ba9426c5ac`.
+The base and posted prerequisites are unchanged from the refresh below.
+The complete stack applies without three-way merging, and the sent v2-v10
+changelogs are preserved verbatim. Unposted lifetime v4 corrections remain
+a send-readiness gate.
+
+The [boot-format partition checks](BOOT-FORMAT-PARTITIONS.md) now cover the
+boolean `allwinner,boot-format`, using `sunxi_nand_boot_*` identifiers.
+The shared parser API precedes the binding and mapper; randomized-OOB
+support remains last. Fresh results include 226 partition/publication
+cases, 48 bounded cleanup schedules, transfer and native-OOB sanitizer
+checks, 15 positive/negative binding cases, and ARM64 object builds.
+These are host/build checks, not a new hardware run or whole-driver proof.
+
+## Earlier submission draft: posted prerequisite refresh
 
 The 29-patch v11 draft is `d668b4465616`, based on NAND `nand/next` at
 `30daaf3e7897`, posted retained-handle lifetime v3 and its prerequisite

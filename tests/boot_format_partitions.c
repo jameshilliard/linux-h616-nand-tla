@@ -15,9 +15,9 @@ typedef uint64_t u64;
 #define MTD_BIT_WRITEABLE 0x800
 #define NAND_BUSWIDTH_16 2
 #define THIS_MODULE NULL
-#define SUNXI_BOOT0_PAGE_SIZE 2048
-#define SUNXI_BOOT0_DATA_SIZE 1024
-#define SUNXI_BOOT0_ECC_STRENGTH 80
+#define SUNXI_NAND_BOOT_PAGE_SIZE 2048
+#define SUNXI_NAND_BOOT_DATA_SIZE 1024
+#define SUNXI_NAND_BOOT_ECC_STRENGTH 80
 #define NFC_ECC_EN 1
 #define NFC_ECC_PIPELINE 2
 #define NFC_ECC_MODE(nfc, mode) ((mode) << 4)
@@ -27,6 +27,7 @@ typedef uint64_t u64;
 
 struct device_node {
     const char *compatible;
+    bool boot_format;
     bool enabled;
     int refs;
     struct device_node *children, *next;
@@ -36,6 +37,7 @@ struct mtd_info {
     const char *name;
     void *owner;
     struct device dev;
+    struct device *parent_dev;
     int type, flags, ecc_strength, ecc_step_size;
     u64 size;
     unsigned writesize, erasesize, oobsize, writebufsize;
@@ -60,7 +62,7 @@ struct nand_chip {
     int options, base;
 };
 struct list_head { struct list_head *next, *prev; };
-struct sunxi_boot0 {
+struct sunxi_nand_boot {
     struct nand_chip *nand;
     struct mtd_info mtd;
     struct list_head node;
@@ -70,7 +72,7 @@ struct sunxi_boot0 {
 };
 struct sunxi_nand_chip {
     struct nand_chip nand;
-    struct list_head boot0_views;
+    struct list_head boot_views;
     bool registered;
 };
 
@@ -110,6 +112,11 @@ static char *kstrdup(const char *s, int flags)
 static bool of_device_is_available(struct device_node *np) { return np && np->enabled; }
 static bool of_device_is_compatible(struct device_node *np, const char *s)
 { return np && np->compatible && !strcmp(np->compatible, s); }
+static bool of_property_read_bool(struct device_node *np, const char *name)
+{
+    assert(!strcmp(name, "allwinner,boot-format"));
+    return np && np->boot_format;
+}
 static struct device_node *of_get_child_by_name(struct device_node *np, const char *s)
 {
     assert(!strcmp(s, "partitions"));
@@ -129,7 +136,7 @@ static u64 div_u64(u64 n, unsigned d) { return n / d; }
 static void mtd_set_of_node(struct mtd_info *mtd, struct device_node *np) { mtd->dev.of_node = np; }
 static void mtd_set_release(struct mtd_info *mtd, void (*release)(struct mtd_info *)) { mtd->release = release; }
 static void mtd_put_master(struct mtd_info *mtd) { mtd->release(mtd); }
-static struct sunxi_boot0 *to_sunxi_boot0(struct mtd_info *mtd) { return container_of(mtd, struct sunxi_boot0, mtd); }
+static struct sunxi_nand_boot *to_sunxi_nand_boot(struct mtd_info *mtd) { return container_of(mtd, struct sunxi_nand_boot, mtd); }
 static void mutex_init(int *lock) { *lock = 0; }
 #define scoped_guard(type, lock) for (int once = 1; once; once = 0)
 static void list_add_tail(struct list_head *n, struct list_head *h)
@@ -137,13 +144,12 @@ static void list_add_tail(struct list_head *n, struct list_head *h)
 static void list_del(struct list_head *n) { n->prev->next = n->next; n->next->prev = n->prev; }
 #define list_for_each_entry_safe(pos, tmp, h, member) \
     for (struct list_head *cur = (h)->next, *iter_next; \
-         cur != (h) && ((iter_next = cur->next), (pos = container_of(cur, struct sunxi_boot0, member)), \
+         cur != (h) && ((iter_next = cur->next), (pos = container_of(cur, struct sunxi_nand_boot, member)), \
                        (tmp = NULL), (void)(tmp), 1); cur = iter_next)
-static int sunxi_boot0_read_oob(void) { return 0; }
-static int sunxi_boot0_write_oob(void) { return 0; }
-static int sunxi_boot0_erase(void) { return 0; }
-static int sunxi_boot0_isbad(void) { return 0; }
-static int sunxi_boot0_get_device(void) { return 0; }
+static int sunxi_nand_boot_read_oob(void) { return 0; }
+static int sunxi_nand_boot_write_oob(void) { return 0; }
+static int sunxi_nand_boot_erase(void) { return 0; }
+static int sunxi_nand_boot_isbad(void) { return 0; }
 
 static int mtd_parse_partitions(struct mtd_info *mtd, const char *const *types,
                                 void *data, struct mtd_partitions *parts)
@@ -170,10 +176,10 @@ static int mtd_device_parse_register(struct mtd_info *mtd, const char *const *ty
         native_calls++; nr_published = nr;
         memcpy(published, parts, nr * sizeof(*parts));
         for (int i = 0; i < nr; i++)
-            assert(!of_device_is_compatible(published[i].of_node, "allwinner,sun50i-h616-nand-boot0"));
+            assert(!published[i].of_node->boot_format);
     } else {
         assert(!nr);
-        struct sunxi_boot0 *boot = to_sunxi_boot0(mtd);
+        struct sunxi_nand_boot *boot = to_sunxi_nand_boot(mtd);
         int index = mtd->dev.of_node - nodes;
         assert(index >= 0 && index < nr_table);
         assert(mtd->writesize == 1024 && mtd->oobsize == 1152 && mtd->erasesize == 65536);
@@ -206,12 +212,12 @@ static void setup(int count, unsigned boots)
     chip.nand.mtd = (struct mtd_info){.size = 0x10000000, .writesize = 2048,
         .erasesize = 131072, .oobsize = 128, .flags = MTD_WRITEABLE | MTD_BIT_WRITEABLE};
     native_mtd = &chip.nand.mtd;
-    chip.boot0_views.next = chip.boot0_views.prev = &chip.boot0_views;
+    chip.boot_views.next = chip.boot_views.prev = &chip.boot_views;
     nr_table = count;
     for (int i = 0; i < count; i++) {
         nodes[i].enabled = true;
         nodes[i].next = i + 1 < count ? &nodes[i + 1] : NULL;
-        nodes[i].compatible = (boots & (1U << i)) ? "allwinner,sun50i-h616-nand-boot0" : NULL;
+        nodes[i].boot_format = boots & (1U << i);
         table[i] = (struct mtd_partition){.offset = i * 0x40000, .size = 0x40000,
             .name = "partition", .of_node = &nodes[i]};
     }
@@ -226,13 +232,16 @@ static void finish(int expected, int boots, int natives)
         assert(nr_published == natives);
         assert(chip.registered == !!(natives || legacy_calls));
     }
-    sunxi_boot0_cleanup(&chip);
+    sunxi_nand_boot_cleanup(&chip);
     assert(!boot_live && !live && !parser_refs);
     cases++;
 }
 int main(void)
 {
     setup(7, 15); finish(0, 4, 3);
+    setup(2, 1); nodes[0].compatible = "u-boot"; finish(0, 1, 1);
+    setup(2, 0); nodes[0].compatible = "u-boot"; table[0].name = "spl";
+    finish(0, 0, 0); assert(legacy_calls == 1);
     setup(4, 15); finish(0, 4, 0);
     setup(3, 0); finish(0, 0, 0); assert(legacy_calls == 1);
     setup(4, 15); for (int i = 0; i < 4; i++) nodes[i].enabled = false; finish(0, 0, 0);
@@ -281,5 +290,5 @@ int main(void)
     }
     setup(2, 1); native_mtd->size = 1ULL << 36;
     table[0].offset = 1ULL << 35; finish(0, 1, 1);
-    printf("BOOT0 PARTITIONS PASS: %d cases\n", cases);
+    printf("BOOT FORMAT PARTITIONS PASS: %d cases\n", cases);
 }

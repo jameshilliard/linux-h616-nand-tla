@@ -7,7 +7,7 @@ struct mtd_info {
     bool registered, boot;
 };
 struct nand_chip { struct mtd_info mtd; bool disconnected; };
-struct sunxi_boot0 {
+struct sunxi_nand_boot {
     struct list_head node;
     struct mtd_info mtd;
     struct lock lock;
@@ -15,7 +15,7 @@ struct sunxi_boot0 {
     void *buf;
 };
 struct sunxi_nand_chip {
-    struct list_head node, boot0_views;
+    struct list_head node, boot_views;
     struct nand_chip nand;
     bool registered;
 };
@@ -57,12 +57,12 @@ static int mtd_device_unregister(struct mtd_info *mtd)
 static void nand_disconnect(struct nand_chip *chip)
 {
     struct sunxi_nand_chip *sn = container_of(chip, struct sunxi_nand_chip, nand);
-    struct sunxi_boot0 *boot;
+    struct sunxi_nand_boot *boot;
 
     assert(!chip->mtd.registered && !chip->disconnected);
     chip->disconnected = true;
     disconnected++;
-    list_for_each_entry(boot, &sn->boot0_views, node) {
+    list_for_each_entry(boot, &sn->boot_views, node) {
         if (boot->lock.held) {
             boot->lock.held = false;
             woken++;
@@ -70,21 +70,21 @@ static void nand_disconnect(struct nand_chip *chip)
     }
 }
 
-static void sunxi_boot0_release(struct mtd_info *mtd);
+static void sunxi_nand_boot_release(struct mtd_info *mtd);
 static void mtd_put_master(struct mtd_info *mtd)
 {
     assert(mtd->refs && !mtd->registered);
     if (--mtd->refs)
         return;
     if (mtd->boot) {
-        struct sunxi_boot0 *boot = container_of(mtd, struct sunxi_boot0, mtd);
+        struct sunxi_nand_boot *boot = container_of(mtd, struct sunxi_nand_boot, mtd);
         assert(!boot->nand && !boot->lock.held && !boot->node.next);
         freed_views++;
-        sunxi_boot0_release(mtd);
+        sunxi_nand_boot_release(mtd);
     } else {
         struct nand_chip *nand = container_of(mtd, struct nand_chip, mtd);
         struct sunxi_nand_chip *sn = container_of(nand, struct sunxi_nand_chip, nand);
-        assert(nand->disconnected && list_empty(&sn->boot0_views));
+        assert(nand->disconnected && list_empty(&sn->boot_views));
         assert(!sn->node.next);
         freed_chips++;
         free(sn);
@@ -102,7 +102,7 @@ static bool cleanup_stalled(struct sunxi_nfc *nfc)
 }
 
 static struct sunxi_nfc nfc;
-static struct sunxi_boot0 *views[4];
+static struct sunxi_nand_boot *views[4];
 static struct sunxi_nand_chip *chips[2];
 
 int main(void)
@@ -121,13 +121,13 @@ int main(void)
             struct sunxi_nand_chip *sn = calloc(1, sizeof(*sn));
             assert(sn);
             chips[i] = sn;
-            INIT_LIST_HEAD(&sn->boot0_views);
+            INIT_LIST_HEAD(&sn->boot_views);
             list_add_tail(&sn->node, &nfc.chips);
             sn->registered = registered;
             sn->nand.mtd.registered = registered;
             sn->nand.mtd.refs = 1 + registered;
             for (unsigned j = 0; j < nviews; j++) {
-                struct sunxi_boot0 *boot = calloc(1, sizeof(*boot));
+                struct sunxi_nand_boot *boot = calloc(1, sizeof(*boot));
                 assert(boot);
                 views[2 * i + j] = boot;
                 boot->mtd = (struct mtd_info){.name = strdup("boot"),
@@ -136,17 +136,17 @@ int main(void)
                 assert(boot->mtd.name && boot->buf);
                 boot->nand = &sn->nand;
                 boot->lock.held = waiting;
-                list_add_tail(&boot->node, &sn->boot0_views);
+                list_add_tail(&boot->node, &sn->boot_views);
             }
         }
         if (cleanup_stalled(&nfc)) {
             assert(EXPECT_DEADLOCK && !disconnected && !freed_views && !freed_chips);
             for (unsigned i = 0; i < count; i++) {
                 for (unsigned j = 0; j < nviews; j++)
-                    sunxi_boot0_release(&views[2 * i + j]->mtd);
+                    sunxi_nand_boot_release(&views[2 * i + j]->mtd);
                 free(chips[i]);
             }
-            puts("BOOT0 DEADLOCK REPRODUCED");
+            puts("BOOT FORMAT DEADLOCK REPRODUCED");
             return 0;
         }
         assert(!EXPECT_DEADLOCK);
@@ -158,9 +158,9 @@ int main(void)
         if (refs) {
             for (unsigned i = 0; i < count; i++)
                 for (unsigned j = 0; j < nviews; j++) {
-                    struct sunxi_boot0 *boot = views[2 * i + j];
+                    struct sunxi_nand_boot *boot = views[2 * i + j];
                     assert(!boot->nand);
-                    assert(sunxi_boot0_isbad(&boot->mtd, 0) == -ENODEV);
+                    assert(sunxi_nand_boot_isbad(&boot->mtd, 0) == -ENODEV);
                     for (unsigned r = 0; r < refs; r++)
                         mtd_put_master(&boot->mtd);
                 }
@@ -169,6 +169,6 @@ int main(void)
         cases++;
     }
     printf("%u bounded cleanup/waiter/ref schedules passed\n", cases);
-    puts("BOOT0 LIFETIME CHECKS PASS");
+    puts("BOOT FORMAT LIFETIME CHECKS PASS");
     return 0;
 }

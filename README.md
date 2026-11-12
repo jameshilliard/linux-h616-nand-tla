@@ -27,16 +27,17 @@ exercise a scrambling flag set after controller attach. They reproduce the
 ordinary-format marker regression in the pinned submission and check the v11
 correction against existing-image reads and new-write representation separately.
 The [current verification index](docs/CURRENT-DRIVER.md) describes the
-29-patch v11 draft, the independently applicable existing-driver prefix,
+30-patch v11 draft, the independently applicable existing-driver prefix,
 and the [prerequisite review corrections](docs/PREREQUISITE-REVIEW-V2.md).
 The [alias-free BootROM layout checks](docs/H616-RETAINED-LIFETIME-HARDWARE.md#alias-free-bootrom-layout-host-validation)
 exercise U-Boot's OS partition fixup with libfdt and sanitizers, including
 legacy layouts and rejection of partial overlaps. These are extracted-code
 host checks, not an additional TLA+ proof or a new hardware result.
-The [single partition-map prototype](docs/BOOT0-PARTITION-MAP.md) places
-format-tagged BootROM regions alongside ordinary fixed partitions. Its
-extracted-code checks cover routing, geometry, overlap rejection, registration
-failures and preservation of the format tags through the bootloader handoff.
+The [boot-format partition checks](docs/BOOT-FORMAT-PARTITIONS.md) cover the
+`allwinner,boot-format` boolean in one fixed partition map. Extracted-code
+checks exercise routing, geometry, overlap rejection and registration failures.
+The [earlier compatible-based prototype](docs/BOOT0-PARTITION-MAP.md) records
+the old selector and bootloader handoff experiment, not the current binding.
 The earlier [minimal v11 draft](docs/MINIMAL-V11.md) keeps v10's organization and
 checks the live scrambling flag in the ordinary marker callback. It uses
 one ordinary-format operations table and the original NAND-core BBT scan.

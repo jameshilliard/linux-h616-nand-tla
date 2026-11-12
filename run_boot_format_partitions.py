@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Exercise the single-map sunxi partition registration prototype without flash I/O."""
+"""Exercise sunxi partition-format selection and registration without flash I/O."""
 import argparse
 from pathlib import Path
 
@@ -15,15 +15,15 @@ def main():
     source = ((args.kernel / "drivers/mtd/nand/raw/sunxi_nand.c") if args.kernel else
               Path(__file__).parent / "reference/sunxi-partition-map.c").read_text()
     code, _, hashes = bodies({"sunxi_nand.c": source}, {"sunxi_nand.c": [
-        "sunxi_boot0_release", "sunxi_boot0_cleanup", "sunxi_boot0_register",
-        "sunxi_nand_boot0_partition", "sunxi_nand_has_boot0_partitions",
+        "sunxi_nand_boot_release", "sunxi_nand_boot_cleanup", "sunxi_nand_boot_register",
+        "sunxi_nand_boot_partition", "sunxi_nand_has_boot_partitions",
         "sunxi_nand_check_partitions", "sunxi_nand_register",
     ]})
     if args.save_extracted:
         args.save_extracted.write_text(code + "\n")
-    fixture = (Path(__file__).parent / "tests/boot0_partitions.c").read_text()
-    check("boot0-partitions", {"check.c": fixture.replace("/* @driver@ */", code)},
-          hashes, expected="BOOT0 PARTITIONS PASS", limits=[
+    fixture = (Path(__file__).parent / "tests/boot_format_partitions.c").read_text()
+    check("boot-format-partitions", {"check.c": fixture.replace("/* @driver@ */", code)},
+          hashes, expected="BOOT FORMAT PARTITIONS PASS", limits=[
               "Extracts actual partition selection, validation, BootROM registration and cleanup",
               "Parser output, MTD publication and allocator failures are simulated",
               "Checks geometry, flags, non-aliasing, all-BootROM layouts and failure cleanup",
