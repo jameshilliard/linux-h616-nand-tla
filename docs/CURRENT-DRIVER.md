@@ -1,6 +1,39 @@
 # Current sunxi driver verification
 
-## Current submission draft: BootROM views and reviewed prerequisites
+## Current submission draft: posted prerequisite refresh
+
+The 29-patch v11 draft is `d668b4465616`, based on NAND `nand/next` at
+`30daaf3e7897`, posted retained-handle lifetime v3 and its prerequisite
+fixes, and posted mtdchar chunking v2. Its driver SHA-256 is
+`c0284bfc266198d3730cfadcbae6ad5b0c73e8a1ee512314d072d29b7199dd00`.
+The full dependency and outgoing stack applies without three-way merging;
+the historical v2-v10 notes match the sent v10 tag. Lifetime v4 remains
+unposted, so this is not a ready-to-send dependency stack.
+
+The BootROM view now uses the separated MTD class-device parent. Native
+removal unregisters the native MTD and disconnects the NAND chip before
+draining the view mutexes. This wakes a view request holding its mutex
+while waiting for NAND resume. The redundant view admission callback is
+removed: MTD already rejects unregistered devices, and waiting for the
+view mutex there could block removal under `mtd_table_mutex`.
+
+`run_boot0_lifetime.py --kernel /path/to/linux` extracts the actual cleanup
+and view-release functions. It checks 48 bounded combinations of chips,
+views, publication state, retained references and suspended waiters under
+ASan/UBSan. The old cleanup order reproduces the wait cycle with
+`--revision REV --expect-deadlock`. NAND wakeups, MTD ownership and locks
+are explicit shims; this is not a whole-kernel concurrency proof.
+
+Fresh format, BootROM transfer, codec and low-level source checks pass.
+Recovery trace checks match all 98 expected TLC outcomes, and mtdchar
+trace checks match all 41, including baseline and mutation failures.
+The final driver has identical extracted recovery functions and trace
+bytes to the TLC input recorded before the BootROM cleanup adjustment.
+ARM64 object builds and the Sunxi binding check pass. No new board test
+is implied, and reset/DMA retirement assumptions remain unchanged.
+The single-partition-map prototype remains separate from this draft.
+
+## Earlier submission draft: BootROM views and reviewed prerequisites
 
 The 29-patch v11 draft is now `d657df3765d2`, with driver digest
 `60f5efccbeaeda4f8ccefc3e07be396bb5557dac147310a6ff244a58e4aa81d3`.
