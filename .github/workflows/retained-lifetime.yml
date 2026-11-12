@@ -27,11 +27,16 @@ jobs:
       - name: Explore disconnected providers and independently retained devices
         run: |
           python3 run_nvmem_disconnect.py --download
+          python3 run_nvmem_resources.py --download
+          python3 run_lifetime_publication.py --download
           python3 run_mtd_detached_device.py --download
           python3 run_mtd_pm_detach.py --download
           python3 run_callback_retirement.py --download
-      - name: Execute the candidate C implementation with sanitizers
-        run: python3 run_retained_lifetime.py
+          python3 run_nand_data_code.py --download
+      - name: Execute historical and data-only ownership C snapshots with sanitizers
+        run: |
+          python3 run_retained_lifetime.py
+          python3 run_nand_storage.py
       - name: Retain validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

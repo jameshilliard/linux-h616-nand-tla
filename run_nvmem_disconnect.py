@@ -14,7 +14,7 @@ from run_core import extract
 def source_check(tree):
     source = (tree / "drivers/nvmem/core.c").read_text()
     names = ("nvmem_reg_read", "nvmem_reg_write", "__nvmem_cell_read",
-             "nvmem_add_cells_from_dt", "nvmem_disconnect", "nvmem_unregister",
+             "__nvmem_add_cells_from_dt", "nvmem_disconnect", "nvmem_unregister",
              "nvmem_release", "nvmem_device_match", "nvmem_device_put")
     bodies = {name: extract(source, name) for name in names}
     for name in names[:4]:
@@ -27,8 +27,11 @@ def source_check(tree):
     assert body.index("nvmem_disconnect") < body.index("device_del") < body.index("kref_put")
     assert "priv_put" not in bodies["nvmem_release"]
     assert "module_put" not in bodies["nvmem_release"]
-    assert "try_module_get" not in bodies["nvmem_device_match"]
-    assert "module_put" not in bodies["nvmem_device_put"]
+    assert "try_module_get(nvmem->owner)" in bodies["nvmem_device_match"]
+    assert "module_put(nvmem->owner)" in bodies["nvmem_device_put"]
+    disconnect = bodies["nvmem_disconnect"]
+    assert disconnect.index("synchronize_srcu") < disconnect.index("gpiod_put")
+    assert "gpiod_put" not in bodies["nvmem_release"]
     return dict(kernel_commit=subprocess.check_output(["git", "rev-parse", "HEAD"],
                 cwd=tree, text=True).strip(),
                 dirty=bool(subprocess.check_output(["git", "diff", "--name-only"], cwd=tree)),

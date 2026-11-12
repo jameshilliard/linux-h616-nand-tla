@@ -18,6 +18,14 @@ static struct device *parent;
 static struct nvmem_device *provider;
 static bool dynamic;
 module_param(dynamic, bool, 0400);
+static bool pin_owner;
+module_param(pin_owner, bool, 0400);
+static bool wp;
+module_param(wp, bool, 0400);
+static bool fail_register;
+module_param(fail_register, bool, 0400);
+static bool duplicate_cells;
+module_param(duplicate_cells, bool, 0400);
 extern unsigned char layout_fixture_dtb[];
 extern unsigned int layout_fixture_dtb_len;
 
@@ -67,7 +75,7 @@ static int layout_add_cells(struct nvmem_layout *layout)
 	if (!ctx)
 		return -ENOMEM;
 	ctx->value = 0xa5;
-	return nvmem_add_one_cell(layout->nvmem, &cell);
+	return nvmem_layout_add_cell(layout, &cell);
 }
 
 static int layout_probe(struct nvmem_layout *layout)
@@ -107,21 +115,21 @@ static int prepare_layout(struct nvmem_config *config)
 	config->of_node = of_get_child_by_name(root, "provider");
 	if (!config->of_node)
 		return -ENOENT;
-	config->cells = NULL;
-	config->ncells = 0;
 	return nvmem_layout_driver_register(&layout_driver);
 }
 
 static int __init provider_init(void)
 {
+	static const struct nvmem_keepout invalid_keepout = { .start = 2, .end = 1 };
 	struct nvmem_cell_info cell = {
 		.name = "token", .offset = 0, .bytes = 1,
 		.read_post_process = test_postprocess,
 	};
+	struct nvmem_cell_info duplicates[2];
 	struct nvmem_config config = {
 		.name = "nvmem-detach-fixture", .id = NVMEM_DEVID_NONE,
-		.owner = THIS_MODULE, .size = 8, .word_size = 1, .stride = 1,
-		.ignore_wp = true, .reg_read = test_read, .reg_write = test_write,
+		.size = 8, .word_size = 1, .stride = 1,
+		.reg_read = test_read, .reg_write = test_write,
 		.cells = &cell, .ncells = 1,
 	};
 	int ret;
@@ -137,8 +145,21 @@ static int __init provider_init(void)
 	context->value = 0xa5;
 	config.dev = parent;
 	config.priv = context;
+	config.owner = pin_owner ? THIS_MODULE : NULL;
+	config.ignore_wp = !wp;
+	if (fail_register) {
+		config.keepout = &invalid_keepout;
+		config.nkeepout = 1;
+	}
 	cell.priv = context;
+	if (duplicate_cells) {
+		duplicates[0] = duplicates[1] = cell;
+		config.cells = duplicates;
+		config.ncells = ARRAY_SIZE(duplicates);
+	}
 	if (dynamic) {
+		cell.name = "base";
+		cell.offset = 1;
 		ret = prepare_layout(&config);
 		if (ret) {
 			of_node_put(config.of_node);
@@ -154,6 +175,18 @@ static int __init provider_init(void)
 			nvmem_layout_driver_unregister(&layout_driver);
 		kfree(context);
 		goto unregister_parent;
+	}
+	if (dynamic) {
+		/* This is provider-owned even though a layout device exists. */
+		cell.name = "late";
+		cell.offset = 2;
+		ret = nvmem_add_one_cell(provider, &cell);
+		if (ret) {
+			nvmem_unregister(provider);
+			nvmem_layout_driver_unregister(&layout_driver);
+			kfree(context);
+			goto unregister_parent;
+		}
 	}
 	return 0;
 

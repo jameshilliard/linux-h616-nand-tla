@@ -488,22 +488,34 @@ The kernel changes cover NVMEM callback retirement, separately allocated MTD
 class devices, and virtual-concat disconnection. They are carried by
 `submit/rawnand-retained-handle-lifetime-v3`, based on NAND-next
 `30daaf3e7897` and its posted prerequisites. The reviewed candidate tip is
-`a7881de8792602f297b39905eba1e90d78217acc`. Source-correspondence runners
+`ca46816ea68d01cdad3404318bf01d514cb5b4a1`. Source-correspondence runners
 record the exact kernel commit and checked function hashes. The abstract
 models can run independently of the kernel checkout.
 
 | Object | Lifetime in the redesign |
 | --- | --- |
 | NVMEM provider callbacks/context | Unregister closes admission and waits for SRCU readers, including cell post-processing and DT fixups. |
-| Retained NVMEM consumers | Keep core metadata; subsequent I/O returns `-ENODEV`. |
+| Retained NVMEM consumers | Keep core metadata and the existing exporter-module reference; subsequent I/O returns `-ENODEV`. Converted raw NAND providers name NAND core, not their controller driver. |
+| NVMEM write-protect GPIO | Released after callback draining, so retained metadata does not block another provider requesting the same line. |
 | MTD backing data and nested partitions | Explicit metadata references remain independent of bare device references. Existing MTD handle/module ownership is retained. |
 | MTD class and class devices | A small built-in MTD component owns class data, the device type, PM dispatch and final device release, even with `CONFIG_MTD=m`. |
 | MTD class PM callbacks | Detachment takes the device lock to drain active callbacks and clear the backing association. Later callbacks are harmless without retaining an MTD handle. |
+| Raw NAND controller code | Disconnection drains hardware operations and completes NAND/controller cleanup before driver removal returns. Retained handles do not pin the controller module. |
+| Raw NAND chip/controller allocations | NAND core owns final allocation release. Names and OOB-layout regions are copied before publication, so metadata queries do not call an unloaded controller. Ordinary MTD handles retain NAND core. |
 
 `NvmemDisconnect.tla` separates reader entry, admission, callback return,
 post-processing, SRCU exit, disconnect, drain and provider unload. Two positive
 cases and four mutations check that no provider callback or context is used
 after retirement. SRCU's grace-period contract is assumed, not proved in LKMM.
+
+`NvmemResourceRetirement.tla` adds the managed-remove/devres ordering and
+write-protect GPIO ownership. Two positive cases cover explicitly unregistered
+providers and legacy managed providers whose consumer references pin their
+module. Two mutations remove that pin or delay the GPIO release until the last
+metadata reference, reproducing callback-state access after removal or failed
+reprobe. Module references do not protect explicit sysfs unbind; that existing
+managed-provider limitation is not claimed fixed here. This series preserves
+those providers' existing module ownership rather than converting their drivers.
 
 `MtdDetachedDevice.tla` models nested metadata ownership, a retained hidden
 concatenation component, open handles, delayed device/class release and module
@@ -529,33 +541,73 @@ and replacement identity. This is a safety model: it makes no fairness or
 termination claim. Its source checks cover every concat forwarding operation,
 including panic writes and OOB-layout callbacks, and cell callback retirement.
 
+`NandDataCodeLifetime.tla` checks the boundary between synchronous NAND cleanup
+and delayed data release. It includes the bad-block-marking operation's
+chip-lock drops, a second hardware user, suspended waiters, retained layout
+queries, controller unload and final core-owned free. Four positive cases
+cover one/two users and suspended/active operation. Five mutations remove
+hardware draining, bad-block-operation draining, layout snapshots, core-only
+release or the disconnect wakeup. The model assumes ordinary MTD references
+keep NAND core loaded and assumes the mutex/refcount contracts; it does not
+prove weak-memory behavior or arbitrary controller-specific callbacks.
+
+`run_nand_storage.py` extracts all functions in `nand_lifetime.c` and executes
+them with ASan/UBSan. It covers embedded and separate chip allocations, shared
+controllers, either final-put order, name/layout snapshots, layout enumeration
+errors, allocation failures and devres registration failure. Its explicit API
+shims isolate ownership; the real-kernel fixtures check integration. The
+committed snapshot lets CI run without a kernel checkout. The older
+`run_retained_lifetime.py` snapshot remains historical evidence for the previous
+design, not validation of the new final-release path.
+
 ```sh
 python3 run_nvmem_disconnect.py --download
+python3 run_nvmem_resources.py --download
 python3 run_mtd_detached_device.py --download
 python3 run_mtd_pm_detach.py --download
 python3 run_callback_retirement.py --download
 python3 run_nvmem_disconnect.py --kernel-tree ../linux
+python3 run_nvmem_resources.py --kernel-tree ../linux
 python3 run_mtd_detached_device.py --kernel-tree ../linux
 python3 run_mtd_pm_detach.py --kernel-tree ../linux
 python3 run_callback_retirement.py --kernel-tree ../linux
+python3 run_nand_data_code.py --kernel-tree ../linux --download
+python3 run_nand_storage.py --kernel-tree ../linux
 ```
 
 The kernel fixtures use disposable QEMU devices, not real flash. NVMEM tests
 block read, write and post-processing callbacks while removing the provider,
 then exercise stale consumers and reuse the provider name before final device
-release. Dynamic layout tests hold post-processing active while unbinding,
+release. A synthetic GPIO controller checks WP-line reuse, including failed
+provider registration. Another case checks that an existing provider-owner pin
+still prevents module removal. The explicitly unregistered fixture omits an
+exporter owner to exercise draining independently of module pinning.
+Dynamic layout tests hold post-processing active while unbinding,
 rebind the layout, and check that the new cell works while the retained old cell
 stays disconnected. MTD tests retain nested devices and an open file across
-disconnection, unload the provider and MTD core, reuse the device numbers, and
+disconnection, check stale NVMEM access, drop the provider-owner reference,
+unload the provider and MTD core, reuse the device numbers, and
 exercise module initialization rollback. The PM fixture admits a class callback
 after `device_del()` releases its initial lock, holds it while removal progresses,
 and checks that backing retirement waits. It reproduced premature retirement
 before the fix. Retained-device tests also invoke the built-in PM callbacks
 after the provider and MTD core modules have unloaded. A synthetic raw NAND
 controller additionally checks unbind/rebind with old handles and independent
-device references. Virtual-concat tests cover concurrent removal of managed and
+device references, then unloads the controller module with a read/write MTD
+file and an NVMEM consumer still open. The NVMEM handle pins NAND core but does
+not prevent the controller module from unloading. Metadata queries remain valid,
+while reads and bad-block
+queries return `-ENODEV`; closing the file exercises the disconnected sync
+path. Virtual-concat tests cover concurrent removal of managed and
 unmanaged component masters,
 rebind and partially published registrations, with 25 iterations per mode.
+The concat fixture also checks ECC/free-OOB layout lookup through partition
+components and nested partitions, and rejects callbacks after removal. All
+four combinations of first/second-master layout capability are checked for
+managed and unmanaged masters, with different region offsets to detect
+selection of the wrong component. The pre-fix v4 kernel fails the
+first-master-only case because partition objects have no local layout pointer;
+the public OOB helpers resolve that capability through their master.
 
 ```sh
 python3 run_detached_lifetime_kernel.py --suite nvmem \
@@ -568,7 +620,8 @@ python3 run_detached_lifetime_kernel.py --suite mtd \
 
 The kernel build must be configured for x86-64 QEMU with MTD and raw NAND as
 modules, virtual concatenation enabled, NVMEM and its layout support built-in,
-OF and flattened-DT support, system sleep (`CONFIG_PM_SLEEP=y`), an initramfs
+GPIO support (`CONFIG_GPIOLIB=y`), OF and flattened-DT support,
+system sleep (`CONFIG_PM_SLEEP=y`), an initramfs
 console, sysfs, procfs and devtmpfs. The runner rejects an MTD configuration
 without system sleep; `--mtd-pm-only` isolates the PM removal interleaving.
 The fixture builds also require `dtc` from the kernel build and host `xxd`.
@@ -576,12 +629,14 @@ The recorded runs enable `CONFIG_MTD_PARTITIONED_MASTER`, KASAN, lockdep and
 `CONFIG_DEBUG_KOBJECT_RELEASE`. The latter also requires the debug-object timer
 options; verify the resulting configuration rather than just requesting it.
 Each runner saves build/QEMU logs and its result under `results/`. Pass
-`--accel kvm` when available; the default is software emulation. Private fixture
-DT nodes are deliberately retained until the disposable VM exits. They can
+`--accel kvm` when available; the default is software emulation. CPU selection
+is available through `--cpu`; the default is `max`. Private fixture DT nodes
+are deliberately retained until the disposable VM exits. They can
 produce missing `of_node` sysfs-link messages because they are not installed
 in the global firmware tree; they do not represent a hardware DT test.
 
-All 25 model expectations matched. The expanded MTD and NVMEM kernel cases
+All 38 lifetime-model expectations, including the intended negative controls,
+matched. The expanded MTD and NVMEM kernel cases
 passed with the diagnostic configuration, and x86 allmodconfig builds of
 `drivers/mtd/`, `drivers/nvmem/`, the PTP OCP and cobalt MTD users passed with
 `W=1`. i386, MIPS and PowerPC MTD/NVMEM builds also passed, including the
@@ -590,7 +645,11 @@ against x86 allmodconfig. Delayed-release testing
 first reproduced a crash in `class_release()`: moving only the device release
 callback was insufficient because the class object was still module data.
 Moving that class data into the built-in component fixed the tested failure;
-the class-storage mutation preserves the counterexample.
+the class-storage mutation preserves the counterexample. One subsequent
+`-cpu max` run reported a KASAN fault during early x86 CPU initialization,
+before the fixture modules loaded, and was rejected. The NVMEM suite completed
+with `--cpu qemu64` without KASAN or lockdep reports; the MTD suite completed
+with `max`. This does not establish the cause of that early-boot diagnostic.
 
 The review used the general kernel, locking, allocation, driver-core/kobject/
 sysfs/debugfs, PM and false-positive lifetime guidance from Sashiko's prompts at
@@ -602,6 +661,33 @@ remain outside this coverage. PTP OCP's bare-device lookup now acquires an MTD
 handle; the model does not automatically discover equivalent misuse by other
 clients. NVMEM's legacy configuration owner field remains for source
 compatibility. No real hardware test is claimed for this redesign.
+
+## Retained-handle v4 review regressions
+
+`run_lifetime_publication.py` checks bounded partition-publication and NVMEM
+cell-retirement contracts. Its negative controls cover early partition-list
+publication, a missing parser reference, children added to a removed parent,
+stale layout attributes, implicit layout ownership, premature attribute frees,
+unpaired provider notifications and unintended controller-module ownership.
+
+`run_nvmem_sysfs.py --kernel-tree /path/to/linux` runs the actual cell-attribute
+allocation and cleanup functions under ASan/UBSan. It injects failure at every
+allocation and at sysfs publication, then retries. Pass
+`--revision db22de22b9db --expect-bugs` to reproduce v3's missing layout
+attributes and partial-allocation leaks. Locks, sysfs draining and reference
+operations are explicit shims in this sequential fixture.
+
+The `nvmem` QEMU suite also checks provider cells alongside layout cells,
+late provider cells, layout rebind, explicit NULL owners versus the legacy
+parent-module fallback, and failed-registration notification pairing. Its
+duplicate-name negative test deliberately invokes `sysfs_warn_dup()`; only
+that identifiable stack-dump header is exempted from diagnostic scanning.
+KASAN reports, warnings and unrelated traces remain failures.
+
+The `mtd` QEMU suite deletes a partition while its subpartition parser is
+blocked. It checks that the parser's storage stays valid and that both direct
+and parser-driven additions reject an already removed parent. These tests use
+synthetic providers and do not access physical NAND.
 
 ## Interpreting the result
 

@@ -11,9 +11,35 @@ fail() {
 	exit 1
 }
 
+insmod /nvmem_detach_holder.ko || fail gpio_rollback_holder
+if insmod /nvmem_detach_provider.ko wp=1 fail_register=1; then
+	fail "invalid registration succeeded"
+fi
+insmod /nvmem_detach_provider.ko wp=1 || fail "failed registration retained GPIO"
+rmmod nvmem_detach_provider || fail gpio_rollback_provider_put
+rmmod nvmem_detach_holder || fail gpio_rollback_holder_put
+echo "NVMEM-DETACH-QEMU: registration rollback releases GPIO PASS"
+
+insmod /nvmem_detach_holder.ko || fail duplicate_holder
+param=/sys/module/nvmem_detach_holder/parameters
+for i in 1 2 3; do
+	if insmod /nvmem_detach_provider.ko duplicate_cells=1; then
+		fail "duplicate cell registration succeeded"
+	fi
+done
+[ "$(cat "$param/adds")" = 0 ] || fail "failed provider announced ADD"
+[ "$(cat "$param/removes")" = 0 ] || fail "unpaired REMOVE notification"
+insmod /nvmem_detach_provider.ko || fail duplicate_recovery
+rmmod nvmem_detach_provider || fail duplicate_recovery_put
+[ "$(cat "$param/adds")" = 1 ] || fail "missing ADD notification"
+[ "$(cat "$param/removes")" = 1 ] || fail "missing REMOVE notification"
+rmmod nvmem_detach_holder || fail duplicate_holder_put
+echo "NVMEM-DETACH-QEMU: sysfs registration failure and notifications PASS"
+
 for phase in 1 2 3; do
 	insmod /nvmem_detach_holder.ko || fail holder
-	insmod /nvmem_detach_provider.ko || fail provider
+	insmod /nvmem_detach_provider.ko wp=1 || fail provider
+	echo 0 > /sys/bus/nvmem/devices/nvmem-detach-fixture/force_ro || fail writable
 	param=/sys/module/nvmem_detach_holder/parameters
 	echo 1 > "$param/command" || fail acquire
 	echo "$phase" > "$param/phase" || fail phase
@@ -32,14 +58,29 @@ for phase in 1 2 3; do
 	wait "$remover" || fail "module pinned instead of detached"
 	echo 4 > "$param/command" || fail "late consumer access phase $phase"
 	# Reuse the same provider name while the previous bare device is retained.
-	insmod /nvmem_detach_provider.ko || fail replacement
+	insmod /nvmem_detach_provider.ko wp=1 || fail "replacement GPIO still held"
 	rmmod nvmem_detach_provider || fail replacement_remove
 	echo 5 > "$param/command" || fail final_put
 	rmmod nvmem_detach_holder || fail holder_remove
 	echo "NVMEM-DETACH-QEMU: phase $phase PASS"
 done
+insmod /nvmem_detach_holder.ko || fail pinned_holder
+insmod /nvmem_detach_provider.ko pin_owner=1 || fail pinned_provider
+param=/sys/module/nvmem_detach_holder/parameters
+echo 1 > "$param/command" || fail pinned_acquire
+if rmmod nvmem_detach_provider; then
+	fail "legacy provider owner no longer pinned"
+fi
+echo 8 > "$param/command" || fail pinned_consumer_put
+rmmod nvmem_detach_provider || fail pinned_provider_put
+echo 5 > "$param/command" || fail pinned_bare_put
+rmmod nvmem_detach_holder || fail pinned_holder_put
+echo "NVMEM-DETACH-QEMU: legacy provider owner preserved PASS"
 insmod /nvmem_detach_holder.ko || fail layout_holder
 insmod /nvmem_detach_provider.ko dynamic=1 || fail layout_provider
+cells=/sys/bus/nvmem/devices/nvmem-detach-fixture/cells
+[ -f "$cells/base@1,0" ] || fail provider_cell_sysfs
+[ -f "$cells/token@0,0" ] || fail layout_cell_sysfs
 param=/sys/module/nvmem_detach_holder/parameters
 echo 1 > "$param/command" || fail layout_acquire
 echo 3 > "$param/phase"
@@ -59,9 +100,15 @@ sleep 0.2
 kill -0 "$remover" || fail layout_drain
 echo 3 > "$param/command" || fail layout_unblock
 wait "$remover" || fail layout_unbind
+[ -f "$cells/base@1,0" ] || fail provider_cell_removed
+[ -f "$cells/late@2,0" ] || fail late_provider_cell_removed
+[ ! -e "$cells/token@0,0" ] || fail layout_cell_left_in_sysfs
 echo 0 > "$param/phase"
 echo 6 > "$param/command" || fail retired_cell
 echo "$layout" > /sys/bus/nvmem-layout/drivers/detach-layout/bind || fail layout_rebind
+[ -f "$cells/base@1,0" ] || fail rebound_provider_cell
+[ -f "$cells/late@2,0" ] || fail rebound_late_provider_cell
+[ -f "$cells/token@0,0" ] || fail rebound_layout_cell
 echo 7 > "$param/command" || fail replacement_cell
 echo 6 > "$param/command" || fail old_cell_revived
 rmmod nvmem_detach_provider || fail layout_provider_unload

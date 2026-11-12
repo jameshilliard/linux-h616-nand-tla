@@ -25,7 +25,39 @@ struct fixture_master {
 static struct device *parent;
 static struct device_node *nodes[2];
 static atomic_t releases = ATOMIC_INIT(0);
+static atomic_t layout_calls = ATOMIC_INIT(0);
 static bool unmanaged;
+static unsigned int layout_mask;
+
+static int fixture_ooblayout_free(struct mtd_info *mtd, int section,
+				  struct mtd_oob_region *region)
+{
+	struct fixture_master *master = container_of(mtd, struct fixture_master, mtd);
+
+	atomic_inc(&layout_calls);
+	if (section)
+		return -ERANGE;
+	region->offset = master->value & 3;
+	region->length = 4;
+	return 0;
+}
+
+static int fixture_ooblayout_ecc(struct mtd_info *mtd, int section,
+				 struct mtd_oob_region *region)
+{
+	int ret = fixture_ooblayout_free(mtd, section, region);
+
+	if (!ret) {
+		region->offset += 4;
+		region->length = 8;
+	}
+	return ret;
+}
+
+static const struct mtd_ooblayout_ops fixture_ooblayout = {
+	.ecc = fixture_ooblayout_ecc,
+	.free = fixture_ooblayout_free,
+};
 
 static int fixture_read(struct mtd_info *mtd, loff_t off, size_t len,
 			size_t *retlen, u_char *buf)
@@ -92,6 +124,10 @@ static struct fixture_master *fixture_register(unsigned int id, u8 value,
 	master->mtd.size = SZ_16K;
 	master->mtd.writesize = incompatible ? 2 : 1;
 	master->mtd._read = fixture_read;
+	master->mtd.oobsize = 16;
+	master->mtd.oobavail = 4;
+	if (layout_mask & BIT(id))
+		mtd_set_ooblayout(&master->mtd, &fixture_ooblayout);
 	if (!unmanaged)
 		mtd_set_release(&master->mtd, fixture_release);
 	ret = mtd_device_register(&master->mtd, parts, ARRAY_SIZE(parts));
@@ -136,6 +172,93 @@ static int expect_read(struct mtd_info *mtd, loff_t off, int result, u8 value)
 static struct mtd_info *get_concat(void)
 {
 	return get_mtd_device_nm("concat-a-concat-b-concat");
+}
+
+static int expect_layout(struct mtd_info *mtd, int result, u8 value)
+{
+	struct mtd_oob_region region;
+	int ret;
+
+	ret = mtd_ooblayout_free(mtd, 0, &region);
+	if (ret != result || (!ret &&
+	    (region.offset != (value & 3) || region.length != 4)))
+		return -EINVAL;
+	ret = mtd_ooblayout_ecc(mtd, 0, &region);
+	if (ret != result || (!ret &&
+	    (region.offset != (value & 3) + 4 || region.length != 8)))
+		return -EINVAL;
+	if (!result && (mtd_ooblayout_free(mtd, 1, &region) != -ERANGE ||
+			mtd_ooblayout_ecc(mtd, 1, &region) != -ERANGE))
+		return -EINVAL;
+	return 0;
+}
+
+static int partition_layout(void)
+{
+	struct fixture_master *a, *b;
+	struct mtd_info *concat, *nested = NULL, *part;
+	unsigned int before = atomic_read(&releases);
+	int calls, ret, expected = layout_mask & BIT(0) ? 0 : -ENOTSUPP;
+
+	b = fixture_register(1, 0xb2, false, false);
+	if (IS_ERR(b))
+		return PTR_ERR(b);
+	a = fixture_register(0, 0xa1, false, false);
+	if (IS_ERR(a)) {
+		fixture_remove(b);
+		return PTR_ERR(a);
+	}
+	concat = get_concat();
+	if (IS_ERR(concat)) {
+		ret = PTR_ERR(concat);
+		goto out_masters;
+	}
+	/* Partition layout pointers stay NULL; public helpers use the master. */
+	part = get_mtd_device_nm("concat-after-a");
+	if (IS_ERR(part)) {
+		ret = PTR_ERR(part);
+		goto out_concat;
+	}
+	ret = part->ooblayout ? -EINVAL : expect_layout(part, expected, 0xa1);
+	put_mtd_device(part);
+	ret |= expect_layout(&a->mtd, expected, 0xa1);
+	ret |= expect_layout(concat, expected, 0xa1);
+	if (ret)
+		goto out_concat;
+	ret = mtd_add_partition(concat, "concat-oob-nested", 0, SZ_4K);
+	if (ret)
+		goto out_concat;
+	nested = get_mtd_device_nm("concat-oob-nested");
+	if (IS_ERR(nested)) {
+		ret = PTR_ERR(nested);
+		nested = NULL;
+		goto out_concat;
+	}
+	ret = nested->ooblayout ? -EINVAL : expect_layout(nested, expected, 0xa1);
+	fixture_remove(a);
+	a = NULL;
+	fixture_remove(b);
+	b = NULL;
+	calls = atomic_read(&layout_calls);
+	if (!expected)
+		expected = -ENODEV;
+	ret |= expect_layout(concat, expected, 0) | expect_layout(nested, expected, 0);
+	if (atomic_read(&layout_calls) != calls)
+		ret = -EINVAL;
+out_concat:
+	if (nested)
+		put_mtd_device(nested);
+	put_mtd_device(concat);
+out_masters:
+	if (a)
+		fixture_remove(a);
+	if (b)
+		fixture_remove(b);
+	if (atomic_read(&releases) != before + 2)
+		ret = -EINVAL;
+	pr_info("concat-oob: mask %u, %s masters: %s\n", layout_mask,
+		unmanaged ? "unmanaged" : "managed", ret ? "FAIL" : "PASS");
+	return ret;
 }
 
 static int retained_rebind(void)
@@ -348,15 +471,24 @@ static int run_tests(const char *val, const struct kernel_param *kp)
 	if (IS_ERR(parent))
 		return PTR_ERR(parent);
 	register_mtd_parser(&fail_parser);
-	ret = retained_rebind();
+	ret = 0;
+	for (layout_mask = 0; !ret && layout_mask < 4; layout_mask++)
+		ret = partition_layout();
+	layout_mask = 0;
+	if (!ret)
+		ret = retained_rebind();
 	if (!ret)
 		ret = failed_registration();
 	for (i = 0; !ret && i < 25; i++)
 		ret = concurrent_remove();
 	if (!ret) {
 		unmanaged = true;
-		ret = retained_rebind();
+		for (layout_mask = 0; !ret && layout_mask < 4; layout_mask++)
+			ret = partition_layout();
+		layout_mask = 0;
 	}
+	if (!ret)
+		ret = retained_rebind();
 	if (!ret)
 		ret = failed_registration();
 	for (i = 0; !ret && i < 25; i++)

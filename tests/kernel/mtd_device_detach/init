@@ -23,9 +23,11 @@ if dd bs=1 count=1 <&3 >/dev/null; then
 	fail "disconnected MTD still readable"
 fi
 exec 3<&-
-rmmod mtd_detach_provider || fail provider_unload
-rmmod mtd || fail "bare device or NVMEM handle pins MTD core"
 echo 2 > "$holder" || fail stale_access
+echo 5 > "$holder" || fail release_provider_owner
+rmmod mtd_detach_provider || fail provider_unload
+rmmod mtd || fail "bare device pins MTD core"
+echo 4 > "$holder" || fail bare_device_access
 # Reuse MTD numbers and NVMEM names while the old devices remain referenced.
 insmod /mtd.ko || fail reload_core
 insmod /mtd_detach_provider.ko retain_devices=0 || fail replacement
@@ -47,6 +49,8 @@ rmmod mtd_detach_holder || fail rollback_holder_unload
 echo "MTD-DETACH-QEMU: initialization rollback PASS"
 
 insmod /mtd.ko || fail raw_mtd
+insmod /mtd_partition_race_test.ko || fail partition_race
+rmmod mtd_partition_race_test || fail partition_race_unload
 insmod /mtd_pm_detach_test.ko || fail pm_detach
 rmmod mtd_pm_detach_test || fail pm_detach_unload
 insmod /nandcore.ko || fail nandcore
@@ -54,6 +58,22 @@ insmod /nand.ko || fail nand
 insmod /raw_nand_detach_test.ko || fail raw_fixture
 echo 1 > /sys/module/raw_nand_detach_test/parameters/run || fail raw_scan_unbind_rebind
 rmmod raw_nand_detach_test || fail raw_unload
+insmod /raw_nand_detach_test.ko publish=1 || fail raw_publish
+insmod /mtd_detach_holder.ko || fail raw_nvmem_holder
+echo 6 > "$holder" || fail raw_nvmem_get
+exec 3<>/dev/mtd0 || fail raw_open
+dd bs=1 count=1 <&3 >/dev/null || fail raw_read
+# Module exit removes the controller while the NAND-core-owned FD stays open.
+rmmod raw_nand_detach_test || fail "retained FD pins controller module"
+/retained_fd 3 || fail raw_after_module_unload
+exec 3<&-
+if rmmod nand; then
+	fail "NVMEM handle lost NAND core owner"
+fi
+echo 7 > "$holder" || fail raw_nvmem_after_controller_unload
+rmmod mtd_detach_holder || fail raw_nvmem_holder_put
+echo "<6>MTD-DETACH-QEMU: NVMEM pins NAND core, not controller PASS" > /dev/kmsg
+echo "<6>MTD-DETACH-QEMU: raw NAND controller unload with retained FD PASS" > /dev/kmsg
 rmmod nand || fail nand_unload
 rmmod nandcore || fail nandcore_unload
 insmod /virt_concat_detach.ko || fail concat_fixture

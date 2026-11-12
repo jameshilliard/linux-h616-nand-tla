@@ -31,7 +31,7 @@ tegra_nand.c txx9ndfmc.c vf610_nfc.c xway_nand.c
 SCAN_OWNER = {"sm_common.c": "r852.c", "bcm47xxnflash/ops_bcm4706.c": "bcm47xxnflash/main.c"}
 EXTRA_FILES = {"denali.c": ["denali_dt.c", "denali_pci.c"], "r852.c": ["sm_common.c"]}
 SPECIAL = {
-    "omap2.c": "Static shared controller lock; per-binding storage has a separate kref.",
+    "omap2.c": "Static controller is accessed only while bound; core-owned per-binding storage refs.",
     "fsl_elbc_nand.c": "Shared parent controller kref; active-bank count separate from storage lifetime.",
     "fsl_ifc_nand.c": "Shared parent controller kref; active-bank count separate from storage lifetime.",
     "nandsim.c": "Module-only binding; final chip release owns the outer allocation.",
@@ -39,7 +39,7 @@ SPECIAL = {
     "diskonchip.c": "Module-only binding; final chip release owns the outer allocation.",
     "r852.c": "New chip per inserted card; PCI storage also survives IRQ/workqueue teardown.",
     "ndfc.c": "New controller per binding instead of reinitializing static storage.",
-    "cafe_nand.c": "DMA detach runs while hardware resources are live; final detach is idempotent.",
+    "cafe_nand.c": "DMA detach runs synchronously while hardware resources are live.",
     "cadence-nand-controller.c": "Shared buffers allocated before publication; track registered chips on unwind.",
 }
 
@@ -62,10 +62,13 @@ def main():
     for name in sorted(expected):
         files = [name] + EXTRA_FILES.get(name, [])
         source = "\n".join(sources.get(file, "") for file in files)
-        missing = [call for call in ("nand_set_release", "nand_disconnect", "mtd_put_master")
+        prepare = "nand_set_shared_lifetime" if name == "omap2.c" else "nand_set_lifetime"
+        missing = [call for call in (prepare, "nand_disconnect", "mtd_put_master")
                    if not re.search(r"\b" + call + r"\s*\(", source)]
         if missing:
             errors.append(f"{name}: missing ownership hooks {missing}")
+        if "nand_set_release(" in source:
+            errors.append(f"{name}: deferred controller-driver callback remains")
         if name not in {"omap2.c", "fsl_elbc_nand.c", "fsl_ifc_nand.c", "nandsim.c",
                         "cs553x_nand.c", "diskonchip.c"} and "devm_nand_controller_init(" not in source:
             errors.append(f"{name}: missing managed controller initialization")

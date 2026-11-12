@@ -81,6 +81,28 @@ static int command_set(const char *val, const struct kernel_param *kp)
 		count = 0;
 		pr_info("MTD-DETACH: final device puts after core unload\n");
 		return 0;
+	case 5:
+		if (!nvmem)
+			return -EINVAL;
+		nvmem_device_put(nvmem);
+		nvmem = NULL;
+		return 0;
+	case 6:
+		if (nvmem)
+			return -EBUSY;
+		nvmem = nvmem_device_find("mtd0", device_match_name);
+		if (IS_ERR(nvmem)) {
+			ret = PTR_ERR(nvmem);
+			nvmem = NULL;
+			return ret;
+		}
+		return nvmem_device_read(nvmem, 0, 1, &byte) == 1 && byte == 0xff ? 0 : -EINVAL;
+	case 7:
+		if (!nvmem || nvmem_device_read(nvmem, 0, 1, &byte) != -ENODEV)
+			return -EINVAL;
+		nvmem_device_put(nvmem);
+		nvmem = NULL;
+		return 0;
 	default:
 		return -EINVAL;
 	}

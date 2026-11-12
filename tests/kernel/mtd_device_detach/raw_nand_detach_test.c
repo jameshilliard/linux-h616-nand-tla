@@ -15,8 +15,11 @@ struct test_controller {
 	u8 command, address;
 };
 
-static unsigned int chip_releases, controller_releases, invalid_accesses;
+static unsigned int chip_cleanups, controller_removals, invalid_accesses;
 static struct test_controller *current_controller;
+static struct platform_device *published_device;
+static bool publish;
+module_param(publish, bool, 0400);
 
 static int test_exec(struct nand_chip *chip, const struct nand_operation *op,
 		     bool check_only)
@@ -61,21 +64,33 @@ static int test_exec(struct nand_chip *chip, const struct nand_operation *op,
 	return 0;
 }
 
+static void test_chip_cleanup(struct nand_chip *chip)
+{
+	struct test_controller *ctrl = container_of(chip->controller,
+						  struct test_controller, controller);
+
+	if (!ctrl->hardware_live)
+		invalid_accesses++;
+	chip_cleanups++;
+}
+
 static const struct nand_controller_ops test_ops = {
 	.exec_op = test_exec,
+	.detach_chip = test_chip_cleanup,
 };
 
-static void test_chip_release(struct nand_chip *chip)
+static int test_oob_free(struct mtd_info *mtd, int section, struct mtd_oob_region *region)
 {
-	chip_releases++;
-	kfree(chip);
+	if (section)
+		return -ERANGE;
+	region->offset = 2;
+	region->length = mtd->oobsize - 2;
+	return 0;
 }
 
-static void test_controller_release(struct nand_controller *controller)
-{
-	controller_releases++;
-	kfree(container_of(controller, struct test_controller, controller));
-}
+static const struct mtd_ooblayout_ops test_ooblayout = {
+	.free = test_oob_free,
+};
 
 static void test_remove(struct platform_device *pdev)
 {
@@ -93,6 +108,7 @@ static void test_remove(struct platform_device *pdev)
 		mtd_put_master(nand_to_mtd(chip));
 	}
 	ctrl->hardware_live = false;
+	controller_removals++;
 }
 
 static int test_probe(struct platform_device *pdev)
@@ -109,7 +125,7 @@ static int test_probe(struct platform_device *pdev)
 	ctrl = kzalloc(sizeof(*ctrl), GFP_KERNEL);
 	if (!ctrl)
 		return -ENOMEM;
-	ret = devm_nand_controller_init(&pdev->dev, &ctrl->controller, test_controller_release);
+	ret = devm_nand_controller_init(&pdev->dev, &ctrl->controller, ctrl);
 	if (ret)
 		return ret;
 	ctrl->controller.ops = &test_ops;
@@ -128,14 +144,14 @@ static int test_probe(struct platform_device *pdev)
 		chip->ecc.engine_type = NAND_ECC_ENGINE_TYPE_NONE;
 		mtd = nand_to_mtd(chip);
 		mtd->name = "synthetic NAND";
-		mtd->owner = THIS_MODULE;
 		mtd->parent_dev = &pdev->dev;
+		mtd_set_ooblayout(mtd, &test_ooblayout);
 		ret = nand_scan_with_ids(chip, 1, ids);
 		if (ret) {
 			kfree(chip);
 			goto fail;
 		}
-		ret = nand_set_release(chip, test_chip_release);
+		ret = nand_set_lifetime(chip, chip);
 		if (ret) {
 			nand_cleanup(chip);
 			kfree(chip);
@@ -167,7 +183,7 @@ static int test_run(const char *val, const struct kernel_param *kp)
 	struct platform_device *old, *replacement;
 	struct mtd_info *handles[TEST_CHIPS], *new_mtd;
 	struct device *device;
-	unsigned int before = chip_releases, ctrl_before = controller_releases, i;
+	unsigned int before = chip_cleanups, ctrl_before = controller_removals, i;
 	size_t retlen = 0;
 	u8 byte;
 	int ret = 0;
@@ -190,10 +206,21 @@ static int test_run(const char *val, const struct kernel_param *kp)
 	}
 	device = get_device(handles[0]->dev);
 	platform_device_unregister(old);
-	if (chip_releases != before || controller_releases != ctrl_before)
+	if (chip_cleanups != before + TEST_CHIPS || controller_removals != ctrl_before + 1)
 		ret = -EINVAL;
 	for (i = 0; i < TEST_CHIPS; i++) {
+		struct mtd_oob_region region;
+		struct erase_info erase = { .addr = 0, .len = handles[i]->erasesize };
+
 		if (mtd_read(handles[i], 0, 1, &retlen, &byte) != -ENODEV)
+			ret = -EINVAL;
+		if (mtd_block_isbad(handles[i], 0) != -ENODEV ||
+		    mtd_block_isreserved(handles[i], 0) != -ENODEV ||
+		    mtd_block_markbad(handles[i], 0) != -ENODEV ||
+		    mtd_erase(handles[i], &erase) != -ENODEV)
+			ret = -EINVAL;
+		if (mtd_ooblayout_free(handles[i], 0, &region) || region.offset != 2 ||
+		    region.length != 14 || mtd_ooblayout_free(handles[i], 1, &region) != -ERANGE)
 			ret = -EINVAL;
 		mtd_sync(handles[i]);
 	}
@@ -216,18 +243,18 @@ static int test_run(const char *val, const struct kernel_param *kp)
 	}
 	for (i = 0; i < TEST_CHIPS; i++)
 		put_mtd_device(handles[i]);
-	if (!ret && (chip_releases != before + 4 || controller_releases != ctrl_before + 2))
+	if (!ret && (chip_cleanups != before + 4 || controller_removals != ctrl_before + 2))
 		ret = -EINVAL;
 	new_mtd = dev_get_drvdata(device);
 	if (new_mtd)
 		ret = -EINVAL;
 	put_device(device);
-	if (!ret && (chip_releases != before + 4 || controller_releases != ctrl_before + 2))
+	if (!ret && (chip_cleanups != before + 4 || controller_removals != ctrl_before + 2))
 		ret = -EINVAL;
 	if (invalid_accesses)
 		ret = -EINVAL;
 	pr_info("raw-nand-lifetime: %s (%u chips, %u controllers)\n",
-		ret ? "FAIL" : "PASS", chip_releases, controller_releases);
+		ret ? "FAIL" : "PASS", chip_cleanups, controller_removals);
 	return ret;
 out_old:
 	platform_device_unregister(old);
@@ -239,6 +266,35 @@ out_old:
 
 static const struct kernel_param_ops run_ops = { .set = test_run };
 module_param_cb(run, &run_ops, NULL, 0200);
-module_platform_driver(test_driver);
+
+static int __init test_init(void)
+{
+	int ret = platform_driver_register(&test_driver);
+
+	if (ret || !publish)
+		return ret;
+	published_device = platform_device_register_simple(TEST_NAME, PLATFORM_DEVID_AUTO, NULL, 0);
+	if (IS_ERR(published_device)) {
+		ret = PTR_ERR(published_device);
+		platform_driver_unregister(&test_driver);
+		return ret;
+	}
+	if (!current_controller) {
+		platform_device_unregister(published_device);
+		platform_driver_unregister(&test_driver);
+		return -ENODEV;
+	}
+	return 0;
+}
+module_init(test_init);
+
+static void __exit test_exit(void)
+{
+	if (published_device)
+		platform_device_unregister(published_device);
+	platform_driver_unregister(&test_driver);
+	WARN_ON(invalid_accesses);
+}
+module_exit(test_exit);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Synthetic raw NAND retained-handle and rebind checks");
