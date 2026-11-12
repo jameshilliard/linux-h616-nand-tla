@@ -14,7 +14,7 @@ from run_core import extract
 def source_check(tree):
     source = (tree / "drivers/nvmem/core.c").read_text()
     names = ("nvmem_reg_read", "nvmem_reg_write", "__nvmem_cell_read",
-             "nvmem_add_cells_from_dt", "nvmem_disconnect", "nvmem_unregister",
+             "__nvmem_add_cells_from_dt", "nvmem_disconnect", "nvmem_unregister",
              "nvmem_release", "nvmem_device_match", "nvmem_device_put")
     bodies = {name: extract(source, name) for name in names}
     for name in names[:4]:

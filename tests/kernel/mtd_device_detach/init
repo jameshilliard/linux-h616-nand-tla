@@ -49,6 +49,8 @@ rmmod mtd_detach_holder || fail rollback_holder_unload
 echo "MTD-DETACH-QEMU: initialization rollback PASS"
 
 insmod /mtd.ko || fail raw_mtd
+insmod /mtd_partition_race_test.ko || fail partition_race
+rmmod mtd_partition_race_test || fail partition_race_unload
 insmod /mtd_pm_detach_test.ko || fail pm_detach
 rmmod mtd_pm_detach_test || fail pm_detach_unload
 insmod /nandcore.ko || fail nandcore
@@ -70,7 +72,7 @@ if rmmod nand; then
 fi
 echo 7 > "$holder" || fail raw_nvmem_after_controller_unload
 rmmod mtd_detach_holder || fail raw_nvmem_holder_put
-echo "MTD-DETACH-QEMU: NVMEM pins NAND core, not controller PASS"
+echo "<6>MTD-DETACH-QEMU: NVMEM pins NAND core, not controller PASS" > /dev/kmsg
 echo "<6>MTD-DETACH-QEMU: raw NAND controller unload with retained FD PASS" > /dev/kmsg
 rmmod nand || fail nand_unload
 rmmod nandcore || fail nandcore_unload

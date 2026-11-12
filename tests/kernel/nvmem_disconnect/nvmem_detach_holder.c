@@ -6,6 +6,8 @@
 #include <linux/gpio/machine.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
+#include <linux/nvmem-provider.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
@@ -15,6 +17,9 @@ static struct device *consumer, *held_device;
 static struct nvmem_device *held;
 static struct nvmem_cell *held_cell;
 static unsigned int phase;
+static unsigned int adds, removes;
+module_param(adds, uint, 0400);
+module_param(removes, uint, 0400);
 static int worker_result;
 static DECLARE_COMPLETION(entered);
 static DECLARE_COMPLETION(proceed);
@@ -54,6 +59,81 @@ static struct nvmem_cell_lookup lookup = {
 	.nvmem_name = "nvmem-detach-fixture", .cell_name = "token",
 	.dev_id = "nvmem-detach-consumer", .con_id = "token",
 };
+
+static int test_notify(struct notifier_block *nb, unsigned long action, void *data)
+{
+	if (action == NVMEM_ADD)
+		adds++;
+	else if (action == NVMEM_REMOVE)
+		removes++;
+	return NOTIFY_OK;
+}
+
+static struct notifier_block test_notifier = { .notifier_call = test_notify };
+
+static bool explicit_owner;
+static int owner_probe_result;
+
+static int owner_read(void *priv, unsigned int offset, void *buf, size_t len)
+{
+	memset(buf, 0, len);
+	return 0;
+}
+
+static int owner_probe(struct platform_device *pdev)
+{
+	struct nvmem_config config = {
+		.dev = &pdev->dev, .name = "nvmem-owner-fixture", .id = NVMEM_DEVID_NONE,
+		.size = 1, .reg_read = owner_read, .owner_is_explicit = explicit_owner,
+		.ignore_wp = true,
+	};
+	struct nvmem_device *provider, *consumer;
+	int before, after;
+
+	provider = nvmem_register(&config);
+	if (IS_ERR(provider))
+		return owner_probe_result = PTR_ERR(provider);
+	before = module_refcount(THIS_MODULE);
+	consumer = nvmem_device_get(&pdev->dev, config.name);
+	after = module_refcount(THIS_MODULE);
+	owner_probe_result = IS_ERR(consumer) ? PTR_ERR(consumer) :
+		(after == before + !explicit_owner ? 0 : -EINVAL);
+	if (!IS_ERR(consumer))
+		nvmem_device_put(consumer);
+	nvmem_unregister(provider);
+	return owner_probe_result;
+}
+
+static struct platform_driver owner_driver = {
+	.driver.name = "nvmem-owner-fixture",
+	.probe = owner_probe,
+};
+
+static int test_owner(void)
+{
+	struct platform_device *pdev;
+	int ret = platform_driver_register(&owner_driver);
+
+	if (ret)
+		return ret;
+	for (int i = 0; i < 2; i++) {
+		explicit_owner = i;
+		owner_probe_result = -ENXIO;
+		pdev = platform_device_register_simple("nvmem-owner-fixture", -1, NULL, 0);
+		if (IS_ERR(pdev)) {
+			ret = PTR_ERR(pdev);
+			break;
+		}
+		ret = owner_probe_result;
+		platform_device_unregister(pdev);
+		if (ret)
+			break;
+	}
+	platform_driver_unregister(&owner_driver);
+	if (!ret)
+		pr_info("NVMEM-DETACH: explicit NULL owner and legacy fallback PASS\n");
+	return ret;
+}
 
 int nvmem_detach_test_gate(unsigned int which)
 {
@@ -212,6 +292,9 @@ static int __init holder_init(void)
 {
 	int ret;
 
+	ret = test_owner();
+	if (ret)
+		return ret;
 	consumer = root_device_register("nvmem-detach-consumer");
 	if (IS_ERR(consumer))
 		return PTR_ERR(consumer);
@@ -223,11 +306,13 @@ static int __init holder_init(void)
 	}
 	gpiod_add_lookup_table(&wp_lookup);
 	nvmem_add_cell_lookups(&lookup, 1);
+	nvmem_register_notifier(&test_notifier);
 	return 0;
 }
 
 static void __exit holder_exit(void)
 {
+	nvmem_unregister_notifier(&test_notifier);
 	complete(&proceed);
 	flush_work(&reader);
 	if (held_cell)

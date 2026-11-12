@@ -28,6 +28,11 @@ def main():
                         help="run only the MTD class-PM removal interleaving")
     args = parser.parse_args()
     tree, build = args.kernel_tree.resolve(), args.kernel_build.resolve()
+    tested_commit = subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                           cwd=tree, text=True).strip()
+    tested_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"],
+                                         cwd=tree, text=True).strip()
+    tested_dirty = bool(subprocess.check_output(["git", "diff", "--name-only"], cwd=tree))
     if args.mtd_pm_only and args.suite != "mtd":
         parser.error("--mtd-pm-only requires --suite mtd")
     if args.suite == "nvmem" and "CONFIG_GPIOLIB=y\n" not in (build / ".config").read_text():
@@ -63,6 +68,7 @@ def main():
         shutil.copy2(out / "modules/raw_nand_detach_test.ko", root)
         shutil.copy2(out / "modules/virt_concat_detach.ko", root)
         shutil.copy2(out / "modules/mtd_pm_detach_test.ko", root)
+        shutil.copy2(out / "modules/mtd_partition_race_test.ko", root)
         run(["cc", "-static", "-O2", "-Wall", "-Wextra", "-Werror",
              str(source / "load_fail.c"), "-o", str(root / "load_fail")], "userspace-build.log")
         run(["cc", "-static", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -86,6 +92,8 @@ def main():
         markers += ["NVMEM-DETACH-QEMU: layout unbind and rebind PASS"]
         markers += ["NVMEM-DETACH-QEMU: legacy provider owner preserved PASS"]
         markers += ["NVMEM-DETACH-QEMU: registration rollback releases GPIO PASS"]
+        markers += ["NVMEM-DETACH-QEMU: sysfs registration failure and notifications PASS"]
+        markers += ["NVMEM-DETACH: explicit NULL owner and legacy fallback PASS"]
     else:
         markers = ["MTD-DETACH: provider metadata freed", "MTD-DETACH: provider unloaded",
                    "MTD-DETACH: final device puts after core unload",
@@ -95,15 +103,23 @@ def main():
                    "concat-lifetime: PASS",
                    "MTD-DETACH-QEMU: raw NAND controller unload with retained FD PASS",
                    "MTD-DETACH-QEMU: NVMEM pins NAND core, not controller PASS",
+                   "MTD-PARTITION-RACE: parser survives deletion; orphan children rejected PASS",
                    "raw-nand-lifetime: PASS", "MTD-DETACH-QEMU: PASS"]
+    # The deliberate duplicate-name failure calls dump_stack(), not WARN().
+    # Exempt only its Call Trace header; still reject every BUG/WARNING and
+    # unrelated stack trace, even inside this expected-error test.
+    scan, expected_traces = re.subn(
+        r"(sysfs: cannot create duplicate filename "
+        r"'/devices/nvmem-detach-provider/nvmem-detach-fixture/cells/token@0,0'\n"
+        r"CPU:[^\n]*\nTainted:[^\n]*\n)Call Trace:",
+        r"\1Expected duplicate-cell trace:", log)
     bad = re.findall(r".*(?:BUG:|WARNING:|: FAIL|Call Trace:|Kernel panic|"
-                     r"possible circular locking|possible recursive locking).*", log)
+                     r"possible circular locking|possible recursive locking).*", scan)
     passed = all(marker in log for marker in markers) and not bad
     (out / "summary.json").write_text(json.dumps(dict(
         passed=passed, markers={m: m in log for m in markers}, diagnostics=bad,
-        kernel_commit=subprocess.check_output(["git", "rev-parse", "HEAD"],
-                                               cwd=tree, text=True).strip(),
-        kernel_dirty=bool(subprocess.check_output(["git", "diff", "--name-only"], cwd=tree)),
+        expected_duplicate_cell_traces=expected_traces,
+        kernel_commit=tested_commit, kernel_tree=tested_tree, kernel_dirty=tested_dirty,
         kernel_config_sha256=hashlib.sha256((build / ".config").read_bytes()).hexdigest(),
         kernel_config=[line for line in (build / ".config").read_text().splitlines()
                        if re.match(r"CONFIG_(?:MTD(?:_.*)?|NVMEM(?:_.*)?|KASAN(?:_.*)?|"

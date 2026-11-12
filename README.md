@@ -654,6 +654,33 @@ handle; the model does not automatically discover equivalent misuse by other
 clients. NVMEM's legacy configuration owner field remains for source
 compatibility. No real hardware test is claimed for this redesign.
 
+## Retained-handle v4 review regressions
+
+`run_lifetime_publication.py` checks bounded partition-publication and NVMEM
+cell-retirement contracts. Its negative controls cover early partition-list
+publication, a missing parser reference, children added to a removed parent,
+stale layout attributes, implicit layout ownership, premature attribute frees,
+unpaired provider notifications and unintended controller-module ownership.
+
+`run_nvmem_sysfs.py --kernel-tree /path/to/linux` runs the actual cell-attribute
+allocation and cleanup functions under ASan/UBSan. It injects failure at every
+allocation and at sysfs publication, then retries. Pass
+`--revision db22de22b9db --expect-bugs` to reproduce v3's missing layout
+attributes and partial-allocation leaks. Locks, sysfs draining and reference
+operations are explicit shims in this sequential fixture.
+
+The `nvmem` QEMU suite also checks provider cells alongside layout cells,
+late provider cells, layout rebind, explicit NULL owners versus the legacy
+parent-module fallback, and failed-registration notification pairing. Its
+duplicate-name negative test deliberately invokes `sysfs_warn_dup()`; only
+that identifiable stack-dump header is exempted from diagnostic scanning.
+KASAN reports, warnings and unrelated traces remain failures.
+
+The `mtd` QEMU suite deletes a partition while its subpartition parser is
+blocked. It checks that the parser's storage stays valid and that both direct
+and parser-driven additions reject an already removed parent. These tests use
+synthetic providers and do not access physical NAND.
+
 ## Interpreting the result
 
 Passing is bounded evidence about these models and these C fixtures. It is not
