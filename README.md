@@ -601,6 +601,13 @@ queries return `-ENODEV`; closing the file exercises the disconnected sync
 path. Virtual-concat tests cover concurrent removal of managed and
 unmanaged component masters,
 rebind and partially published registrations, with 25 iterations per mode.
+The concat fixture also checks ECC/free-OOB layout lookup through partition
+components and nested partitions, and rejects callbacks after removal. All
+four combinations of first/second-master layout capability are checked for
+managed and unmanaged masters, with different region offsets to detect
+selection of the wrong component. The pre-fix v4 kernel fails the
+first-master-only case because partition objects have no local layout pointer;
+the public OOB helpers resolve that capability through their master.
 
 ```sh
 python3 run_detached_lifetime_kernel.py --suite nvmem \

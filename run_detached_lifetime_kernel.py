@@ -105,6 +105,8 @@ def main():
                    "MTD-DETACH-QEMU: NVMEM pins NAND core, not controller PASS",
                    "MTD-PARTITION-RACE: parser survives deletion; orphan children rejected PASS",
                    "raw-nand-lifetime: PASS", "MTD-DETACH-QEMU: PASS"]
+        markers += [f"concat-oob: mask {mask}, {kind} masters: PASS"
+                    for kind in ("managed", "unmanaged") for mask in range(4)]
     # The deliberate duplicate-name failure calls dump_stack(), not WARN().
     # Exempt only its Call Trace header; still reject every BUG/WARNING and
     # unrelated stack trace, even inside this expected-error test.
