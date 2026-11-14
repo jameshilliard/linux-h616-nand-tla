@@ -19,10 +19,50 @@ static void s4_stop_before_irq_lock(struct lock *l)
     assert(l==&s4_irq_vchan->vc.lock);
     sun4i_dma_terminate_all(&s4_irq_vchan->vc.chan);
 }
+static void s4_result_callback(void *p, const struct dmaengine_result *result)
+{
+    struct sun4i_dma_contract *d=p;
+    s4_callback(p);
+    assert(!d->freed && result->residue==0x1234);
+}
+
+#if SHARED_TERMINATE
+static void s4_shared_retirement(void)
+{
+    /* All public lists, including a cyclic descriptor completed by an error. */
+    for (unsigned where=0;where<5;where++)
+    for (unsigned reuse=0;reuse<2;reuse++) {
+        struct dma_device dev={0};
+        struct sun4i_dma_vchan v={0};
+        struct sun4i_dma_contract d={0};
+        INIT_LIST_HEAD(&dev.channels);
+        vchan_init(&v.vc,&dev);
+        v.vc.desc_free=s4_free;
+        d.vd.tx=(struct dma_async_tx_descriptor){.chan=&v.vc.chan,.reuse=reuse};
+        struct list_head *lists[]={&v.vc.desc_allocated,&v.vc.desc_submitted,
+            &v.vc.desc_issued,&v.vc.desc_completed,&v.vc.desc_terminated};
+        list_add_tail(&d.vd.node,lists[where]);
+        vchan_cyclic_callback(&d.vd);
+        spin_lock(&v.vc.lock);
+        vchan_terminate_all(&v.vc);
+        vchan_terminate_all(&v.vc);
+        spin_unlock(&v.vc.lock);
+        assert(!d.freed && !v.vc.cyclic);
+        vchan_synchronize(&v.vc);
+        assert(d.freed==!reuse);
+        vchan_free_chan_resources(&v.vc);
+        assert(d.freed==1);
+    }
+    puts("shared retirement: public-list aliases, repeated termination and reuse PASS");
+}
+#endif
 static void sun4i_checks(void)
 {
     unsigned cases=0;
-    for(unsigned client=0;client<2;client++)
+#if SHARED_TERMINATE
+    s4_shared_retirement();
+#endif
+    for(unsigned client=0;client<(FIXED_SUN4I?3:2);client++)
     for(unsigned dedicated=0;dedicated<2;dedicated++)
     for(unsigned cyclic=0;cyclic<2;cyclic++)
     for(unsigned stop=0;stop<(FIXED_SUN4I?5:3);stop++)
@@ -38,7 +78,10 @@ static void sun4i_checks(void)
         for(unsigned i=0;i<16;i++) { phy[i].base=a10_channel_regs[i]; phy[i].is_dedicated=i>=8; }
         for(unsigned i=0;i<ARRAY_SIZE(v);i++) { vchan_init(&v[i].vc,&dev.slave); v[i].vc.desc_free=s4_free; }
         v[0].is_dedicated=dedicated;
-        d.vd.tx=(struct dma_async_tx_descriptor){.chan=&v[0].vc.chan,.cookie=1,.callback=client?s4_callback:NULL,.callback_param=&d};
+        d.vd.tx=(struct dma_async_tx_descriptor){.chan=&v[0].vc.chan,.cookie=1,
+            .callback=client==1?s4_callback:NULL,
+            .callback_result=client==2?s4_result_callback:NULL,.callback_param=&d};
+        d.vd.tx_result.residue=0x1234;
         INIT_LIST_HEAD(&d.vd.node); INIT_LIST_HEAD(&d.demands); INIT_LIST_HEAD(&d.completed_demands);
         INIT_LIST_HEAD(&promise.list); list_add_tail(&promise.list,&d.demands);
         list_add_tail(&d.vd.node,&v[0].vc.desc_issued);
@@ -58,7 +101,7 @@ static void sun4i_checks(void)
 #if FIXED_SUN4I
         assert(!cyclic || !d.freed);
         if(!cyclic && (stop==0 || stop==1 || stop==3))
-            assert(d.freed==1);
+            assert(d.freed==!SHARED_TERMINATE);
         if(stop==2 || stop==4) {
             /* Run the tasklet as the scheduler would, before termination. */
             tasklet_kill(&v[0].vc.task);

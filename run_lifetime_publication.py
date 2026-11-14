@@ -6,7 +6,8 @@ from mtdchar_cases import TLC
 
 
 def cases():
-    partition = dict(EarlyPublish=False, HoldParseRef=True, RejectRemovedParent=True)
+    partition = dict(EarlyPublish=False, HoldParseRef=True, RejectRemovedParent=True,
+                     KeepSiblings=True)
     cell = dict(Refresh=True, ExplicitLayout=True, RemoveBeforeFree=True,
                 PairedNotifier=True, ExplicitOwner=True)
     result = []
@@ -14,7 +15,8 @@ def cases():
         ("MtdPartitionPublication", partition, (
             ("early-list", dict(EarlyPublish=True), "ClassDevicePublished"),
             ("no-parse-ref", dict(HoldParseRef=False), "ParserStorage"),
-            ("removed-parent", dict(RejectRemovedParent=False), "NoOrphanChild"))),
+            ("removed-parent", dict(RejectRemovedParent=False), "NoOrphanChild"),
+            ("sibling-rollback", dict(KeepSiblings=False), "SiblingsSurvive"))),
         ("NvmemCellPublication", cell, (
             ("stale-group", dict(Refresh=False), "AllCellAttributes"),
             ("implicit-layout", dict(ExplicitLayout=False), "ProviderCellsSurvive"),
@@ -34,7 +36,8 @@ if __name__ == "__main__":
         metadata=dict(limits="Bounded API-contract models, not full driver, C refinement, "
                              "weak-memory, or hardware verification."), modules={
             "MtdPartitionPublication": dict(
-                invariants=["ClassDevicePublished", "ParserStorage", "NoOrphanChild"],
+                invariants=["ClassDevicePublished", "ParserStorage", "NoOrphanChild",
+                            "SiblingsSurvive"],
                 actions=["Publish", "Register", "Delete", "Parse", "Put"]),
             "NvmemCellPublication": dict(invariants=["AllCellAttributes", "ProviderCellsSurvive",
                 "ActiveAttributesAlive", "NotificationsPaired", "ControllerNotPinned"],

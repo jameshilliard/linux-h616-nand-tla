@@ -24,8 +24,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-sun4i", type=Path,
                         help="test a local sun4i source without replacing the pinned baseline")
+    parser.add_argument("--candidate-virt-dma", type=Path,
+                        help="directory containing candidate virt-dma.c and virt-dma.h")
     args = parser.parse_args()
     src = sources()
+    if args.candidate_virt_dma:
+        for name in ("virt-dma.h", "virt-dma.c"):
+            src[name] = (args.candidate_virt_dma / name).read_text()
+        if "vchan_terminate_all(" in src["virt-dma.h"]:
+            FUNCTIONS["virt-dma.h"].append("vchan_terminate_all")
     text = (HERE/"reference/providers/sun6i-dma.c").read_text()
     pin = json.loads((HERE/"reference/providers/source.json").read_text())
     assert hashlib.sha256(text.encode()).hexdigest() == pin["files"]["sun6i-dma.c"]
@@ -39,6 +46,7 @@ if __name__ == "__main__":
         FUNCTIONS["sun4i-dma.c"] += ["sun4i_dma_synchronize", "sun4i_dma_free_chan_resources"]
         FUNCTIONS["virt-dma.h"].append("vchan_free_chan_resources")
     defines += f"\n#define FIXED_SUN4I {int(bool(args.candidate_sun4i))}\n"
+    defines += f"\n#define SHARED_TERMINATE {int('vchan_terminate_all(' in text4)}\n"
     src["sun4i-dma.c"]=text4
     defines += "\n"+"\n".join(re.findall(r"^#define SUN4I_[^\n\\]*(?:\\\n[^\n\\]*)*",text4,re.M))
     structs = []

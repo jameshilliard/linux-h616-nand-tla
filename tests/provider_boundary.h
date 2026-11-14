@@ -16,17 +16,22 @@ struct dma_async_tx_descriptor {
     int cookie;
     bool reuse;
     void (*callback)(void *);
+    void (*callback_result)(void *, const struct dmaengine_result *);
     void *callback_param;
 };
-struct dmaengine_desc_callback { void (*callback)(void *); void *param; };
+struct dmaengine_desc_callback {
+    void (*callback)(void *);
+    void (*callback_result)(void *, const struct dmaengine_result *);
+    void *param;
+};
 static void dma_cookie_init(struct dma_chan *c) { }
 static void dma_cookie_complete(struct dma_async_tx_descriptor *d) { assert(d->cookie); d->cookie=0; }
 static bool dmaengine_desc_test_reuse(struct dma_async_tx_descriptor *d) { return d->reuse; }
 static void dmaengine_desc_clear_reuse(struct dma_async_tx_descriptor *d) { d->reuse=false; }
 static void dmaengine_desc_get_callback(struct dma_async_tx_descriptor *d, struct dmaengine_desc_callback *c)
-{ c->callback=d->callback; c->param=d->callback_param; }
+{ c->callback=d->callback; c->callback_result=d->callback_result; c->param=d->callback_param; }
 static void dmaengine_desc_callback_invoke(struct dmaengine_desc_callback *c, const struct dmaengine_result *r)
-{ if (c->callback) c->callback(c->param); }
+{ if (c->callback_result) c->callback_result(c->param,r); else if (c->callback) c->callback(c->param); }
 /* @virt-structs@ */
 struct sun6i_desc { struct virt_dma_desc vd; void *v_lli; u32 p_lli; unsigned freed, callbacks; };
 struct sun6i_vchan;

@@ -13,6 +13,23 @@ static DECLARE_COMPLETION(finished);
 static struct mtd_info master;
 static struct device *parent;
 static int child_index, register_result, parser_result;
+static unsigned int backing_refs;
+static struct mtd_info *failed_registration_handle;
+
+static int test_get(struct mtd_info *mtd)
+{
+	/* Like gluebi, the provider requires its embedded master, not a child. */
+	if (mtd != &master)
+		return -EINVAL;
+	backing_refs++;
+	return 0;
+}
+
+static void test_put(struct mtd_info *mtd)
+{
+	WARN_ON(mtd != &master || !backing_refs);
+	backing_refs--;
+}
 
 static int test_read(struct mtd_info *mtd, loff_t from, size_t len,
 		     size_t *retlen, u_char *buf)
@@ -51,23 +68,68 @@ static struct mtd_part_parser parser = {
 	.owner = THIS_MODULE, .name = "publication-race", .parse_fn = parse_child,
 };
 
+static int parse_failure(struct mtd_info *mtd,
+			 const struct mtd_partition **parts,
+			 struct mtd_part_parser_data *data)
+{
+	failed_registration_handle = get_mtd_device(mtd, -1);
+	return IS_ERR(failed_registration_handle) ?
+		PTR_ERR(failed_registration_handle) : -EPROBE_DEFER;
+}
+
+static struct mtd_part_parser failure_parser = {
+	.owner = THIS_MODULE, .name = "publication-failure",
+	.parse_fn = parse_failure,
+};
+
 static int register_worker(void *unused)
 {
 	static const char * const types[] = { "publication-race", NULL };
-	static const struct mtd_partition part = {
-		.name = "publication-child", .offset = 0, .size = 0x2000, .types = types,
+	static const struct mtd_partition parts[] = {
+		{ .name = "publication-before", .offset = 0, .size = 0x2000 },
+		{ .name = "publication-child", .offset = 0x2000, .size = 0x2000,
+		  .types = types },
+		{ .name = "publication-after", .offset = 0x4000, .size = 0x2000 },
 	};
 
-	register_result = mtd_device_register(&master, &part, 1);
+	register_result = mtd_device_register(&master, parts, ARRAY_SIZE(parts));
 	complete(&finished);
 	while (!kthread_should_stop())
 		schedule_timeout_interruptible(HZ);
 	return 0;
 }
 
+static int check_parse_failure(void)
+{
+	static const char * const types[] = { "publication-failure", NULL };
+	int ret;
+
+	if (!IS_ENABLED(CONFIG_MTD_PARTITIONED_MASTER))
+		return -EOPNOTSUPP;
+	ret = register_mtd_parser(&failure_parser);
+	if (ret)
+		return ret;
+	ret = mtd_device_parse_register(&master, types, NULL, NULL, 0);
+	deregister_mtd_parser(&failure_parser);
+	if (IS_ERR_OR_NULL(failed_registration_handle))
+		return -EINVAL;
+	if (ret != -EPROBE_DEFER || master.registered || !master.dev ||
+	    !device_is_registered(master.dev))
+		ret = -EINVAL;
+	else
+		ret = mtd_device_unregister(&master);
+	put_mtd_device(failed_registration_handle);
+	if (master.dev || backing_refs)
+		ret = -EINVAL;
+	if (!ret)
+		pr_info("MTD-PARTITION-RACE: retained master rollback and repeated unregister PASS\n");
+	return ret;
+}
+
 static int __init test_init(void)
 {
 	struct task_struct *task;
+	struct mtd_info *sibling;
 	int ret;
 
 	parent = root_device_register("mtd-publication-fixture");
@@ -78,10 +140,12 @@ static int __init test_init(void)
 	master.parent_dev = parent;
 	master.type = MTD_RAM;
 	master.flags = MTD_NO_ERASE;
-	master.size = 0x4000;
+	master.size = 0x8000;
 	master.erasesize = 0x1000;
 	master.writesize = 1;
 	master._read = test_read;
+	master._get_device = test_get;
+	master._put_device = test_put;
 	ret = register_mtd_parser(&parser);
 	if (ret)
 		goto out_parent;
@@ -98,12 +162,30 @@ static int __init test_init(void)
 	complete(&proceed);
 	wait_for_completion(&finished);
 	kthread_stop(task);
-	if (!ret && (parser_result || register_result != -ENODEV))
+	if (!ret && (parser_result || register_result))
 		ret = -EINVAL;
+	if (!ret) {
+		sibling = get_mtd_device_nm("publication-before");
+		if (IS_ERR(sibling))
+			ret = PTR_ERR(sibling);
+		else
+			put_mtd_device(sibling);
+		sibling = get_mtd_device_nm("publication-after");
+		if (IS_ERR(sibling))
+			ret = PTR_ERR(sibling);
+		else
+			put_mtd_device(sibling);
+	}
 	if (!register_result)
 		mtd_device_unregister(&master);
+	if (backing_refs)
+		ret = -EINVAL;
 	if (!ret)
 		pr_info("MTD-PARTITION-RACE: parser survives deletion; orphan children rejected PASS\n");
+	if (!ret) {
+		pr_info("MTD-PARTITION-RACE: siblings survive deletion; provider hooks receive master PASS\n");
+		ret = check_parse_failure();
+	}
 out_parser:
 	deregister_mtd_parser(&parser);
 out_parent:

@@ -667,6 +667,7 @@ compatibility. No real hardware test is claimed for this redesign.
 `run_lifetime_publication.py` checks bounded partition-publication and NVMEM
 cell-retirement contracts. Its negative controls cover early partition-list
 publication, a missing parser reference, children added to a removed parent,
+rollback that deletes unrelated sibling partitions,
 stale layout attributes, implicit layout ownership, premature attribute frees,
 unpaired provider notifications and unintended controller-module ownership.
 
@@ -685,9 +686,24 @@ that identifiable stack-dump header is exempted from diagnostic scanning.
 KASAN reports, warnings and unrelated traces remain failures.
 
 The `mtd` QEMU suite deletes a partition while its subpartition parser is
-blocked. It checks that the parser's storage stays valid and that both direct
-and parser-driven additions reject an already removed parent. These tests use
-synthetic providers and do not access physical NAND.
+blocked. It checks that the parser's storage stays valid, that both direct
+and parser-driven additions reject an already removed parent, and that sibling
+partitions remain registered. Provider get/put hooks reject a partition pointer,
+exercising the master-only context requirement used by gluebi. A parser failure
+with a retained master handle also checks logical unregistration while the class
+device remains visible, followed by a second unregister and final handle put.
+The v5 candidate passed all 22 MTD-suite markers with KASAN, lockdep and delayed
+kobject release enabled. These tests use synthetic providers and do not access
+physical NAND.
+
+The provider-boundary runner accepts `--candidate-sun4i /path/to/sun4i-dma.c`
+and `--candidate-virt-dma /path/to/drivers/dma` to check the shared descriptor
+retirement helper. It exercises all five public descriptor lists, repeated
+termination, descriptor reuse and 90 sun4i IRQ/callback schedules. Both legacy
+and result callbacks are covered, including termination from inside the callback
+before its result storage is read. The pinned pre-fix source still produces two
+freed-cyclic-callback witnesses. MMIO, scheduling and frees are explicit bounded
+shims; passing these checks does not establish hardware or complete SMP safety.
 
 ## Interpreting the result
 
