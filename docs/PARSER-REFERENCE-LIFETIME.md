@@ -79,7 +79,9 @@ An optional kernel revision adds a source-policy case without changing the
 kernel checkout. Its outcome is recorded explicitly: the v5 policy must produce
 the named `RegistrationIndependent` counterexample; the v6 policy must pass.
 The runner rejects parser/tool failures as substitutes for that counterexample.
-The retained-lifetime GitHub workflow checks the pinned policies and full matrix.
+The runner first executes the source-policy unit tests. The existing
+retained-lifetime GitHub workflow therefore checks those tests, the pinned
+policies and the full matrix without a separate workflow step.
 
 ## Validation on 2026-11-16
 

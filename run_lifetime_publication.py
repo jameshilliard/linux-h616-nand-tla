@@ -3,6 +3,7 @@
 """Bounded publication/retirement contracts with independently failing mutations."""
 import argparse
 from pathlib import Path
+import unittest
 
 import run as tlc
 from mtdchar_cases import TLC
@@ -91,6 +92,11 @@ if __name__ == "__main__":
     args, remaining = parser.parse_known_args()
     if args.revision and not args.kernel_tree:
         parser.error("--revision requires --kernel-tree")
+    if "--help" not in remaining and "-h" not in remaining:
+        suite = unittest.defaultTestLoader.discover(
+            str(Path(__file__).resolve().parent / "tests"), pattern="test_parser_reference.py")
+        if not unittest.TextTestRunner().run(suite).wasSuccessful():
+            raise SystemExit(1)
     sources = profiles(args.kernel_tree, args.revision)
     raise SystemExit(tlc.main(remaining, cases=cases(sources), toolchain=TLC,
         metadata=dict(parser_sources=evidence(sources),
