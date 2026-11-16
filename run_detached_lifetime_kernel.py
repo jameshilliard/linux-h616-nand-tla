@@ -106,6 +106,7 @@ def main():
                    "MTD-PARTITION-RACE: parser survives deletion; orphan children rejected PASS",
                    "MTD-PARTITION-RACE: siblings survive deletion; provider hooks receive master PASS",
                    "MTD-PARTITION-RACE: retained master rollback and repeated unregister PASS",
+                   "MTD-PARTITION-RACE: busy provider permits nested metadata registration PASS",
                    "raw-nand-lifetime: PASS", "MTD-DETACH-QEMU: PASS"]
         markers += [f"concat-oob: mask {mask}, {kind} masters: PASS"
                     for kind in ("managed", "unmanaged") for mask in range(4)]

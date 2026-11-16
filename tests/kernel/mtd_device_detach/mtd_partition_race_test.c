@@ -14,6 +14,8 @@ static struct mtd_info master;
 static struct device *parent;
 static int child_index, register_result, parser_result;
 static unsigned int backing_refs;
+static unsigned int get_calls, busy_parser_calls;
+static int get_error;
 static struct mtd_info *failed_registration_handle;
 
 static int test_get(struct mtd_info *mtd)
@@ -21,6 +23,9 @@ static int test_get(struct mtd_info *mtd)
 	/* Like gluebi, the provider requires its embedded master, not a child. */
 	if (mtd != &master)
 		return -EINVAL;
+	get_calls++;
+	if (get_error)
+		return get_error;
 	backing_refs++;
 	return 0;
 }
@@ -126,6 +131,81 @@ static int check_parse_failure(void)
 	return ret;
 }
 
+static int parse_busy(struct mtd_info *mtd, const struct mtd_partition **parts,
+		      struct mtd_part_parser_data *data)
+{
+	static const char * const types[] = { "publication-busy", NULL };
+	static const char * const no_types[] = { NULL };
+	const struct mtd_partition part = {
+		.name = mtd_is_partition(mtd) ? "publication-busy-grandchild" :
+			"publication-busy-child",
+		.offset = 0, .size = 0x2000,
+		.types = mtd_is_partition(mtd) ? no_types : types,
+	};
+
+	busy_parser_calls++;
+	*parts = kmemdup(&part, sizeof(part), GFP_KERNEL);
+	return *parts ? 1 : -ENOMEM;
+}
+
+static struct mtd_part_parser busy_parser = {
+	.owner = THIS_MODULE, .name = "publication-busy", .parse_fn = parse_busy,
+};
+
+static int check_busy_provider(void)
+{
+	static const char * const types[] = { "publication-busy", NULL };
+	struct mtd_info *child, *grandchild;
+	int ret, cleanup;
+
+	ret = register_mtd_parser(&busy_parser);
+	if (ret)
+		return ret;
+	get_calls = 0;
+	get_error = -EBUSY;
+	ret = mtd_device_parse_register(&master, types, NULL, NULL, 0);
+	if (ret)
+		goto out;
+	/* A gluebi writer can block opens, but not metadata-only parsing. */
+	if (get_calls || busy_parser_calls != 2 || backing_refs) {
+		ret = -EINVAL;
+		goto out;
+	}
+	child = get_mtd_device_nm("publication-busy-child");
+	if (!IS_ERR(child)) {
+		put_mtd_device(child);
+		ret = -EINVAL;
+		goto out;
+	}
+	if (PTR_ERR(child) != -EBUSY || get_calls != 1 || backing_refs) {
+		ret = -EINVAL;
+		goto out;
+	}
+	get_error = 0;
+	child = get_mtd_device_nm("publication-busy-child");
+	if (IS_ERR(child)) {
+		ret = PTR_ERR(child);
+		goto out;
+	}
+	grandchild = get_mtd_device_nm("publication-busy-grandchild");
+	if (IS_ERR(grandchild))
+		ret = PTR_ERR(grandchild);
+	else
+		put_mtd_device(grandchild);
+	put_mtd_device(child);
+out:
+	get_error = 0;
+	cleanup = mtd_device_unregister(&master);
+	if (!ret)
+		ret = cleanup;
+	deregister_mtd_parser(&busy_parser);
+	if (backing_refs || master.dev)
+		ret = -EINVAL;
+	if (!ret)
+		pr_info("MTD-PARTITION-RACE: busy provider permits nested metadata registration PASS\n");
+	return ret;
+}
+
 static int __init test_init(void)
 {
 	struct task_struct *task;
@@ -186,6 +266,8 @@ static int __init test_init(void)
 		pr_info("MTD-PARTITION-RACE: siblings survive deletion; provider hooks receive master PASS\n");
 		ret = check_parse_failure();
 	}
+	if (!ret)
+		ret = check_busy_provider();
 out_parser:
 	deregister_mtd_parser(&parser);
 out_parent:

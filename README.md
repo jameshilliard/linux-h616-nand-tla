@@ -696,6 +696,15 @@ The v5 candidate passed all 22 MTD-suite markers with KASAN, lockdep and delayed
 kobject release enabled. These tests use synthetic providers and do not access
 physical NAND.
 
+The partition fixture also makes the provider's open hook return `-EBUSY`,
+as gluebi does when another writer already owns its UBI volume. A metadata-only
+parser creates both a partition and a subpartition without invoking that hook.
+An explicit open must still return `-EBUSY`; after the busy condition clears,
+both nodes must remain accessible and ordinary get/put accounting must balance.
+The sent v5 implementation fails this case by rolling back the partition and
+registering only the master. This is an actual-kernel test with a synthetic
+provider, not a test of a physical UBI volume.
+
 The provider-boundary runner accepts `--candidate-sun4i /path/to/sun4i-dma.c`
 and `--candidate-virt-dma /path/to/drivers/dma` to check the shared descriptor
 retirement helper. It exercises all five public descriptor lists, repeated
