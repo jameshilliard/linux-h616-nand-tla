@@ -1,5 +1,12 @@
 # sunxi NAND driver validation
 
+The [November 16 parser-reference update](docs/PARSER-REFERENCE-LIFETIME.md)
+distinguishes metadata retention from provider-open permission, reproduces the
+retained-handle v5 busy-provider regression and checks the local v6 correction.
+The [current-driver index](docs/CURRENT-DRIVER.md) identifies the posted
+prerequisite stack separately from the local v6 integration. Historical source
+snapshots and hardware measurements retain their original identities.
+
 Executable TLA+ models and source-extracted C checks for the Linux Allwinner
 NAND OOB series. The models concentrate on the interactions that are difficult
 to review locally: logical ECC steps versus controller slots, packed OOB
@@ -704,6 +711,11 @@ both nodes must remain accessible and ordinary get/put accounting must balance.
 The sent v5 implementation fails this case by rolling back the partition and
 registering only the master. This is an actual-kernel test with a synthetic
 provider, not a test of a physical UBI volume.
+
+The [parser-reference model](docs/PARSER-REFERENCE-LIFETIME.md) now checks the
+reference/API distinction explicitly. Its 22 cases supplement the 11 existing
+publication cases; optional kernel-source checks select the policy from the
+actual get/put pair. Both the sent v5 and local v6 bodies are pinned for CI.
 
 The provider-boundary runner accepts `--candidate-sun4i /path/to/sun4i-dma.c`
 and `--candidate-virt-dma /path/to/drivers/dma` to check the shared descriptor

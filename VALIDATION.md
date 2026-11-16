@@ -1,4 +1,32 @@
-# Current v11 format-policy cleanup
+# Current parser-reference validation (2026-11-16)
+
+The [parser-reference report](docs/PARSER-REFERENCE-LIFETIME.md) separates
+metadata retention from provider admission and pins the actual lifetime-v5
+and local lifetime-v6 `add_mtd_partitions()` implementations. The
+[current-driver index](docs/CURRENT-DRIVER.md) records the corresponding
+Sunxi v11 integrations; the Sunxi driver itself is unchanged by this update.
+
+All 33 publication/parser expectations match in `results/tlc-2g5dlsvt`:
+16 positive configurations, two historical busy-provider counterexamples
+and 15 deliberately incorrect mutations. A separate source-policy run
+against local v6 matches all 34 expectations in `results/tlc-jf9pf7uw`;
+the same source-policy case against sent v5 reproduces the named
+`RegistrationIndependent` failure in `results/tlc-y3ju9u3t`.
+
+The full retained-lifetime workflow passes locally: 108 expected TLC outcomes
+across ten runners, 14 Python unit tests, and both source-extracted C sanitizer
+checks. The historical retained-handle fixture covers 129 schedules and 242
+successful opens/closes; the data-only NAND storage fixture also passes.
+The pinned provider-boundary fixture passes separately, retaining its explicit
+historical failure witnesses. Expected counterexamples are successful tests
+of the checker, not claims that the corresponding implementation is safe.
+
+This update adds bounded protocol checks and source/API correspondence, not
+a complete C refinement proof. No physical-board test was rerun, and no
+hardware contract or previous measurement is strengthened. Historical records
+below retain their original source identities.
+
+# Earlier v11 format-policy cleanup
 
 The [policy report](docs/GENERATION-OOB-POLICY.md) records driver digest
 `1562e6617a6860753d5d836ccc9e9bfb19647f3aebbe92da01e35122002275cd`.

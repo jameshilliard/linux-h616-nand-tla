@@ -39,6 +39,11 @@ or runtime-created aliases to access reserved boot-format ranges.
 
 ## Reproduction
 
+The [current-driver index](CURRENT-DRIVER.md) records the November 16 prerequisite
+refresh and separate lifetime-v6 integration. The seven pinned Sunxi functions
+below remain unchanged. The earlier v4 dependency gate mentioned in historical
+records is superseded by the current v6 candidate/reference distinction.
+
 ```sh
 python3 run_boot_format_partitions.py
 python3 run_boot_format_partitions.py --kernel /path/to/linux
@@ -76,5 +81,6 @@ These are bounded source checks, not a new TLA+ proof or hardware test.
 The single-map handoff still needs an integration/board run with the boolean
 property. Earlier hardware records and the compatible-based prototype keep
 their original names and apply only to their recorded revisions. The
-unposted retained-lifetime v4 corrections remain a submission dependency
-gate; this validation does not imply readiness to send.
+unposted retained-lifetime v6 correction remains a submission dependency
+gate; the draft still references posted v5. This validation does not imply
+readiness to send.

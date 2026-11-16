@@ -1,5 +1,10 @@
 # Coverage of the submitted v9 series
 
+This is the historical v9 coverage map. See [CURRENT-DRIVER.md](CURRENT-DRIVER.md)
+for the current Sunxi draft and [PARSER-REFERENCE-LIFETIME.md](PARSER-REFERENCE-LIFETIME.md)
+for the retained-handle v5/v6 parser-reference checks. Their source identities
+and expected counterexamples are separate from this baseline.
+
 The exact driver is [reference/sunxi_nand.c](../reference/sunxi_nand.c).
 `run_c.py`, `run_lowlevel.py` and `run_lifecycle.py` list every extracted driver
 function; the summaries record their hashes. Broader core, provider and codec

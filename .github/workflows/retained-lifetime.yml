@@ -21,6 +21,7 @@ jobs:
       - name: Explore retained object and shared-controller lifetimes
         run: |
           python3 -m unittest discover -s tests -p test_tlc_result.py
+          python3 -m unittest discover -s tests -p test_parser_reference.py
           python3 run_retained_model.py --download
           python3 run_concat_lifetime.py --download
           python3 run_release_owner.py --download

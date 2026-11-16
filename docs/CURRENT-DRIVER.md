@@ -1,6 +1,32 @@
 # Current sunxi driver verification
 
-## Current submission draft: partition-local boot-format selector
+## Current submission and local lifetime-v6 integration (2026-11-16)
+
+The 30-patch Sunxi v11 submission draft is `fa01ab338914`, based on NAND-next
+`30daaf3e7897`, posted lifetime v5 and its posted prerequisite fixes, and posted
+mtdchar chunking v2. The local v6 integration is `fa7857c51553`; its only source
+difference is the metadata-only partition-parser reference correction. Lifetime
+v6 remains a local candidate, not a public prerequisite or a send-ready claim.
+
+Both trees have the same Sunxi driver SHA-256:
+`743467c6dab9d8fbbb850edb245bc11e89b46631d30fd72007e241ba9426c5ac`.
+The Sunxi driver is unchanged from the partition-local selector snapshot below;
+all 30 outgoing patch IDs and the historical sent changelogs were preserved.
+
+The recorded November 16 checks match all 98 recovery-refinement expectations
+for this driver. Source-extracted registration tests pass 226 cases and cleanup
+tests pass 48 schedules on both integrations. The combined-v6 QEMU kernel passes
+23 MTD markers with KASAN, lockdep and delayed kobject release; the mtdchar fixture
+passes 5,771 transfer cases and 1,375,584 chunk-arithmetic cases. These are prior
+recorded host/kernel checks, not a new board test or complete hardware proof.
+
+The [parser-reference model](PARSER-REFERENCE-LIFETIME.md) adds explicit
+metadata-pin versus provider-open semantics. It preserves the v5 failure as a
+negative control and ties the modeled policy to the pinned v5/v6 source bodies.
+The NAND storage source pin still exactly matches both lifetime revisions;
+historical ownership models are not silently retargeted to the new design.
+
+## Earlier submission draft: partition-local boot-format selector
 
 The 30-patch v11 draft ends at `3ae44d13a5ec`. Its driver SHA-256 is
 `743467c6dab9d8fbbb850edb245bc11e89b46631d30fd72007e241ba9426c5ac`.
