@@ -379,6 +379,44 @@ static void ecc_results(void)
     printf("generic ECC pattern/error/batch matrix: %u\n", checked);
 }
 
+/* Synthetic DMA bytes deliberately differ from the separately injected
+ * pattern bits, so an unnecessary memset() is observable. */
+static void dma_pattern_ownership(void)
+{
+    for (unsigned variable = 0; variable < 2; variable++)
+    for (unsigned random = 0; random < 2; random++) {
+        struct caps c = caps(variable);
+        struct nand_chip nand = chip(2, 56, 256);
+        struct sunxi_nfc_ecc_snapshot snapshot;
+        struct sunxi_nfc_ecc_read read = {
+            .buf = main_data, .page = 17, .dma = true, .oob_required = true,
+        };
+        struct sunxi_nfc_oob_ops ops = {
+            TEST_RANDOMIZED_FIELD(random)
+            .TEST_BBM_CALLBACK = NULL,
+        };
+        u8 lengths[] = {32, 4}, kinds[] = {1, 2};
+        controller.caps = &c;
+        nand.user_data_bytes = variable ? lengths : NULL;
+        nand.options = random ? NAND_NEED_SCRAMBLING : 0;
+        nand.oob_ops = &ops;
+        for (unsigned i = 0; i < 2; i++)
+            memset(main_data + i * 1024, 0x5a + i, 1024);
+        memset(oob_data, 0x76, sizeof(oob_data));
+        load_status(0, 2, kinds, variable);
+        sunxi_nfc_hw_ecc_read_status(&nand, &snapshot);
+        assert(!sunxi_nfc_oob_read_batch(&nand, &read, &snapshot, 0, 2));
+        for (unsigned i = 0; i < 2; i++) {
+            unsigned pattern = i ? 255 : 0;
+            unsigned off = sunxi_get_oob_offset(&nand, &nand.ecc, i);
+            unsigned size = nand.ecc.bytes + sunxi_nfc_user_data_sz(&nand, i);
+            assert(!memchr_inv(main_data + i * 1024, random ? pattern : 0x5a + i, 1024));
+            assert(!memchr_inv(oob_data + off, pattern, size));
+        }
+    }
+    puts("DMA pattern ownership: plain main buffer preserved; scrambled main and requested OOB filled");
+}
+
 static void columns_and_faults(void)
 {
     struct caps c = caps(true);
@@ -575,6 +613,7 @@ int main(void)
     randomizer();
     predicates();
     ecc_results();
+    dma_pattern_ownership();
     vendor_results();
     unprotected_oob();
     columns_and_faults();

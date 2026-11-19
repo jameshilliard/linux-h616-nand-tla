@@ -5,6 +5,9 @@ for the current Sunxi draft and [PARSER-REFERENCE-LIFETIME.md](PARSER-REFERENCE-
 for the retained-handle v5/v6 parser-reference checks. Their source identities
 and expected counterexamples are separate from this baseline.
 
+The [ECC read policy checks](ECC-READ-POLICY.md) separately cover the
+ordinary per-step and firmware whole-page decisions in the split driver.
+
 The exact driver is [reference/sunxi_nand.c](../reference/sunxi_nand.c).
 `run_c.py`, `run_lowlevel.py` and `run_lifecycle.py` list every extracted driver
 function; the summaries record their hashes. Broader core, provider and codec

@@ -28,8 +28,10 @@ MODULES = {
                     "Fallback", "Error", "Confirm"],
     },
     "NandEcc": {
-        "invariants": ["CaptureBeforeRaw", "ResultCorrect", "StatsCorrect"],
-        "actions": ["BeginBatch", "Good", "StartRaw", "Raw", "Advance", "Finish"],
+        "invariants": ["CaptureBeforeRaw", "PendingErrors", "VendorEvidence",
+                       "TransportCorrect", "TailCorrect", "ResultCorrect", "StatsCorrect"],
+        "actions": ["BeginBatch", "OrdinarySlot", "VendorSlot", "StartRaw", "Raw",
+                    "Advance", "Finish"],
     },
 }
 
@@ -114,21 +116,30 @@ for vendor in (False, True):
         for oob in (False, True):
             for result in ("bad", "erased", "io") if not vendor else ("bad", "erased"):
                 c = dict(N=3, Batch=batch, Vendor=vendor, OobRequired=oob,
-                         RawResult=result, SpareErased=result == "erased", Kinds=kinds)
+                         RawResult=result, SpareErased=result == "erased", Kinds=kinds,
+                         Scrambling=vendor, Dma=batch > 1)
                 add("NandEcc",
                     f"ecc-{'vendor' if vendor else 'generic'}-batch{batch}-oob{int(oob)}-{result}", c)
                 if not vendor and batch == 3 and oob and result == "bad":
                     mutation("NandEcc", c, "whole-pattern-word", "ResultCorrect")
                     mutation("NandEcc", c, "overwrite-pattern", "ResultCorrect")
+                    mutation("NandEcc", c, "pattern-before-error", "PendingErrors")
+                    mutation("NandEcc", c, "force-dma-pattern-fill", "ResultCorrect")
+                    add("NandEcc", "ecc-ordinary-scrambled-plain-marker", dict(c, Scrambling=True))
+                    mutation("NandEcc", c, "dispatch-on-scrambling", "ResultCorrect", Scrambling=True)
                 if vendor and batch == 1 and oob and result == "erased":
                     mutation("NandEcc", c, "spare-before-zero", "ResultCorrect")
+                    mutation("NandEcc", c, "lose-zero-on-error", "ResultCorrect")
+                    mutation("NandEcc", c, "ordinary-batch-for-vendor", "VendorEvidence")
+                    mutation("NandEcc", c, "ordinary-finish-for-vendor", "ResultCorrect")
 counts = dict(N=6, Batch=5, Vendor=False, OobRequired=True,
-              RawResult="bad", SpareErased=False, Kinds={"normal"})
+              RawResult="bad", SpareErased=False, Kinds={"normal"}, Scrambling=False, Dma=True)
 add("NandEcc", "ecc-counter-word-boundary", counts)
+mutation("NandEcc", counts, "reuse-wrong-count-word", "StatsCorrect")
 mutation("NandEcc", dict(counts, Batch=1), "stale-count-cache", "StatsCorrect")
 add("NandEcc", "ecc-mixed-raw-errors", dict(
     N=3, Batch=3, Vendor=False, OobRequired=True,
-    RawResult="mixed", SpareErased=False, Kinds=kinds))
+    RawResult="mixed", SpareErased=False, Kinds=kinds, Scrambling=False, Dma=True))
 
 from extended_cases import extend
 extend(MODULES, add, mutation)
