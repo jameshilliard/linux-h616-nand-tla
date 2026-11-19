@@ -119,6 +119,8 @@ struct caps {
     bool (*spare_is_erased)(struct nand_chip *, const u8 *, int);
     const struct sunxi_nfc_oob_ops *allwinner_oob_ops;
     const struct sunxi_nfc_oob_ops *plain_oob_ops, *scrambled_oob_ops;
+    const struct sunxi_nfc_user_data_layout *layout;
+    unsigned max_user_data_len;
 };
 struct sunxi_nfc {
     void *mdma_buf;
@@ -144,6 +146,8 @@ struct nand_chip {
     unsigned cur_cs;
     unsigned buf_align;
     const struct sunxi_nfc_oob_ops *oob_ops;
+    unsigned badblockpos, user_data_step, user_data_total;
+    bool allwinner_oob;
 };
 struct mtd_oob_region { unsigned offset, length; };
 struct device_node { int unused; };

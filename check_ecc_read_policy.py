@@ -3,6 +3,7 @@
 """Check the ECC policy proof's structural boundaries against supplied sunxi_nand.c files."""
 import argparse
 import hashlib
+import re
 from pathlib import Path
 
 from run_c import extract_function
@@ -117,12 +118,15 @@ def compare(plain, firmware, reference):
         ordered(after, dispatch, first)
         if after.count(dispatch) != 1 or after.replace("\t" + dispatch + "\n\n", "") != before:
             raise ValueError(f"{name}: firmware extension changed the ordinary body")
-    # All three firmware decision bodies predate this split. Their exact
-    # bytes are exercised by the published reference C fixture; the removed
-    # unused finish parameter isn't part of its body.
+    # Compare the bodies exercised by the reference C fixture. Standalone
+    # comments may be reworded, but retain all executable lines verbatim.
+    def implementation(source, name):
+        return re.sub(r"(?m)^[ \t]*/\*(?:[^*]|\*(?!/))*\*/[ \t]*\n", "",
+                      body(source, name))
+
     for suffix in ("record_status", "read_batch", "finish_read"):
         name = VENDOR + suffix
-        if body(firmware, name) != body(reference, name):
+        if implementation(firmware, name) != implementation(reference, name):
             raise ValueError(f"{name}: no longer identical to the tested reference body")
 
 

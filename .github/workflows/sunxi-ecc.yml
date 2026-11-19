@@ -6,6 +6,7 @@ on:
       - '.github/workflows/sunxi-ecc.yml'
       - 'models/NandEcc.tla'
       - 'models/NandSubpage.tla'
+      - 'models/NandMarkerAdmission.tla'
       - 'cases.py'
       - 'run.py'
       - 'run_ecc_read_policy.py'

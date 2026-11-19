@@ -38,6 +38,10 @@ MODULES = {
         "invariants": ["StepScope", "Complete", "Stats", "Result"],
         "actions": ["BeginBatch", "Corrected", "StartRaw", "Reread", "Advance", "Finish"],
     },
+    "NandMarkerAdmission": {
+        "invariants": ["MarkerRoundTrips", "OrdinaryUnchanged", "GeometryPreserved"],
+        "actions": ["Attach"],
+    },
 }
 
 
@@ -53,6 +57,11 @@ def mutation(module, base, mutation_name, invariant, **changes):
     add(module, f"{module}-{mutation_name}", constants,
         expected=invariant, kind="mutation")
 
+
+add("NandMarkerAdmission", "firmware-marker-admission", {})
+for variant in ("no-guard", "within-field", "relocate"):
+    mutation("NandMarkerAdmission", {}, variant, "MarkerRoundTrips")
+mutation("NandMarkerAdmission", {}, "ordinary-too", "OrdinaryUnchanged")
 
 geometries = {
     "legacy-16": (4,) * 16,

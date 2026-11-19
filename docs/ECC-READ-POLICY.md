@@ -11,7 +11,7 @@ ordinary format.
 | ECC error, with or without a pattern | Preserve the slot for a raw erased-step check after consuming the batch. Propagate raw-read transport failures. | Preserve decoded main and protected OOB, including on data-only reads. Record the exception and independently record any zero pattern. No ordinary raw reread. |
 | Pattern without an ECC error | Fill main data on PIO or scrambled DMA; plain DMA preserves its delivered main bytes. Fill requested OOB with the slot's pattern. An all-ones step marks the page as having an erased chunk. | Record the pattern as an exception even if hardware suppressed the ECC error. |
 | Neither flag | Use the corrected bytes and correction count. | Collect the count for a possible ordinary decoded-page result. |
-| End of read | Only read the tail when OOB is requested; use the raw tail if any step was erased. | All-zero physical steps take priority, even with matching erased spare: zero-fill and count one failed step per step. Otherwise an exception plus erased spare yields an erased page. Other pages keep the decoded data and only read unprotected OOB on request. |
+| End of read | Only read the tail when OOB is requested; use the raw tail if any step was erased. | A zero pattern reported for every ECC step takes priority without inspecting the unprotected tail: zero-fill and count one failed step per step. Otherwise an exception plus erased spare yields an erased page. Other pages keep the decoded data and only read unprotected OOB on request. |
 
 `NandEcc` dispatches before both batch consumption and page finish. Its
 independent oracle uses the original logical inputs, not the decision
@@ -91,6 +91,36 @@ ordinary batch and finish bodies and compares the three firmware decision
 bodies to the reference used by the C harness. It intentionally fails closed
 on source drift. It does not execute the candidate or certify a new
 implementation of a helper.
+
+### Firmware marker admission
+
+The firmware spare check examines byte zero. On x8 NAND with a 512-byte
+page the raw NAND core uses byte five for its bad-block marker. A10/A23
+can fit a BCH16 step in 32 spare bytes, but the first four bytes are user
+data and byte five is generated parity. A successful controller attach
+alone therefore does not imply that a later mark-bad write can set the
+marker the core will read.
+
+`NandMarkerAdmission` checks the opt-in gate independently of page-read
+status. The normal format keeps its existing admission rules, the marker
+is not relocated, and otherwise valid byte-zero layouts remain usable.
+The four negative controls drop the gate, accept any protected byte,
+relocate the marker, or apply the restriction to ordinary NAND. This model
+takes geometry validity as an input; it does not simulate BCH.
+
+To check the actual geometry calculation, run the source-extracted attach
+test against the deferred driver and the NAND core from the matching tree:
+
+```sh
+python3 run_marker_admission.py linux/drivers/mtd/nand/raw/sunxi_nand.c \
+    --core linux/drivers/mtd/nand/raw/nand_base.c --header linux/include/linux/mtd/rawnand.h
+```
+
+The test covers A10, A23 and H616 capability fields, hardware and software
+ECC, both format selections, three page sizes and five spare sizes. The
+pre-guard driver (`--expect-unguarded`) accepted eight cases in which the
+marker fell in parity; the guarded driver accepted none. Register setup
+and page program operations are not executed.
 
 The range and pattern-read checks passed on the fix-only driver with SHA-256
 `a2ad1b837a00df0a89aeefe550f6817193a50e542091731bf71d55086efd944a`
