@@ -22,7 +22,7 @@ Init ==
     \E delivered \in [Steps -> IF Dma THEN {"dma-a", "dma-b"} ELSE {"old"}] :
       s = [input |-> input, delivered |-> delivered, pc |-> "batch", first |-> 0, count |-> 0, slot |-> 0,
            rawInput |-> raw,
-           pid |-> {}, cacheKey |-> -1, cache |-> [j \in Lanes |-> 0],
+           pid |-> {}, pidReads |-> 0, cacheKey |-> -1, cache |-> [j \in Lanes |-> 0],
            data |-> delivered, oob |-> [j \in Steps |-> "old"],
            consumed |-> {}, errors |-> {}, zeros |-> {}, pendingRaw |-> {},
            corrected |-> 0, failed |-> 0, maxflips |-> 0, erased |-> FALSE,
@@ -34,11 +34,21 @@ FinishUsesVendor == Vendor /\ Mutation # "ordinary-finish-for-vendor"
 BeginBatch ==
     /\ s.pc = "batch" /\ s.first < N
     /\ LET count == Min(Batch, N - s.first)
+           slots == 0..(count - 1)
+           found == {j \in slots : IsPattern(s.input[s.first + j])}
+           errs == {j \in slots : IsError(s.input[s.first + j])}
+           bits == {j \in slots : IsOnes(s.input[s.first + j])}
+           need == IF BatchUsesVendor /\ Mutation # "skip-error-only-patterns"
+                   THEN found # {} ELSE found \ errs # {}
+           reads == IF Mutation = "always-read-pattern-id" THEN 1
+                    ELSE IF ~need THEN 0
+                    ELSE IF Mutation = "read-zero-twice" /\ bits = {} THEN 2
+                    ELSE 1
        IN s' = [s EXCEPT !.count = count, !.slot = 0,
                 !.pc = IF BatchUsesVendor THEN "vendor" ELSE "ordinary",
                 !.captured = {}, !.clobbered = FALSE, !.pendingRaw = {},
                 !.cacheKey = IF Mutation = "stale-count-cache" THEN @ ELSE -1,
-                !.pid = {j \in 0..(count - 1) : IsOnes(s.input[s.first + j])}]
+                !.pidReads = reads, !.pid = IF reads = 0 THEN {} ELSE bits]
 LogicalStep == s.first + s.slot
 Kind == s.input[LogicalStep]
 CountWord == s.slot \div 4
@@ -83,7 +93,7 @@ VendorSlot ==
     /\ s.pc = "vendor" /\ s.slot < s.count
     /\ LET i == LogicalStep
            exception == IsError(Kind) \/ IsPattern(Kind)
-           zero == IsZero(Kind) /\
+           zero == IsPattern(Kind) /\ s.slot \notin s.pid /\
                    ~(Mutation = "lose-zero-on-error" /\ IsError(Kind))
        IN s' = [s EXCEPT
            !.data[i] = IF Dma THEN @ ELSE "decoded", !.oob[i] = "decoded",
@@ -174,6 +184,11 @@ ExpectedFailures ==
                    ELSE Cardinality({i \in Steps : IsError(s.input[i]) \/ IsPattern(s.input[i])})
     ELSE Cardinality({i \in Steps : IsError(s.input[i]) /\ s.rawInput[i] = "bad"})
 CaptureBeforeRaw == s.clobbered => s.captured = s.first..(s.first + s.count - 1)
+\* Count register accesses, not whether the returned bitmap was nonzero.
+PatternReadCount == s.pc \in {"ordinary", "vendor", "raw"} =>
+    s.pidReads = IF \E i \in s.first..(s.first + s.count - 1) :
+                         IsPattern(s.input[i]) /\ (Vendor \/ ~IsError(s.input[i]))
+                 THEN 1 ELSE 0
 \* Check the boundary before a later recovery or page fill can hide a
 \* misclassified slot. Hardware facts here come directly from the input.
 PendingErrors == s.pc = "raw" =>

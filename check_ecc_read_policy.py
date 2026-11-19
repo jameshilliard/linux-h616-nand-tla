@@ -30,17 +30,18 @@ def ordered(code, *fragments):
         position = index + len(fragment)
 
 
-def ordinary(source, snapshot):
+def ordinary(source, snapshot, window=False):
     # The first refactor reads the pattern ID directly. Later patches
     # cache the same register bits and propagate transport errors.
     field = "snapshot->" if snapshot else ""
     batch = body(source, PREFIX + "oob_read_batch")
+    raw_guard = "step < read->first_req_step || " if window else ""
     ordered(batch, f"if ({field}status & NFC_ECC_ERR(slot))", "continue;",
             f"if ({field}pattern_found & BIT(slot))", "pattern_id & BIT(slot) ? 0xff : 0",
             "if (!read->dma || randomized)\n\t\t\t\tmemset(data, pattern, ecc->size);",
             "if (pattern == 0xff)", "read->has_erased_chunk = true;", "continue;",
             "bitflips = sunxi_nfc_hw_ecc_read_count(", "sunxi_nfc_hw_ecc_update_stats(",
-            f"if (!({field}status & NFC_ECC_ERR(slot)))", "sunxi_nfc_hw_ecc_read_error(",
+            f"if ({raw_guard}!({field}status & NFC_ECC_ERR(slot)))", "sunxi_nfc_hw_ecc_read_error(",
             "read->has_erased_chunk = true;")
     finish = body(source, PREFIX + "oob_finish_read")
     ordered(finish, "if (read->oob_required)", "sunxi_nfc_hw_ecc_read_extra_oob(",
@@ -48,10 +49,57 @@ def ordinary(source, snapshot):
     ordered(source, "#define NFC_REG_ECC_ERR_CNT(nfc, x)\t((nfc->caps->reg_ecc_err_cnt + (x)) & ~0x3)",
             "#define NFC_ECC_ERR_CNT(b, x)\t(((x) >> (((b) % 4) * 8)) & 0xff)")
     if snapshot:
-        ordered(body(source, PREFIX + "hw_ecc_read_status"), "snapshot->count_reg = ~0U;")
+        status = body(source, PREFIX + "hw_ecc_read_status")
+        ordered(status, "snapshot->count_reg = ~0U;")
+        if window:
+            helper = PREFIX + "hw_ecc_read_pattern_id"
+            if "pattern_id_valid" in source or helper in status:
+                raise ValueError("expected the caller to select the pattern register read")
+            ordered(batch, "if (snapshot->pattern_found & ~snapshot->status)",
+                    helper + "(nand, snapshot);", "for (slot")
+            if batch.count(helper) != 1 or body(source, helper).count("readl(") != 1:
+                raise ValueError("expected a single pattern ID access at the selected site")
         ordered(body(source, PREFIX + "hw_ecc_read_count"), "reg = NFC_REG_ECC_ERR_CNT(nfc, slot);",
                 "if (snapshot->count_reg != reg)", "snapshot->count = readl(nfc->regs + reg);",
                 "snapshot->count_reg = reg;", "return NFC_ECC_ERR_CNT(slot, snapshot->count);")
+
+
+def subpage_range(source, fixed):
+    """Check both ordinary passes and their actual DMA/PIO callers."""
+    def code(name):
+        return " ".join(body(source, PREFIX + name).split())
+
+    chunks = code("hw_ecc_read_chunks_dma")
+    sub = code("hw_ecc_read_subpage_dma")
+    batch = code("oob_read_batch")
+    if fixed:
+        ordered(sub, "first_step = data_offs / nand->ecc.size;",
+                "end_step = DIV_ROUND_UP(data_offs + readlen, nand->ecc.size);",
+                "sunxi_nfc_hw_ecc_read_chunks_dma(nand, buf, false, page, first_step, end_step)")
+        ordered(chunks, ".first_req_step = first_req_step,",
+                "for (first_step = 0; first_step < end_step; first_step += batch_steps)",
+                "sunxi_nfc_dma_batch_steps(nand, first_step, end_step);",
+                "sunxi_nfc_hw_ecc_read_batch_dma(nand, &read, first_step, batch_steps)")
+        ordered(code("hw_ecc_read_page_dma"),
+                "sunxi_nfc_hw_ecc_read_chunks_dma(nand, buf, oob_required, page, 0, nand->ecc.steps)")
+        ordered(batch, "slot++, reg_index += user_data_sz / 4)",
+                "int step = first_step + slot;",
+                "user_data_sz = sunxi_nfc_user_data_sz(sunxi_nand, step);",
+                "if (step < read->first_req_step) continue;",
+                "if (snapshot->status & NFC_ECC_ERR(slot))",
+                "sunxi_nfc_hw_ecc_read_count(nand, snapshot, slot)",
+                "int step = first_step + slot;",
+                "if (step < read->first_req_step || !(snapshot->status & NFC_ECC_ERR(slot))) continue;",
+                "data_off = step * ecc->size;", "sunxi_nfc_hw_ecc_read_error(")
+    else:
+        if "first_req_step" in chunks or "first_req_step" in batch:
+            raise ValueError("expected the pre-fix prefix-accounting code")
+        ordered(sub, "nchunks = DIV_ROUND_UP(data_offs + readlen, nand->ecc.size)",
+                "sunxi_nfc_hw_ecc_read_chunks_dma(nand, buf, false, page, nchunks)")
+        ordered(chunks, "for (first_step = 0; first_step < nchunks; first_step += batch_steps)")
+    ordered(code("hw_ecc_read_subpage"), "for (i = data_offs / ecc->size;",
+            "i < DIV_ROUND_UP(data_offs + readlen, ecc->size); i++)",
+            "sunxi_nfc_hw_ecc_read_chunk(nand, &read, i, &cur_off)")
 
 
 def compare(plain, firmware, reference):
@@ -83,19 +131,29 @@ def main():
     p.add_argument("ordinary", type=Path, help="bug-fix series tip, after snapshot caching")
     p.add_argument("firmware", type=Path, help="same candidate plus the proposed format")
     p.add_argument("--first-refactor", type=Path, help="ordinary policy before snapshot caching")
+    p.add_argument("--expect-prefix-bug", action="store_true",
+                   help="compare the known pre-fix tips instead of requiring request-range guards")
     args = p.parse_args()
     plain = args.ordinary.read_text()
     firmware = args.firmware.read_text()
     reference = (HERE / "reference/sunxi_nand.c").read_text()
-    ordinary(plain, snapshot=True)
-    ordinary(firmware, snapshot=True)
+    for src in (plain, firmware):
+        ordinary(src, snapshot=True, window=not args.expect_prefix_bug)
+        subpage_range(src, fixed=not args.expect_prefix_bug)
+    ordered(firmware, "nand->ecc.read_subpage = sunxi_nfc_allwinner_oob_read_subpage;")
+    if not args.expect_prefix_bug:
+        ordered(body(firmware, PREFIX + "oob_read_batch"), "if (sunxi_nand->allwinner_oob)",
+                "return sunxi_nfc_allwinner_oob_read_batch(", "if (snapshot->pattern_found & ~snapshot->status)")
+    if body(firmware, VENDOR + "read_subpage") != body(reference, VENDOR + "read_subpage"):
+        raise ValueError("firmware subpage no longer uses the full-page read")
     compare(plain, firmware, reference)
     if args.first_refactor:
         ordinary(args.first_refactor.read_text(), snapshot=False)
     for label, path in vars(args).items():
-        if path is not None:
+        if isinstance(path, Path):
             print(f"{label}: {hashlib.sha256(path.read_bytes()).hexdigest()}")
-    print("PASS: ordinary control order, two early dispatches, and three firmware bodies")
+    scope = "pre-fix prefix" if args.expect_prefix_bug else "requested steps"
+    print(f"PASS: ordinary control order ({scope}), two early dispatches, and full-page firmware")
 
 
 if __name__ == "__main__":

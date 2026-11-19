@@ -29,9 +29,14 @@ MODULES = {
     },
     "NandEcc": {
         "invariants": ["CaptureBeforeRaw", "PendingErrors", "VendorEvidence",
-                       "TransportCorrect", "TailCorrect", "ResultCorrect", "StatsCorrect"],
+                       "TransportCorrect", "TailCorrect", "ResultCorrect", "StatsCorrect",
+                       "PatternReadCount"],
         "actions": ["BeginBatch", "OrdinarySlot", "VendorSlot", "StartRaw", "Raw",
                     "Advance", "Finish"],
+    },
+    "NandSubpage": {
+        "invariants": ["StepScope", "Complete", "Stats", "Result"],
+        "actions": ["BeginBatch", "Corrected", "StartRaw", "Reread", "Advance", "Finish"],
     },
 }
 
@@ -132,6 +137,9 @@ for vendor in (False, True):
                     mutation("NandEcc", c, "lose-zero-on-error", "ResultCorrect")
                     mutation("NandEcc", c, "ordinary-batch-for-vendor", "VendorEvidence")
                     mutation("NandEcc", c, "ordinary-finish-for-vendor", "ResultCorrect")
+                    mutation("NandEcc", c, "skip-error-only-patterns", "PatternReadCount")
+                    mutation("NandEcc", c, "read-zero-twice", "PatternReadCount")
+                    mutation("NandEcc", c, "always-read-pattern-id", "PatternReadCount")
 counts = dict(N=6, Batch=5, Vendor=False, OobRequired=True,
               RawResult="bad", SpareErased=False, Kinds={"normal"}, Scrambling=False, Dma=True)
 add("NandEcc", "ecc-counter-word-boundary", counts)
@@ -140,6 +148,30 @@ mutation("NandEcc", dict(counts, Batch=1), "stale-count-cache", "StatsCorrect")
 add("NandEcc", "ecc-mixed-raw-errors", dict(
     N=3, Batch=3, Vendor=False, OobRequired=True,
     RawResult="mixed", SpareErased=False, Kinds=kinds, Scrambling=False, Dma=True))
+
+# Every nonempty byte range of each page is chosen by TLC, not by a fixture.
+# StepBytes = 3 leaves a middle byte as well as both step boundaries.
+sub = dict(Status=(-1, 2, 7, 0, -3, 4), StepBytes=3, FirstBatch=5,
+           Transport="dma", Firmware=False)
+for transport, batch, name in (("dma", 5, "bank-split"), ("dma", 6, "one-bank"),
+                               ("pio", 1, "pio")):
+    c = dict(sub, Transport=transport, FirstBatch=batch)
+    add("NandSubpage", "subpage-" + name, c)
+    add("NandSubpage", "subpage-" + name + "-raw-io", dict(c, Status=(0, -2, 3, -1, -3, 4)))
+    add("NandSubpage", "subpage-" + name + "-firmware", dict(c, Firmware=True))
+
+# Set the witness status explicitly so the pre-fix failures cannot amount
+# merely to extra internal work yielding the same public result.
+for status, name in ((-1, "badmsg"), (-2, "raw-io"), (8, "max-bitflips")):
+    add("NandSubpage", "subpage-old-prefix-" + name,
+        dict(sub, Status=(status, 0, 0), FirstBatch=3, Mutation="account-prefix"),
+        expected="Result", kind="mutation")
+for bug, invariant in (("skip-first-pass-only", "StepScope"),
+                       ("renumber-slots", "Stats"), ("round-end-down", "Complete"),
+                       ("firmware-request-only", "Complete")):
+    add("NandSubpage", "subpage-" + bug,
+        dict(sub, Firmware=bug == "firmware-request-only", Mutation=bug),
+        expected=invariant, kind="mutation")
 
 from extended_cases import extend
 extend(MODULES, add, mutation)
