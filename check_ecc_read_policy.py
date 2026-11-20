@@ -73,6 +73,7 @@ def subpage_range(source, fixed):
     chunks = code("hw_ecc_read_chunks_dma")
     sub = code("hw_ecc_read_subpage_dma")
     batch = code("oob_read_batch")
+    shared_pio = PREFIX + "hw_ecc_read_chunks_pio(" in source
     if fixed:
         ordered(sub, "first_step = data_offs / nand->ecc.size;",
                 "end_step = DIV_ROUND_UP(data_offs + readlen, nand->ecc.size);",
@@ -83,6 +84,8 @@ def subpage_range(source, fixed):
                 "sunxi_nfc_hw_ecc_read_batch_dma(nand, &read, first_step, batch_steps)")
         ordered(code("hw_ecc_read_page_dma"),
                 "sunxi_nfc_hw_ecc_read_chunks_dma(nand, buf, oob_required, page, 0, nand->ecc.steps)")
+        raw_check = ("sunxi_nfc_hw_ecc_read_error(nand, read, step);",) if shared_pio else (
+            "data_off = step * ecc->size;", "sunxi_nfc_hw_ecc_read_error(")
         ordered(batch, "slot++, reg_index += user_data_sz / 4)",
                 "int step = first_step + slot;",
                 "user_data_sz = sunxi_nfc_user_data_sz(sunxi_nand, step);",
@@ -91,16 +94,25 @@ def subpage_range(source, fixed):
                 "sunxi_nfc_hw_ecc_read_count(nand, snapshot, slot)",
                 "int step = first_step + slot;",
                 "if (step < read->first_req_step || !(snapshot->status & NFC_ECC_ERR(slot))) continue;",
-                "data_off = step * ecc->size;", "sunxi_nfc_hw_ecc_read_error(")
+                *raw_check)
     else:
         if "first_req_step" in chunks or "first_req_step" in batch:
             raise ValueError("expected the pre-fix prefix-accounting code")
         ordered(sub, "nchunks = DIV_ROUND_UP(data_offs + readlen, nand->ecc.size)",
                 "sunxi_nfc_hw_ecc_read_chunks_dma(nand, buf, false, page, nchunks)")
         ordered(chunks, "for (first_step = 0; first_step < nchunks; first_step += batch_steps)")
-    ordered(code("hw_ecc_read_subpage"), "for (i = data_offs / ecc->size;",
-            "i < DIV_ROUND_UP(data_offs + readlen, ecc->size); i++)",
-            "sunxi_nfc_hw_ecc_read_chunk(nand, &read, i, &cur_off)")
+    if shared_pio:
+        ordered(code("hw_ecc_read_page"),
+                "sunxi_nfc_hw_ecc_read_chunks_pio(nand, buf, oob_required, page, 0, nand->ecc.steps)")
+        ordered(code("hw_ecc_read_subpage"), "first_step = data_offs / nand->ecc.size;",
+                "end_step = DIV_ROUND_UP(data_offs + readlen, nand->ecc.size);",
+                "sunxi_nfc_hw_ecc_read_chunks_pio(nand, buf, false, page, first_step, end_step)")
+        ordered(code("hw_ecc_read_chunks_pio"), "for (step = first_step; step < end_step; step++)",
+                "sunxi_nfc_hw_ecc_read_chunk(nand, &read, step, &cur_off)")
+    else:
+        ordered(code("hw_ecc_read_subpage"), "for (i = data_offs / ecc->size;",
+                "i < DIV_ROUND_UP(data_offs + readlen, ecc->size); i++)",
+                "sunxi_nfc_hw_ecc_read_chunk(nand, &read, i, &cur_off)")
 
 
 def compare(plain, firmware, reference):

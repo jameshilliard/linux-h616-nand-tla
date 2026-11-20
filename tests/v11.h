@@ -11,9 +11,8 @@
 #define BITS_PER_LONG (8 * sizeof(long))
 #define IS_ALIGNED(v,a) (((v) & ((a) - 1)) == 0)
 
-/* Only for the public page/DMA wrappers: the transport result and recovery
- * latch are inputs. run_lowlevel.py executes the reset and DMA helpers. */
-static unsigned dma_calls, pio_calls, dma_first, dma_end;
+/* The DMA result and recovery latch are inputs. PIO retry runs the driver. */
+static unsigned dma_calls, dma_first, dma_end;
 static int dma_result;
 static int sunxi_nfc_hw_ecc_read_chunks_dma(struct nand_chip *n, u8 *buf, bool oob,
                                            int page, int first, int end)
@@ -21,7 +20,3 @@ static int sunxi_nfc_hw_ecc_read_chunks_dma(struct nand_chip *n, u8 *buf, bool o
     dma_calls++; dma_first = first; dma_end = end;
     return dma_result;
 }
-static int sunxi_nfc_hw_ecc_read_page(struct nand_chip *n, u8 *buf, int oob, int page)
-{ pio_calls++; return 7; }
-static int sunxi_nfc_hw_ecc_read_subpage(struct nand_chip *n, u32 start, u32 len, u8 *buf, int page)
-{ pio_calls++; return 8; }

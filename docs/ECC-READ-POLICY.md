@@ -134,10 +134,20 @@ The [reference pair](../reference/sunxi-v11/README.md) fixes the exact
 sources for CI. Each tip executes 1,920 ordinary status/marker cases with
 the real erased-chunk helper and the core's bad-block decision. The
 deferred tip also exercises its distinct page classification under PIO
-and DMA. Additional cases inject column errors, check that later steps
-do not own the BBM, preserve the reset errno in both DMA read wrappers,
-and check all four packed length registers after switching modes.
-Seven intentional C changes must fail their named assertions; compiler
+and DMA. Both PIO entry points execute the driver's page/step loop,
+batch interpretation and finalization. Across four-step pages with 512-
+and 1024-byte steps, 566 trials check aligned and unaligned ranges,
+unchanged bytes outside the request, OOB tail delivery and an injected
+failure at every modeled transport event. A further 48 trials check the
+raw data and OOB columns for each failing logical step in fixed and
+variable layouts, including a step with no protected user bytes.
+The deferred subpage entry point must still read and classify a full page.
+The DMA fallback tests exercise the real PIO retry; DMA results, SRAM,
+register status and the transport failures are fixture inputs.
+
+Additional cases preserve the reset errno in both DMA read wrappers and
+check all four packed length registers after switching modes.
+Ten intentional C changes must fail their named assertions; compiler
 failures or unrelated crashes do not count as successful controls.
 
 The two branches also share the H616 DMA read-recovery policy:

@@ -5,8 +5,8 @@ The series tips below identify drafts, not released kernel versions.
 
 | Driver | Kernel commit | SHA-256 of `drivers/mtd/nand/raw/sunxi_nand.c` |
 | --- | --- | --- |
-| Fix-only v11 | `fb993dda619f70997958289c6ba9dc8fd8abef99` | `e3caa05c9adf2623da8008f1fb9b03fc9c03b2b35e22dd6c81c18a17476f23ee` |
-| v11 plus the deferred format | `fec5f732b011ccb7320b2216f81922f46fd34df6` | `56b605bc07fd5e427f092c8c54105aac8a40fb7f2bf39df09079389cb8fb0962` |
+| Fix-only v11 | `84db8061e076345b5469160da2a10900d7d08e9e` | `1098df8c3c7eaca65fc893ee0b4109cba886d9131eb565fa5f77cd7ccbeb39db` |
+| v11 plus the deferred format | `287a1a96d4255ff85376c46bb6088b9808fb6a16` | `37871b284a23cde56dfc669848ce49a7093383f85c634fc4768e71872c5f15f7` |
 
 `sunxi_nand.c` is the fix-only driver. Applying `firmware.patch` to it
 reconstructs the complete deferred driver, without carrying a second

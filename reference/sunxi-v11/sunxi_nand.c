@@ -1173,45 +1173,6 @@ static int sunxi_nfc_read_column(struct nand_chip *nand, int page,
 	return nand_change_read_column_op(nand, column, buf, len, false);
 }
 
-/*
- * Return 1 for an erased chunk or 0 for an uncorrectable chunk, with ECC
- * statistics updated in either case. Negative values report transport errors.
- */
-static int sunxi_nfc_hw_ecc_read_error(struct nand_chip *nand,
-				       u8 *data, int data_off,
-				       u8 *oob, int oob_off,
-				       unsigned int user_data_sz,
-				       unsigned int *max_bitflips, int page)
-{
-	struct nand_ecc_ctrl *ecc = &nand->ecc;
-	unsigned int oob_len = ecc->bytes + user_data_sz;
-	int ret;
-
-	/* Check the physical representation for bitflips in erased pages. */
-	if (nand->options & NAND_NEED_SCRAMBLING) {
-		ret = sunxi_nfc_read_column(nand, page, data_off, data, ecc->size);
-		if (ret)
-			return ret;
-	}
-
-	ret = sunxi_nfc_read_column(nand, page, oob_off, oob, oob_len);
-	if (ret)
-		return ret;
-
-	/* A factory bad-block marker is not an erased-page bitflip. */
-	if (!data_off) {
-		oob += SUNXI_NFC_BBM_SIZE;
-		oob_len -= SUNXI_NFC_BBM_SIZE;
-	}
-
-	ret = nand_check_erased_ecc_chunk(data, ecc->size, oob, oob_len, NULL, 0,
-					  ecc->strength);
-
-	sunxi_nfc_hw_ecc_update_stats(nand, max_bitflips, ret);
-
-	return ret >= 0;
-}
-
 /* Shared across a read's transfers; buf remains the full-page buffer base. */
 struct sunxi_nfc_ecc_read {
 	u8 *buf;
@@ -1295,6 +1256,48 @@ static int sunxi_get_ecc_offset(struct sunxi_nand_chip *sunxi_nand,
 				struct nand_ecc_ctrl *ecc, int step)
 {
 	return step * ecc->bytes + sunxi_nfc_user_data_before(sunxi_nand, step + 1);
+}
+
+/*
+ * Return 1 for an erased chunk or 0 for an uncorrectable chunk, with ECC
+ * statistics updated in either case. Negative values report transport errors.
+ */
+static int sunxi_nfc_hw_ecc_read_error(struct nand_chip *nand,
+				       struct sunxi_nfc_ecc_read *read, int step)
+{
+	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
+	struct nand_ecc_ctrl *ecc = &nand->ecc;
+	int data_off = step * ecc->size;
+	int oob_off = sunxi_get_oob_offset(sunxi_nand, ecc, step);
+	unsigned int oob_len = ecc->bytes + sunxi_nfc_user_data_sz(sunxi_nand, step);
+	u8 *data = read->buf + data_off;
+	u8 *oob = nand->oob_poi + oob_off;
+	int ret;
+
+	/* Check the physical representation for bitflips in erased pages. */
+	if (nand->options & NAND_NEED_SCRAMBLING) {
+		ret = sunxi_nfc_read_column(nand, read->page, data_off, data, ecc->size);
+		if (ret)
+			return ret;
+	}
+
+	ret = sunxi_nfc_read_column(nand, read->page, nand_to_mtd(nand)->writesize + oob_off,
+				    oob, oob_len);
+	if (ret)
+		return ret;
+
+	/* A factory bad-block marker is not an erased-page bitflip. */
+	if (!step) {
+		oob += SUNXI_NFC_BBM_SIZE;
+		oob_len -= SUNXI_NFC_BBM_SIZE;
+	}
+
+	ret = nand_check_erased_ecc_chunk(data, ecc->size, oob, oob_len, NULL, 0,
+					  ecc->strength);
+
+	sunxi_nfc_hw_ecc_update_stats(nand, &read->max_bitflips, ret);
+
+	return ret >= 0;
 }
 
 static int sunxi_nfc_hw_ecc_read_extra_oob(struct nand_chip *nand,
@@ -1421,18 +1424,11 @@ static int sunxi_nfc_oob_read_batch(struct nand_chip *nand,
 	/* Finish consuming the batch's corrected OOB before raw error rereads. */
 	for (slot = 0; slot < nsteps; slot++) {
 		int step = first_step + slot;
-		int data_off, oob_off;
 
 		if (step < read->first_req_step || !(snapshot->status & NFC_ECC_ERR(slot)))
 			continue;
 
-		data_off = step * ecc->size;
-		oob_off = sunxi_get_oob_offset(sunxi_nand, ecc, step);
-		user_data_sz = sunxi_nfc_user_data_sz(sunxi_nand, step);
-		ret = sunxi_nfc_hw_ecc_read_error(nand, read->buf + data_off, data_off,
-						  nand->oob_poi + oob_off,
-						  mtd->writesize + oob_off, user_data_sz,
-						  &read->max_bitflips, read->page);
+		ret = sunxi_nfc_hw_ecc_read_error(nand, read, step);
 		if (ret < 0)
 			return ret;
 		if (ret)
@@ -1716,17 +1712,17 @@ static int sunxi_nfc_hw_ecc_write_extra_oob(struct nand_chip *nand,
 	return 0;
 }
 
-static int sunxi_nfc_hw_ecc_read_page(struct nand_chip *nand, uint8_t *buf,
-				      int oob_required, int page)
+static int sunxi_nfc_hw_ecc_read_chunks_pio(struct nand_chip *nand, u8 *buf,
+					    int oob_required, int page,
+					    int first_step, int end_step)
 {
 	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
-	struct nand_ecc_ctrl *ecc = &nand->ecc;
 	struct sunxi_nfc_ecc_read read = {
 		.buf = buf,
 		.page = page,
 		.oob_required = oob_required,
 	};
-	int ret, i, cur_off = 0;
+	int ret, step, cur_off = 0;
 
 	ret = nand_read_page_op(nand, page, 0, NULL, 0);
 	if (ret)
@@ -1735,8 +1731,8 @@ static int sunxi_nfc_hw_ecc_read_page(struct nand_chip *nand, uint8_t *buf,
 	sunxi_nfc_hw_ecc_enable(nand);
 
 	sunxi_nfc_reset_user_data_len(nfc);
-	for (i = 0; i < ecc->steps; i++) {
-		ret = sunxi_nfc_hw_ecc_read_chunk(nand, &read, i, &cur_off);
+	for (step = first_step; step < end_step; step++) {
+		ret = sunxi_nfc_hw_ecc_read_chunk(nand, &read, step, &cur_off);
 		if (ret < 0)
 			goto out;
 	}
@@ -1746,6 +1742,13 @@ out:
 	sunxi_nfc_hw_ecc_disable(nand);
 
 	return ret;
+}
+
+static int sunxi_nfc_hw_ecc_read_page(struct nand_chip *nand, u8 *buf,
+				      int oob_required, int page)
+{
+	return sunxi_nfc_hw_ecc_read_chunks_pio(nand, buf, oob_required, page, 0,
+						nand->ecc.steps);
 }
 
 static int sunxi_nfc_hw_ecc_read_page_dma(struct nand_chip *nand, u8 *buf,
@@ -1769,35 +1772,12 @@ static int sunxi_nfc_hw_ecc_read_page_dma(struct nand_chip *nand, u8 *buf,
 
 static int sunxi_nfc_hw_ecc_read_subpage(struct nand_chip *nand,
 					 u32 data_offs, u32 readlen,
-					 u8 *bufpoi, int page)
+					 u8 *buf, int page)
 {
-	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
-	struct nand_ecc_ctrl *ecc = &nand->ecc;
-	struct sunxi_nfc_ecc_read read = {
-		.buf = bufpoi,
-		.page = page,
-	};
-	int ret, i, cur_off = 0;
+	int first_step = data_offs / nand->ecc.size;
+	int end_step = DIV_ROUND_UP(data_offs + readlen, nand->ecc.size);
 
-	ret = nand_read_page_op(nand, page, 0, NULL, 0);
-	if (ret)
-		return ret;
-
-	sunxi_nfc_hw_ecc_enable(nand);
-
-	sunxi_nfc_reset_user_data_len(nfc);
-	for (i = data_offs / ecc->size;
-	     i < DIV_ROUND_UP(data_offs + readlen, ecc->size); i++) {
-		ret = sunxi_nfc_hw_ecc_read_chunk(nand, &read, i, &cur_off);
-		if (ret < 0)
-			goto out;
-	}
-
-	ret = read.max_bitflips;
-out:
-	sunxi_nfc_hw_ecc_disable(nand);
-
-	return ret;
+	return sunxi_nfc_hw_ecc_read_chunks_pio(nand, buf, false, page, first_step, end_step);
 }
 
 static int sunxi_nfc_hw_ecc_read_subpage_dma(struct nand_chip *nand,

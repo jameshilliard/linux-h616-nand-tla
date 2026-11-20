@@ -1,5 +1,5 @@
 diff --git a/drivers/mtd/nand/raw/sunxi_nand.c b/drivers/mtd/nand/raw/sunxi_nand.c
-index bd257cd60e0a..9a11fd1b7100 100644
+index ae536d33bfe3..3ffb73acc881 100644
 --- a/drivers/mtd/nand/raw/sunxi_nand.c
 +++ b/drivers/mtd/nand/raw/sunxi_nand.c
 @@ -274,6 +274,7 @@ struct sunxi_nfc_timings {
@@ -64,8 +64,8 @@ index bd257cd60e0a..9a11fd1b7100 100644
  		memcpy(user_data, oob, user_data_sz);
  		sunxi_nfc_randomize_bbm(nand, page, user_data);
  		oob = user_data;
-@@ -1212,8 +1221,16 @@ static int sunxi_nfc_hw_ecc_read_error(struct nand_chip *nand,
- 	return ret >= 0;
+@@ -1173,8 +1182,16 @@ static int sunxi_nfc_read_column(struct nand_chip *nand, int page,
+ 	return nand_change_read_column_op(nand, column, buf, len, false);
  }
  
 +struct sunxi_nfc_allwinner_oob_status {
@@ -81,7 +81,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  	u8 *buf;
  	int page;
  	int first_req_step;
-@@ -1332,6 +1349,242 @@ static int sunxi_nfc_hw_ecc_read_extra_oob(struct nand_chip *nand,
+@@ -1335,6 +1352,242 @@ static int sunxi_nfc_hw_ecc_read_extra_oob(struct nand_chip *nand,
  	return 0;
  }
  
@@ -324,7 +324,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  /* Interpret one PIO step or a completed DMA batch before reusing its status. */
  static int sunxi_nfc_oob_read_batch(struct nand_chip *nand,
  				    struct sunxi_nfc_ecc_read *read,
-@@ -1346,6 +1599,9 @@ static int sunxi_nfc_oob_read_batch(struct nand_chip *nand,
+@@ -1349,6 +1602,9 @@ static int sunxi_nfc_oob_read_batch(struct nand_chip *nand,
  	unsigned int reg_index = 0, user_data_sz;
  	int slot, ret;
  
@@ -334,7 +334,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  	if (snapshot->pattern_found & ~snapshot->status)
  		sunxi_nfc_hw_ecc_read_pattern_id(nand, snapshot);
  
-@@ -1447,6 +1703,9 @@ static int sunxi_nfc_oob_finish_read(struct nand_chip *nand,
+@@ -1443,6 +1699,9 @@ static int sunxi_nfc_oob_finish_read(struct nand_chip *nand,
  {
  	int ret;
  
@@ -344,7 +344,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  	if (read->oob_required) {
  		ret = sunxi_nfc_hw_ecc_read_extra_oob(nand, nand->oob_poi, cur_off,
  						      !read->has_erased_chunk, read->page);
-@@ -2349,12 +2608,42 @@ static const struct sunxi_nfc_user_data_layout sunxi_nfc_variable_layout = {
+@@ -2329,12 +2588,42 @@ static const struct sunxi_nfc_user_data_layout sunxi_nfc_variable_layout = {
  	.init_user_data = sunxi_nfc_variable_init_user_data,
  };
  
@@ -389,7 +389,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  	const u8 *strengths = nfc->caps->ecc_strengths;
  	struct mtd_info *mtd = nand_to_mtd(nand);
  	struct nand_device *nanddev = mtd_to_nanddev(mtd);
-@@ -2489,8 +2778,41 @@ static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *nand,
+@@ -2469,8 +2758,41 @@ static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *nand,
  	return 0;
  }
  
@@ -431,7 +431,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  	const struct nand_ecc_props *requirements =
  		nanddev_get_ecc_requirements(&nand->base);
  	struct nand_ecc_ctrl *ecc = &nand->ecc;
-@@ -2512,9 +2834,12 @@ static int sunxi_nand_attach_chip(struct nand_chip *nand)
+@@ -2492,9 +2814,12 @@ static int sunxi_nand_attach_chip(struct nand_chip *nand)
  	if (!ecc->size || !ecc->strength)
  		return -EINVAL;
  
@@ -445,7 +445,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  		if (ret)
  			return ret;
  		break;
-@@ -3019,6 +3344,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
+@@ -2999,6 +3324,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
  	.max_ecc_steps = 16,
  	.sram_size = 1024,
  	.timings = &sun4i_a10_nfc_timings,
@@ -453,7 +453,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  };
  
  static const struct sunxi_nfc_caps sunxi_nfc_a23_caps = {
-@@ -3042,6 +3368,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_a23_caps = {
+@@ -3022,6 +3348,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_a23_caps = {
  	.max_ecc_steps = 16,
  	.sram_size = 1024,
  	.timings = &sun4i_a10_nfc_timings,
@@ -461,7 +461,7 @@ index bd257cd60e0a..9a11fd1b7100 100644
  };
  
  static const struct sunxi_nfc_caps sunxi_nfc_h616_caps = {
-@@ -3069,6 +3396,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_h616_caps = {
+@@ -3049,6 +3376,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_h616_caps = {
  	.max_ecc_steps = 32,
  	.sram_size = 8192,
  	.timings = &sun50i_h616_nfc_timings,

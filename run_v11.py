@@ -17,8 +17,8 @@ from run_marker_admission import declaration
 
 ROOT = Path(__file__).resolve().parent
 REF = ROOT / "reference/sunxi-v11"
-ORDINARY = "e3caa05c9adf2623da8008f1fb9b03fc9c03b2b35e22dd6c81c18a17476f23ee"
-FIRMWARE = "56b605bc07fd5e427f092c8c54105aac8a40fb7f2bf39df09079389cb8fb0962"
+ORDINARY = "1098df8c3c7eaca65fc893ee0b4109cba886d9131eb565fa5f77cd7ccbeb39db"
+FIRMWARE = "37871b284a23cde56dfc669848ce49a7093383f85c634fc4768e71872c5f15f7"
 CORE = "efcbf598df9bde05a304366e75e0bd1126ae002155cfe3d03dad0f4685ce807d"
 
 
@@ -90,13 +90,20 @@ def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
                    sunxi_nfc_allwinner_oob_read_batch sunxi_nfc_allwinner_oob_finish_read""".split()
         for n in extra:
             add(n)
-    for n in ("oob_read_batch", "oob_finish_read", "hw_ecc_read_page_dma", "hw_ecc_read_subpage_dma"):
+    for n in ("oob_read_batch", "oob_finish_read", "hw_ecc_read_status"):
         add("sunxi_nfc_" + n)
     if vectors is None:
+        add("sunxi_nfc_hw_ecc_read_chunk")
+        if "sunxi_nfc_hw_ecc_read_chunks_pio(" in driver:
+            add("sunxi_nfc_hw_ecc_read_chunks_pio")
+        for n in ("read_page", "read_subpage", "read_page_dma", "read_subpage_dma"):
+            add("sunxi_nfc_hw_ecc_" + n)
+        if vendor:
+            add("sunxi_nfc_allwinner_oob_read_subpage")
         lines.append((ROOT / "tests/v11.c").read_text())
     else:
-        for n in ("buf_to_user_data", "dma_batch_steps", "hw_ecc_read_status",
-                  "allwinner_prefix_size", "allwinner_init_prefix"):
+        for n in ("buf_to_user_data", "dma_batch_steps", "allwinner_prefix_size",
+                  "allwinner_init_prefix"):
             add("sunxi_nfc_" + n)
         helpers = (ROOT / "tests/check.c").read_text()
         lines += [extract(helpers, n) for n in ("caps", "chip", "load_status")]
@@ -133,12 +140,17 @@ def mutations(driver, cc, out, vendor):
     # A compiler failure, sanitizer error or unrelated assertion is not
     # evidence that the relevant behavioural regression was detected.
     controls = [
-        ("hw_ecc_read_error", "if (!data_off) {", "if (false) {", "ret == (int)corrected"),
+        ("hw_ecc_read_error", "if (!step) {", "if (false) {", "ret == (int)corrected"),
+        ("hw_ecc_read_error", "sunxi_get_oob_offset(sunxi_nand, ecc, step)",
+         "sunxi_get_oob_offset(sunxi_nand, ecc, 0)", "r.max_bitflips == 3U + !!step"),
         ("oob_read_batch", "if (!step)", "if (step)", "marker_commands == (want && pattern)"),
         ("oob_finish_read", "if (read->read_raw_bbm)", "if (read->oob_required)",
          "marker_commands == (want && pattern)"),
         ("hw_ecc_read_page_dma", " || nfc->recovery_failed", "", "ret == (first_fails"),
         ("hw_ecc_read_subpage_dma", " || nfc->recovery_failed", "", "ret == (first_fails"),
+        ("hw_ecc_read_chunks_pio", "step = first_step", "step = 0", "observed_steps == mask"),
+        ("hw_ecc_read_chunks_pio", "step < end_step", "step + 1 < end_step",
+         "observed_steps == mask"),
         ("reset_user_data_len", "int i = loop_step;", "int i = 0;", "!mmio_writes[reg / 4]"),
     ] if not vendor else [
         ("allwinner_oob_finish_read", "if (result->zero_steps ==", "if (false && result->zero_steps ==",
