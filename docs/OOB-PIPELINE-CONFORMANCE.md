@@ -11,9 +11,10 @@ C executions or a model of the physical BCH decoder.
 
 ## Source and input boundaries
 
-`run_oob_pipeline.py` runs the unchanged driver bodies through `run_c.py`.
-The fixture invokes the actual user-data allocator, batch planner, status
-snapshot, Allwinner batch reader, spare classifier and finish helper. It
+`run_oob_pipeline.py` executes the unchanged driver functions using the
+historical source fixture or the v11 extractor. The fixture invokes the
+user-data initializer, batch planner, status snapshot, Allwinner batch
+reader, spare classifier and finish helper. It
 supplies the decoded USER_DATA bytes and hardware ECC/pattern registers, then
 records accumulated status after each batch. A transport-boundary observer
 records each raw OOB read's column, destination, length and return value.

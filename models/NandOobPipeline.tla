@@ -3,7 +3,7 @@
 \* Bounded source-observation checker. Hardware-decoded bytes and raw media are
 \* separate inputs. Bit-exact LFSR/BCH checks live in independent host oracles;
 \* keystream inputs here do not prove the controller implements that stream.
-EXTENDS Integers, Sequences, FiniteSets, TLC, TLCExt
+EXTENDS Integers, Sequences, FiniteSets, TLC
 CONSTANT Traces
 VARIABLE s
 vars == <<s>>
@@ -12,25 +12,25 @@ Sum(xs) == IF Len(xs) = 0 THEN 0 ELSE Head(xs) + Sum(Tail(xs))
 Xor(a, b) == IF a = 0 /\ b = 0 THEN 0
              ELSE (((a % 2) + (b % 2)) % 2) + 2 * Xor(a \div 2, b \div 2)
 MaxSet(xs) == CHOOSE v \in xs : \A w \in xs : v >= w
-\* These caches contain only immutable, input-derived values. TLCCache is
-\* mathematically the identity operator, not an additional model assumption.
-InputFor(t) == TLCCache(Traces[t], t)
-T == InputFor(s.t)
+\* Evaluate the constant tuple once. A byte lookup must not re-evaluate
+\* the whole input wrapper; no tool-version-specific cache is needed.
+Inputs == TLCEval(Traces)
+T == Inputs[s.t]
 N == Len(T.user)
 Bytes == 1..Len(T.raw)
 RECURSIVE Positions(_, _, _)
 Positions(user, parity, k) == IF k > Len(user) THEN <<>> ELSE
     LET off == (k-1)*parity + Sum(SubSeq(user,1,k-1))
     IN [j \in 1..user[k] |-> off+j] \o Positions(user,parity,k+1)
-GeometryFor(t) == TLCCache(
-    LET input == InputFor(t)
+GeometryFor(t) ==
+    LET input == Inputs[t]
         count == Len(input.user)
         offsets == [k \in 1..(count+1) |->
             (k-1)*input.parity + Sum(SubSeq(input.user,1,k-1))]
     IN [offsets |-> offsets, positions |-> Positions(input.user,input.parity,1),
         protected |-> UNION {(offsets[k]+1)..(offsets[k]+input.user[k]) : k \in 1..count},
         owners |-> [i \in 1..offsets[count+1] |->
-            CHOOSE k \in 1..count : i \in (offsets[k]+1)..offsets[k+1]]], t)
+            CHOOSE k \in 1..count : i \in (offsets[k]+1)..offsets[k+1]]]
 Geometry == s.geometry
 Off(k) == Geometry.offsets[k]
 End == Off(N + 1)
@@ -89,12 +89,12 @@ Classify ==
         !.failed = IF Class = "zero" THEN @ + N ELSE @,
         !.phase = IF Class # "decoded" THEN "finish"
                   ELSE IF T.want THEN "read" ELSE "account"]
-Pending == TLCCache(TLCEval((s.cursor..Len(T.raw)) \ Protected), <<s.t,s.cursor>>)
-NextRaw == TLCCache(TLCEval(
+Pending == TLCEval((s.cursor..Len(T.raw)) \ Protected)
+NextRaw == TLCEval(
     LET start == CHOOSE i \in Pending : \A j \in Pending : i <= j
         nextProtected == {i \in Protected : i > start} \cup {Len(T.raw)+1}
         stop == CHOOSE i \in nextProtected : \A j \in nextProtected : i <= j
-    IN <<start,stop>>), <<s.t,s.cursor>>)
+    IN <<start,stop>>)
 Read ==
     /\ s.phase = "read" /\ Pending # {}
     \* Bind the region once; lazy re-evaluation inside the byte update is costly.
