@@ -103,7 +103,17 @@ is bound once before updating bytes, avoiding repeated lazy set evaluation.
 
 ## Reproduce
 
-Run against the pinned submitted source:
+Run against the pinned, current v11 deferred-format source:
+
+```sh
+python3 run_oob_pipeline.py --v11 --download
+python3 run_oob_pipeline.py --v11 --cc clang --source-only
+```
+
+This executes the ordinary/firmware dispatchers on the deferred driver,
+not just the firmware helpers in isolation. For an ordinary fix-only
+driver, which does not implement this format, use `run_v11.py` instead.
+The older submission's source and operations-table fixture remain available:
 
 ```sh
 python3 run_oob_pipeline.py --download
@@ -127,8 +137,7 @@ python3 run_oob_pipeline.py --results results/oob-pipeline-RUN
 unselected inputs in TLC. A parser error, timeout, JVM failure, sanitizer error
 or unrelated invariant violation is never a passing negative control. The
 dedicated runner's counts are separate from the standard configuration catalog.
-The CI template has a separate OOB-pipeline job; this does not assert that it
-has been installed or run by GitHub Actions.
+The sunxi ECC workflow includes a separate `firmware-bytes` job for v11.
 
 ## What this still does not establish
 

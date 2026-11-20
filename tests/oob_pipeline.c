@@ -5,6 +5,16 @@
 static FILE *oob_trace_file;
 static unsigned oob_trace_reads;
 
+/* The old snapshot calls its policy operations directly. On v11 test
+ * the public dispatchers, including their choice of firmware policy. */
+#ifdef V11_OOB_PIPELINE
+#define pipeline_read_batch sunxi_nfc_oob_read_batch
+#define pipeline_finish_read sunxi_nfc_oob_finish_read
+#else
+#define pipeline_read_batch sunxi_nfc_allwinner_oob_read_batch
+#define pipeline_finish_read sunxi_nfc_allwinner_oob_finish_read
+#endif
+
 static void oob_json_bytes(const u8 *p, unsigned len)
 {
     fputc('[', oob_trace_file);
@@ -63,11 +73,16 @@ static void oob_pipeline(void)
         n.mtd.ecc_stats.corrected = 7;
         n.mtd.ecc_stats.failed = 3;
         n.options = NAND_NEED_SCRAMBLING;
-        n.oob_ops = TEST_VENDOR_OOB_OPS(variable);
         controller.caps = &c;
         flow.enabled = false;
         allocation_failure = false;
+#ifdef V11_OOB_PIPELINE
+        n.allwinner_oob = true;
+        if (variable) assert(!sunxi_nfc_allwinner_init_prefix(&n, steps));
+#else
+        n.oob_ops = TEST_VENDOR_OOB_OPS(variable);
         assert(!n.oob_ops->init_user_data(&n, steps));
+#endif
         memset(main_data, 0x4b, sizeof(main_data));
         memset(oob_data, 0xa5, sizeof(oob_data));
         raw_calls = fail_raw_at = 0;
@@ -92,7 +107,7 @@ static void oob_pipeline(void)
             }
             struct sunxi_nfc_ecc_snapshot snapshot;
             sunxi_nfc_hw_ecc_read_status(&n,&snapshot);
-            assert(!sunxi_nfc_allwinner_oob_read_batch(&n,&read,&snapshot,first,count));
+            assert(!pipeline_read_batch(&n,&read,&snapshot,first,count));
             fprintf(oob_trace_file, "%s{\"first\":%u,\"count\":%u,\"errors\":",
                     first ? "," : "", first, count);
             oob_json_bits(read.allwinner_oob.error_steps,steps);
@@ -112,7 +127,7 @@ static void oob_pipeline(void)
         raw_calls=oob_trace_reads=0;
         fail_raw_at=fail;
         oob_transfer_observer=oob_observe_transfer;
-        int ret=sunxi_nfc_allwinner_oob_finish_read(&n,&read,NULL);
+        int ret=pipeline_finish_read(&n,&read,NULL);
         oob_transfer_observer=NULL;
         format_image=NULL;
         fail_raw_at=0;
@@ -126,7 +141,9 @@ static void oob_pipeline(void)
                     !memchr_inv(oob_data+spare,0xa5,sizeof(oob_data)-spare);
         fprintf(oob_trace_file, ",\"guards\":%s}\n", guards ? "true" : "false");
         assert(guards);
+#ifndef V11_OOB_PIPELINE
         free(n.user_data_bytes);
+#endif
         runs++;
     }
     assert(!got && feof(vectors) && !ferror(vectors));

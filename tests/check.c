@@ -25,15 +25,21 @@ static struct caps caps(bool variable)
         .ecc_err_mask = variable ? UINT32_MAX : 0xffff,
         .pat_found_mask = variable ? UINT32_MAX : 0xffff0000,
         .max_ecc_steps = variable ? 32 : 16,
+#ifdef V11_OOB_PIPELINE
+        .max_user_data_len = variable ? 32 : 0,
+#else
         .user_data_len_tab = sunxi_user_data_len_h6,
         .nuser_data_tab = ARRAY_SIZE(sunxi_user_data_len_h6),
+#endif
         .legacy_max_strength = !variable,
 #if !TEST_SPARE_IN_POLICY
         .spare_is_erased = variable ? sun50i_h6_nfc_spare_is_erased : sun4i_a10_nfc_spare_is_erased,
 #endif
+#ifndef V11_OOB_PIPELINE
         .allwinner_oob_ops = variable ? TEST_H6_VENDOR_OPS : TEST_A10_VENDOR_OPS,
         .plain_oob_ops = variable ? TEST_H6_PLAIN_OPS : TEST_A10_PLAIN_OPS,
         .scrambled_oob_ops = variable ? TEST_H6_SCRAMBLED_OPS : TEST_A10_SCRAMBLED_OPS,
+#endif
     };
 }
 
@@ -44,7 +50,9 @@ static struct nand_chip chip(unsigned steps, unsigned bytes, unsigned spare)
         .mtd = {.writesize = steps * 1024, .oobsize = spare,
                 .erasesize = steps * 1024 * 64, .ecc_step_size = 1024},
         .controller = &controller, .oob_poi = oob_data,
+#ifndef V11_OOB_PIPELINE
         .oob_ops = TEST_NORMAL_OOB_OPS(false, false),
+#endif
     };
 }
 

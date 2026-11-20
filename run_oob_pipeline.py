@@ -11,6 +11,8 @@ import tempfile
 
 import run as tlc
 from oob_pipeline_cases import MODEL, case, controls, inputs, pack_vectors
+from mtdchar_cases import TLC
+from run_v11 import pinned_pair, test_driver
 
 HERE=Path(__file__).resolve().parent
 
@@ -79,15 +81,16 @@ def check_bytes(t,o):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--candidate-source",type=Path)
-    parser.add_argument("--results",type=Path,help="reuse a successful source run from this script")
+    source_arg=parser.add_mutually_exclusive_group()
+    source_arg.add_argument("--candidate-source",type=Path)
+    source_arg.add_argument("--v11",action="store_true",help="use the pinned deferred driver and current layout")
+    source_arg.add_argument("--results",type=Path,help="reuse a successful source run from this script")
+    parser.add_argument("--cc",default="gcc")
     parser.add_argument("--timeout",type=int,default=180)
     parser.add_argument("--download",action="store_true")
     parser.add_argument("--case",default="")
     parser.add_argument("--source-only",action="store_true",help="record/check C bytes without claiming a TLC run")
     args=parser.parse_args()
-    if args.results and args.candidate_source:
-        parser.error("--results reuses its recorded source; do not combine with --candidate-source")
     traces=inputs()
     expected_vectors=pack_vectors(traces)
     if args.results:
@@ -105,20 +108,26 @@ def main():
         (out/"vectors.bin").write_bytes(expected_vectors)
         vectors=(out/"vectors.bin").read_bytes()
         (out/"inputs.json").write_text(json.dumps(traces,indent=2)+"\n")
-        command=[sys.executable,str(HERE/"run_c.py"),"--oob-vectors",str(out/"vectors.bin")]
-        if args.candidate_source:
-            # Snapshot input bytes before any compiler/source extraction work.
-            source=args.candidate_source.read_bytes()
+        command=[sys.executable,str(HERE/"run_c.py"),"--cc",args.cc,"--oob-vectors",str(out/"vectors.bin")]
+        source=None
+        if args.candidate_source or args.v11:
+            with tempfile.TemporaryDirectory() as temp:
+                path=args.candidate_source or pinned_pair(Path(temp))[1]
+                source=path.read_bytes()
             (out/"candidate-sunxi_nand.c").write_bytes(source)
             command += ["--candidate-source",str(out/"candidate-sunxi_nand.c")]
-        run=subprocess.run(command,text=True,capture_output=True,timeout=300)
-        (out/"driver.log").write_text(run.stdout+run.stderr)
-        print(run.stdout+run.stderr,flush=True)
-        if run.returncode:
-            print("SOURCE CHECK FAILED; logs:",out)
-            return 1
-        result=Path(run.stdout.strip().split("Logs: ")[-1])
-        report=json.loads((result/"summary.json").read_text())
+        if source and b"struct sunxi_nfc_user_data_layout {" in source:
+            report=test_driver(source.decode(),args.cc,out,vectors=out/"vectors.bin")
+            result=out
+        else:
+            run=subprocess.run(command,text=True,capture_output=True,timeout=300)
+            (out/"driver.log").write_text(run.stdout+run.stderr)
+            print(run.stdout+run.stderr,flush=True)
+            if run.returncode:
+                print("SOURCE CHECK FAILED; logs:",out)
+                return 1
+            result=Path(run.stdout.strip().split("Logs: ")[-1])
+            report=json.loads((result/"summary.json").read_text())
         assert report["passed"]
         raw=(result/"oob-traces.jsonl").read_bytes()
         assert hashlib.sha256(raw).hexdigest()==report["oob_traces_sha256"]
@@ -146,7 +155,8 @@ def main():
     tests+=controls(traces)
     options=["--timeout",str(args.timeout),"--case",args.case]
     if args.download: options.append("--download")
-    return tlc.main(options,cases=tests,modules={"NandOobPipeline":MODEL},metadata=meta)
+    return tlc.main(options,cases=tests,modules={"NandOobPipeline":MODEL},metadata=meta,
+                    toolchain=TLC if report.get("v11") else None)
 
 
 if __name__=="__main__":

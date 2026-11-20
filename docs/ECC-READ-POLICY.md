@@ -149,6 +149,13 @@ control has no outstanding transfer, so a DMA retirement failure cannot
 mask it. Separate assumptions test ineffective retirement. The C tests
 check the exact errno from both the full-page and subpage wrappers.
 
+For the deferred branch, the [byte-pipeline checker](OOB-PIPELINE-CONFORMANCE.md)
+also runs 430 source traces through the public batch and finish dispatchers,
+including mixed statuses and transport errors. An independent oracle checks
+every returned OOB byte and the raw-read ranges. TLC then replays those
+observations in 108 configurations and checks 11 deliberate regressions.
+Both GCC and Clang produced the same observations on the pinned deferred tip.
+
 Before the ordinary-marker fixes, the range and pattern-read checks passed
 on the fix-only driver with SHA-256
 `a2ad1b837a00df0a89aeefe550f6817193a50e542091731bf71d55086efd944a`

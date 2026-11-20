@@ -3,6 +3,7 @@
 """Check both exact v11 source snapshots, not just the policy model."""
 import argparse
 import hashlib
+import os
 from pathlib import Path
 import re
 import shutil
@@ -38,12 +39,24 @@ def pinned_pair(tmp):
     return ordinary, firmware
 
 
-def test_driver(driver, cc, out, expected_failure=None):
+def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
     core = checked(REF / "nand-core.c", CORE)
     nand = (ROOT / "reference/nand_base.c").read_text()
     header = (ROOT / "reference/rawnand.h").read_text()
     vendor = "sunxi_nfc_allwinner_oob_record_status(" in driver
     lines = [(ROOT / "tests/v11.h").read_text(), f"#define HAS_FW {int(vendor)}"]
+    functions = {}
+
+    def add(name):
+        body = extract(driver, name)
+        functions[name] = hashlib.sha256(body.encode()).hexdigest()
+        lines.append(body)
+
+    if vectors is not None:
+        if not vendor:
+            raise ValueError("the firmware byte pipeline needs a deferred-format driver")
+        lines.append("#define V11_OOB_PIPELINE 1")
+        lines.append(re.search(r"^#define SUNXI_NFC_H6_ALLWINNER_OOB_MAX_USER_DATA_SZ \d+", driver, re.M)[0])
     for name in ("NAND_BBM_FIRSTPAGE", "NAND_BBM_SECONDPAGE", "NAND_BBM_LASTPAGE"):
         lines.append(re.search(r"^#define " + name + r"\s+.+", header, re.M)[0])
     for name in ("SUNXI_NFC_BBM_SIZE", "NFC_MAX_BYTE_COUNT"):
@@ -63,30 +76,52 @@ def test_driver(driver, cc, out, expected_failure=None):
               set_user_data_len_pio set_user_data_len_dma""".split()
     # get_oob_offset and get_ecc_offset deliberately have no nfc_ prefix.
     for n in common[:5]:
-        lines.append(extract(driver, "sunxi_nfc_" + n))
+        add("sunxi_nfc_" + n)
     for n in ("sunxi_get_oob_offset", "sunxi_get_ecc_offset"):
-        lines.append(extract(driver, n))
+        add(n)
     if vendor:
-        lines.append(extract(driver, "sunxi_nfc_bbm_needs_compensation"))
+        add("sunxi_nfc_bbm_needs_compensation")
     for n in common[5:]:
-        lines.append(extract(driver, "sunxi_nfc_" + n))
+        add("sunxi_nfc_" + n)
     if vendor:
         extra = """sunxi_nfc_buf_chunk_size sunxi_nfc_randomize_buf sunxi_nfc_allwinner_oob_record_status
                    sun4i_a10_nfc_spare_is_erased sun50i_h6_nfc_spare_is_erased
                    sunxi_nfc_allwinner_oob_spare_is_erased sunxi_nfc_allwinner_oob_read_unprotected
                    sunxi_nfc_allwinner_oob_read_batch sunxi_nfc_allwinner_oob_finish_read""".split()
-        lines += [extract(driver, n) for n in extra]
+        for n in extra:
+            add(n)
     for n in ("oob_read_batch", "oob_finish_read", "hw_ecc_read_page_dma", "hw_ecc_read_subpage_dma"):
-        lines.append(extract(driver, "sunxi_nfc_" + n))
-    lines.append((ROOT / "tests/v11.c").read_text())
+        add("sunxi_nfc_" + n)
+    if vectors is None:
+        lines.append((ROOT / "tests/v11.c").read_text())
+    else:
+        for n in ("buf_to_user_data", "dma_batch_steps", "hw_ecc_read_status",
+                  "allwinner_prefix_size", "allwinner_init_prefix"):
+            add("sunxi_nfc_" + n)
+        helpers = (ROOT / "tests/check.c").read_text()
+        lines += [extract(helpers, n) for n in ("caps", "chip", "load_status")]
+        lines.append((ROOT / "tests/oob_pipeline.c").read_text())
+        lines.append("int main(void) { oob_pipeline(); return 0; }")
+    unit = "\n".join(lines)
     exe = out / "policy"
     subprocess.run([cc, "-std=gnu11", "-g", "-O1", "-Wall", "-Wextra", "-Werror",
                     "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-unused-variable",
                     "-Wno-sign-compare", "-fno-strict-aliasing", "-fno-strict-overflow",
                     "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-no-pie",
                     "-I", str(ROOT / "tests"), "-xc", "-", "-o", exe],
-                   input="\n".join(lines), text=True, check=True)
-    if expected_failure is None:
+                   input=unit, text=True, check=True)
+    if vectors is not None:
+        trace = out / "oob-traces.jsonl"
+        subprocess.run([exe], check=True, env=dict(os.environ,
+                       NAND_OOB_VECTORS=str(vectors), NAND_OOB_TRACE=str(trace)))
+        raw = trace.read_bytes()
+        return dict(v11=True, passed=True, functions=functions,
+                    driver_sha256=hashlib.sha256(driver.encode()).hexdigest(),
+                    fixture_sha256=hashlib.sha256(unit.encode() + (ROOT / "tests/fixtures.h").read_bytes()).hexdigest(),
+                    oob_traces_sha256=hashlib.sha256(raw).hexdigest(),
+                    oob_vectors_sha256=hashlib.sha256(vectors.read_bytes()).hexdigest(),
+                    oob_trace_count=len(raw.splitlines()))
+    elif expected_failure is None:
         subprocess.run([exe], check=True)
     else:
         failure = subprocess.run([exe], cwd=out, capture_output=True, text=True)
