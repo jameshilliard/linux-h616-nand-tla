@@ -97,6 +97,10 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None, toolchain=No
     results = HERE / "results"
     results.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="tlc-", dir=results))
+    # TLC 1.7.4 extracts library modules by basename and deletes them on JVM
+    # exit. Concurrent runs must not share these files while parsing.
+    jvm_tmp = out / "jvm-tmp"
+    jvm_tmp.mkdir()
     # A run must not mix model revisions if the workspace changes while TLC
     # is working. Record the bytes actually checked, not the files at exit.
     model_inputs = {p.name: p.read_bytes() for p in (HERE / "models").glob("*.tla")}
@@ -128,7 +132,7 @@ def main(argv=None, *, cases=CASES, modules=MODULES, metadata=None, toolchain=No
             for prop in spec.get("properties", ["Terminates"]):
                 cfg += "PROPERTY " + prop + "\n"
         (case_dir / "model.cfg").write_text(cfg)
-        command = ["java", "-Xmx1g", "-XX:+UseParallelGC", "-cp", str(jar),
+        command = ["java", f"-Djava.io.tmpdir={jvm_tmp}", "-Xmx1g", "-XX:+UseParallelGC", "-cp", str(jar),
                    "tlc2.TLC", "-workers", "1", "-seed", "1", "-fp", "0",
                    "-coverage", "1"]
         if toolchain.get("tlc_json_traces", True):
