@@ -18,7 +18,7 @@ Init == s = [pc |-> "probe", verified |-> FALSE, admitted |-> FALSE,
     masked |-> FALSE, drained |-> FALSE, dirty |-> FALSE, context |-> TRUE,
     returned |-> FALSE, aborted |-> FALSE, maps |-> 0, unmaps |-> 0,
     badAccess |-> FALSE, badUnmap |-> FALSE,
-    badData |-> FALSE, replay |-> FALSE]
+    badData |-> FALSE, replay |-> FALSE, pioRead |-> FALSE]
 Probe == /\ s.pc = "probe"
     /\ LET verified == Fault \notin {"probe-missing", "probe-assert"}
        IN s' = [s EXCEPT !.verified = verified,
@@ -52,7 +52,9 @@ Cleanup == /\ s.pc = "cleanup"
     /\ s' = [s EXCEPT !.badUnmap = @ \/ s.active \/ ~s.mapped,
         !.mapped = FALSE, !.unmaps = @ + 1,
         !.badAccess = @ \/ (s.closed /\ Mutation = "cleanup-mmio-held"),
-        !.pc = IF s.aborted /\ ~s.closed THEN "retry" ELSE "return"]
+        !.pc = IF s.aborted /\ (~s.closed \/ Mutation = "retry-closed") /\
+                  ~(Direction = "read" /\ Mutation = "skip-recovered-read")
+               THEN "retry" ELSE "return"]
 Retry == /\ s.pc = "retry"
     /\ s' = IF Direction = "write" /\ Mutation # "replay-write" THEN
         [s EXCEPT !.pc = "return"]
@@ -60,6 +62,7 @@ Retry == /\ s.pc = "retry"
             !.context = Mutation # "skip-context", !.pc = "pio"]
 Pio == /\ s.pc = "pio"
     /\ s' = [s EXCEPT !.badData = @ \/ s.dirty \/ ~s.context \/ s.active,
+        !.pioRead = Direction = "read",
         !.badAccess = @ \/ s.held, !.pc = "return"]
 Return == /\ s.pc = "return"
     /\ s' = [s EXCEPT !.returned = TRUE, !.pc = "next"]
@@ -76,6 +79,9 @@ ResetSerialized == s.held => s.masked /\ s.drained
 NoMMIOHeld == ~s.badAccess
 SoundRead == ~s.badData
 NoWriteReplay == ~s.replay
+ReadRetryPolicy == Direction = "read" =>
+    /\ (s.closed => s.pc \notin {"retry", "pio"})
+    /\ (s.pc = "return" /\ s.aborted => s.pioRead = ~s.closed)
 VerifiedAdmission == s.admitted => s.verified
 Terminates == <> (s.pc = "done")
 =============================================================================

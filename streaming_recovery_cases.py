@@ -4,7 +4,7 @@ def extend_streaming_recovery(modules, add, mutation):
     module = 'NandStreamingRecovery'
     modules[module] = dict(
         invariants=['CallerSafe', 'MappingSafe', 'ResetSerialized', 'NoMMIOHeld',
-                    'SoundRead', 'NoWriteReplay', 'VerifiedAdmission'],
+                    'SoundRead', 'NoWriteReplay', 'VerifiedAdmission', 'ReadRetryPolicy'],
         actions=['Probe', 'Map', 'Launch', 'Complete', 'Quiesce', 'SoftReset',
                  'AssertReset', 'DeassertReset', 'Cleanup', 'Retry',
                  'Pio', 'Return', 'NextRequest'])
@@ -33,3 +33,7 @@ def extend_streaming_recovery(modules, add, mutation):
     mutation(module, dict(base, Fault='probe-missing'), 'admit-without-reset', 'VerifiedAdmission')
     mutation(module, dict(base, Direction='write'), 'replay-write', 'NoWriteReplay')
     mutation(module, base, 'skip-context', 'SoundRead')
+    # No outstanding DMA here: the counterexample must be a wrapper retry,
+    # not a failure of the independent bus-retirement assumption.
+    mutation(module, dict(base, Fault='assert', Launched=False), 'retry-closed', 'ReadRetryPolicy')
+    mutation(module, base, 'skip-recovered-read', 'ReadRetryPolicy')

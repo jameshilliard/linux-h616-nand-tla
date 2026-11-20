@@ -140,6 +140,15 @@ and check all four packed length registers after switching modes.
 Seven intentional C changes must fail their named assertions; compiler
 failures or unrelated crashes do not count as successful controls.
 
+The two branches also share the H616 DMA read-recovery policy:
+after a transfer abort, a successful reset permits a fresh read in PIO;
+a failed reset must return its error without issuing another read.
+`NandStreamingRecovery` checks both edges, including mutants that retry
+after closure or skip a retry after recovery. The failed-reset retry
+control has no outstanding transfer, so a DMA retirement failure cannot
+mask it. Separate assumptions test ineffective retirement. The C tests
+check the exact errno from both the full-page and subpage wrappers.
+
 Before the ordinary-marker fixes, the range and pattern-read checks passed
 on the fix-only driver with SHA-256
 `a2ad1b837a00df0a89aeefe550f6817193a50e542091731bf71d55086efd944a`

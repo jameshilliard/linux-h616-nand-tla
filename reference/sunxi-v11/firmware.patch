@@ -1,5 +1,5 @@
 diff --git a/drivers/mtd/nand/raw/sunxi_nand.c b/drivers/mtd/nand/raw/sunxi_nand.c
-index fc1664922545..fc8ee53d6b2f 100644
+index bd257cd60e0a..9a11fd1b7100 100644
 --- a/drivers/mtd/nand/raw/sunxi_nand.c
 +++ b/drivers/mtd/nand/raw/sunxi_nand.c
 @@ -274,6 +274,7 @@ struct sunxi_nfc_timings {

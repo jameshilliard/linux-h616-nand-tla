@@ -16,8 +16,8 @@ from run_marker_admission import declaration
 
 ROOT = Path(__file__).resolve().parent
 REF = ROOT / "reference/sunxi-v11"
-ORDINARY = "cc99bdbc76e0fc9ed069cdd8cc06b09e2d5f3f3e251c1c63f3982872ea2aa355"
-FIRMWARE = "3bcabc69afb688297c5595433a9e3e23eae9fe96d6e420672294cd051df32336"
+ORDINARY = "e3caa05c9adf2623da8008f1fb9b03fc9c03b2b35e22dd6c81c18a17476f23ee"
+FIRMWARE = "56b605bc07fd5e427f092c8c54105aac8a40fb7f2bf39df09079389cb8fb0962"
 CORE = "efcbf598df9bde05a304366e75e0bd1126ae002155cfe3d03dad0f4685ce807d"
 
 
