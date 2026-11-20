@@ -17,8 +17,9 @@ VARIABLE s
 vars == <<s>>
 Init ==
     \E input \in [Steps -> Kinds] :
-    \E raw \in [Steps -> IF RawResult = "mixed" THEN {"bad", "erased", "io"}
-                        ELSE {RawResult}] :
+    \E raw \in [Steps -> CASE RawResult = "mixed" -> {"bad", "erased", "io"}
+                           [] RawResult = "clean-mixed" -> {"bad", "clean", "erased", "io"}
+                           [] OTHER -> {RawResult}] :
     \E delivered \in [Steps -> IF Dma THEN {"dma-a", "dma-b"} ELSE {"old"}] :
       s = [input |-> input, delivered |-> delivered, pc |-> "batch", first |-> 0, count |-> 0, slot |-> 0,
            rawInput |-> raw,
@@ -115,7 +116,8 @@ Raw ==
     /\ LET i == s.first + s.slot
            raw == i \in s.pendingRaw
            io == raw /\ s.rawInput[i] = "io"
-           erased == raw /\ s.rawInput[i] = "erased"
+           erased == raw /\ s.rawInput[i] \in {"clean", "erased"}
+           flips == IF raw /\ s.rawInput[i] = "erased" THEN 1 ELSE 0
        IN s' = [s EXCEPT
            !.pc = IF io THEN "done" ELSE @,
            !.transportError = @ \/ io,
@@ -125,10 +127,13 @@ Raw ==
            !.oob[i] = IF raw /\ ~io THEN IF erased THEN "ones" ELSE "physical" ELSE @,
            !.clobbered = @ \/ raw,
            !.consumed = IF raw /\ ~io THEN @ \cup {i} ELSE @,
-           !.corrected = @ + IF erased THEN 1 ELSE 0,
+           !.corrected = @ + flips,
            !.failed = @ + IF raw /\ s.rawInput[i] = "bad" THEN 1 ELSE 0,
-           !.maxflips = IF erased THEN Max(@, 1) ELSE @,
-           !.erased = @ \/ erased, !.slot = @ + 1]
+           !.maxflips = Max(@, flips),
+           !.erased = CASE raw /\ Mutation = "overwrite-erased-state" -> erased
+                        [] Mutation = "ignore-clean-erased" -> @ \/ flips > 0
+                        [] OTHER -> @ \/ erased,
+           !.slot = @ + 1]
 Advance ==
     /\ s.pc \in {"raw", "vendor"} /\ s.slot = s.count
     /\ s' = [s EXCEPT !.first = @ + s.count, !.clobbered = FALSE,
@@ -170,7 +175,7 @@ Correction(i) ==
 ExpectedTag(i) ==
     IF Vendor THEN IF AllZero THEN "zero"
                    ELSE IF VendorErased THEN "ones" ELSE "decoded"
-    ELSE IF IsError(s.input[i]) THEN IF s.rawInput[i] = "erased" THEN "ones" ELSE "physical"
+    ELSE IF IsError(s.input[i]) THEN IF s.rawInput[i] \in {"clean", "erased"} THEN "ones" ELSE "physical"
          ELSE IF IsPattern(s.input[i]) THEN IF IsOnes(s.input[i]) THEN "ones" ELSE "zero"
               ELSE "decoded"
 \* A plain DMA buffer is not rewritten for successful reads or a failed
@@ -179,7 +184,7 @@ ExpectedMain(i) ==
     IF ~Dma THEN ExpectedTag(i)
     ELSE IF Vendor THEN IF AllZero \/ VendorErased THEN ExpectedTag(i) ELSE s.delivered[i]
     ELSE IF IsError(s.input[i]) THEN
-       IF s.rawInput[i] = "erased" \/ Scrambling THEN ExpectedTag(i) ELSE s.delivered[i]
+       IF s.rawInput[i] \in {"clean", "erased"} \/ Scrambling THEN ExpectedTag(i) ELSE s.delivered[i]
     ELSE IF IsPattern(s.input[i]) /\ Scrambling THEN ExpectedTag(i) ELSE s.delivered[i]
 ExpectedFailures ==
     IF Vendor THEN IF AllZero THEN N ELSE IF VendorErased THEN 0
@@ -203,7 +208,7 @@ VendorEvidence == Vendor /\ s.pc # "done" =>
         s.data[i] = (IF Dma THEN s.delivered[i] ELSE "decoded") /\ s.oob[i] = "decoded"
 TransportCorrect == s.pc = "done" =>
     s.transportError = (~Vendor /\ \E i \in Steps : IsError(s.input[i]) /\ s.rawInput[i] = "io")
-ExpectedErasedStep == \E i \in Steps : IF IsError(s.input[i]) THEN s.rawInput[i] = "erased"
+ExpectedErasedStep == \E i \in Steps : IF IsError(s.input[i]) THEN s.rawInput[i] \in {"clean", "erased"}
                                       ELSE IsOnes(s.input[i])
 TailCorrect == s.pc = "done" /\ ~s.transportError =>
     s.tail = IF ~OobRequired \/ (Vendor /\ (AllZero \/ VendorErased)) THEN "not-read"

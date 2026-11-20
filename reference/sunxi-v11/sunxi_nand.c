@@ -1258,10 +1258,7 @@ static int sunxi_get_ecc_offset(struct sunxi_nand_chip *sunxi_nand,
 	return step * ecc->bytes + sunxi_nfc_user_data_before(sunxi_nand, step + 1);
 }
 
-/*
- * Return 1 for an erased chunk or 0 for an uncorrectable chunk, with ECC
- * statistics updated in either case. Negative values report transport errors.
- */
+/* Account for the ECC result and record erased chunks. */
 static int sunxi_nfc_hw_ecc_read_error(struct nand_chip *nand,
 				       struct sunxi_nfc_ecc_read *read, int step)
 {
@@ -1297,7 +1294,10 @@ static int sunxi_nfc_hw_ecc_read_error(struct nand_chip *nand,
 
 	sunxi_nfc_hw_ecc_update_stats(nand, &read->max_bitflips, ret);
 
-	return ret >= 0;
+	if (ret >= 0)
+		read->has_erased_chunk = true;
+
+	return 0;
 }
 
 static int sunxi_nfc_hw_ecc_read_extra_oob(struct nand_chip *nand,
@@ -1431,8 +1431,6 @@ static int sunxi_nfc_oob_read_batch(struct nand_chip *nand,
 		ret = sunxi_nfc_hw_ecc_read_error(nand, read, step);
 		if (ret < 0)
 			return ret;
-		if (ret)
-			read->has_erased_chunk = true;
 	}
 
 	return 0;

@@ -5,8 +5,8 @@ The series tips below identify drafts, not released kernel versions.
 
 | Driver | Kernel commit | SHA-256 of `drivers/mtd/nand/raw/sunxi_nand.c` |
 | --- | --- | --- |
-| Fix-only v11 | `84db8061e076345b5469160da2a10900d7d08e9e` | `1098df8c3c7eaca65fc893ee0b4109cba886d9131eb565fa5f77cd7ccbeb39db` |
-| v11 plus the deferred format | `287a1a96d4255ff85376c46bb6088b9808fb6a16` | `37871b284a23cde56dfc669848ce49a7093383f85c634fc4768e71872c5f15f7` |
+| Fix-only v11 | `7c809a984f08cc4ada5ba5f8c6abb38f0d4cd717` | `555426a171ec7993ac5cb38f16b00d5443bda9ab5b649347c402fa1d5381313f` |
+| v11 plus the deferred format | `926449425acff8dd59f4b4ea08802f771c6912ea` | `b157ebf3c1d149f7fa3c395b3160f65252410bd0142056faac249b24062ea247` |
 
 `sunxi_nand.c` is the fix-only driver. Applying `firmware.patch` to it
 reconstructs the complete deferred driver, without carrying a second
@@ -23,3 +23,11 @@ The erased-buffer and erased-chunk functions are executed without editing
 their bodies. The bad-block decision and identification helpers extracted
 from the existing `reference/nand_base.c` match the NAND-next base. The
 older full-driver reference is deliberately unchanged for historical tests.
+
+`small-page-ecc.c` contains the base's unmodified
+`nand_ecc_sw_hamming_init_ctx()` and `nand_ooblayout_ecc_sp()`, from
+`drivers/mtd/nand/ecc-sw-hamming.c` and `drivers/mtd/nand/ecc.c`
+respectively. The small-page fixture also executes the on-host fallback
+switch and `rawnand_sw_hamming_init()` from `reference/nand_base.c`.
+Allocation and request-buffer setup are host shims; this check concerns
+layout ownership and physical parity offsets, not Hamming data correction.

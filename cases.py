@@ -43,6 +43,10 @@ MODULES = {
                        "GeometryPreserved"],
         "actions": ["Attach"],
     },
+    "NandMarkerFallback": {
+        "invariants": ["MarkerSafe", "HostRejected", "ExplicitChoice"],
+        "actions": ["Attach", "SelectEngine", "PlaceParity"],
+    },
     "NandPlainMarker": {
         "invariants": ["Source", "Stats", "Traffic", "Io"],
         "actions": ["First", "Tail", "Marker"],
@@ -69,6 +73,9 @@ for variant in ("no-guard", "within-field", "relocate"):
 for variant in ("ordinary-no-guard", "ordinary-within-field"):
     mutation("NandMarkerAdmission", {}, variant, "OrdinaryMarkerProtected")
 mutation("NandMarkerAdmission", {}, "restrict-software", "SoftwareUnchanged")
+add("NandMarkerFallback", "small-page-hamming-fallback", {})
+mutation("NandMarkerFallback", {}, "no-guard", "MarkerSafe")
+mutation("NandMarkerFallback", {}, "guard-software", "ExplicitChoice")
 add("NandPlainMarker", "ordinary-physical-marker", {})
 for variant, rule in (("erase-marker", "Source"), ("count-marker", "Stats"),
                       ("trust-pattern", "Source"), ("wrong-step", "Traffic"),
@@ -170,6 +177,11 @@ mutation("NandEcc", dict(counts, Batch=1), "stale-count-cache", "StatsCorrect")
 add("NandEcc", "ecc-mixed-raw-errors", dict(
     N=3, Batch=3, Vendor=False, OobRequired=True,
     RawResult="mixed", SpareErased=False, Kinds=kinds, Scrambling=False, Dma=True))
+raw_tail = dict(N=2, Batch=1, Vendor=False, OobRequired=True, RawResult="clean-mixed",
+                SpareErased=False, Kinds={"error"}, Scrambling=True, Dma=True)
+add("NandEcc", "ecc-clean-erased-and-media-errors", raw_tail)
+for variant in ("overwrite-erased-state", "ignore-clean-erased"):
+    mutation("NandEcc", raw_tail, variant, "TailCorrect")
 
 # Every nonempty byte range of each page is chosen by TLC, not by a fixture.
 # StepBytes = 3 leaves a middle byte as well as both step boundaries.

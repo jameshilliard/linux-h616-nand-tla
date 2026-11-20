@@ -1,4 +1,37 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+static void small_page_fallback(struct caps *caps)
+{
+    const int engines[] = {NAND_ECC_ENGINE_TYPE_ON_HOST, NAND_ECC_ENGINE_TYPE_SOFT,
+                           NAND_ECC_ENGINE_TYPE_NONE};
+    for (unsigned i = 0; i < ARRAY_SIZE(engines); i++) {
+        struct nand_chip n = {.controller = &controller, .mtd = {.writesize = 512, .oobsize = 16},
+                              .ecc = {.size = 1024, .strength = 16, .engine_type = engines[i]}};
+        bool hw = engines[i] == NAND_ECC_ENGINE_TYPE_ON_HOST;
+        controller.caps = caps; vendor_property = false; controller_layout = false;
+        nand_decode_bbm_options(&n);
+        assert(n.badblockpos == 5);
+        int ret = sunxi_nand_attach_chip(&n);
+        if (hw && !PLAIN_UNGUARDED) {
+            assert(ret == -EOPNOTSUPP && !controller_layout);
+            continue;
+        }
+        assert(!ret && controller_layout == hw);
+        if (engines[i] == NAND_ECC_ENGINE_TYPE_NONE)
+            continue; /* No ECC parity to locate. */
+        struct hamming_geometry g = hamming_geometry(hw, controller_layout);
+        assert(g.step == 256 && g.bytes == 3 && g.steps == 2 && g.controller_layout == hw);
+        if (g.controller_layout) {
+            struct mtd_oob_region first;
+            n.ecc.size = g.step; n.ecc.bytes = g.bytes; n.ecc.steps = g.steps;
+            assert(!sunxi_nand_ooblayout_ecc(&n.mtd, 0, &first));
+            assert(first.offset == 4 && first.length == 3);
+            assert(first.offset <= n.badblockpos && n.badblockpos < first.offset + first.length);
+        } else {
+            assert(!g.core_marker_in_parity);
+        }
+    }
+}
+
 int main(void)
 {
     struct caps *const variants[] = { &a10_caps, &a23_caps, &h616_caps };
@@ -55,6 +88,10 @@ int main(void)
     }
     assert(parity_witnesses[0] == (PLAIN_UNGUARDED ? 8 : 0));
     assert(parity_witnesses[1] == (UNGUARDED ? 8 : 0));
+    small_page_fallback(&a10_caps);
+    small_page_fallback(&a23_caps);
+    printf("6 oversized-step attach controls; hardware -> Hamming marker overlaps: %u\n",
+           PLAIN_UNGUARDED ? 2 : 0);
     printf("%u attach cases; accepted markers in parity: ordinary %u, firmware %u\n",
            tested, parity_witnesses[0], parity_witnesses[1]);
     return 0;

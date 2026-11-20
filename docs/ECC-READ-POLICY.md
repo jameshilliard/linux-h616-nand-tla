@@ -77,7 +77,7 @@ python3 run_ecc_read_policy.py --case subpage
 To compare the exact driver revisions under review:
 
 ```sh
-python3 check_ecc_read_policy.py --first-refactor early/sunxi_nand.c \
+python3 check_ecc_read_policy.py --first-refactor pre-snapshot-batch/sunxi_nand.c \
     fixes/sunxi_nand.c firmware/sunxi_nand.c
 ```
 
@@ -91,6 +91,9 @@ ordinary batch and finish bodies and compares the three firmware decision
 bodies to the reference used by the C harness. It intentionally fails closed
 on source drift. It does not execute the candidate or certify a new
 implementation of a helper.
+The optional early input is the ordinary batch decoder after the
+pattern/error decisions were merged and before the subpage window and
+register snapshot (patch 12 in this v11), not patch 3.
 
 ### Marker admission and readback
 
@@ -110,6 +113,17 @@ identification and geometry checks on 8- and 16-bit interfaces, with A10,
 A23 and H616 capabilities. The historical ordinary driver accepted eight
 tested small-page layouts with the marker in parity; neither current driver
 accepts any. Geometry tests do not program a chip.
+
+`NandMarkerFallback` checks a different x8 case: a 512+16 A10/A23 page
+with a requested 1024-byte hardware step. The old controller attach could
+succeed with zero whole steps. The NAND core then selected 256-byte
+software Hamming but retained the installed controller layout: its first
+three parity bytes occupied offsets 4–6, including the marker at byte 5.
+The current driver refuses that layout. An explicit software request
+does not install it; the core's small-page layout skips the marker.
+The host check executes the actual attach, fallback selection, Hamming
+initialization and parity layout functions. Disabling only the ordinary
+marker guard reproduces the overlap on both controller generations.
 
 On an otherwise erased ordinary first step with a programmed 0x00 marker,
 the old fallback treated that marker as eight corrected bitflips and could
@@ -141,13 +155,19 @@ unchanged bytes outside the request, OOB tail delivery and an injected
 failure at every modeled transport event. A further 48 trials check the
 raw data and OOB columns for each failing logical step in fixed and
 variable layouts, including a step with no protected user bytes.
+Ninety two-step trials check clean erased, corrected erased and
+uncorrectable steps in one or two batches, with failure at each raw command.
+An earlier erased result must survive a later media error. A failed raw
+command must return its error without charging that step to ECC statistics.
+On a completed batch the tests also check whether the real finish function
+uses the raw or randomized transport for the spare tail.
 The deferred subpage entry point must still read and classify a full page.
 The DMA fallback tests exercise the real PIO retry; DMA results, SRAM,
 register status and the transport failures are fixture inputs.
 
 Additional cases preserve the reset errno in both DMA read wrappers and
 check all four packed length registers after switching modes.
-Ten intentional C changes must fail their named assertions; compiler
+Thirteen intentional C changes must fail their named assertions; compiler
 failures or unrelated crashes do not count as successful controls.
 
 The two branches also share the H616 DMA read-recovery policy:
@@ -185,7 +205,8 @@ were replayed through `NandOobPipeline` in 119 TLC configurations, including
 These are bounded status and control-flow checks. `raw`, `ones`, and
 `decoded` are categories, not calculated physical NAND bytes; `normal`
 tail means the ordinary non-erased path, not necessarily that the chip
-scrambles. The raw erased outcome uses one representative corrected bit.
+scrambles. The raw erased outcomes distinguish a clean step from a
+representative corrected bit; the C tests also check larger counts.
 The model does not predict which hardware flags a physical page will
 produce, exercise MMIO, or inject every possible NAND transport failure.
 For actual byte comparisons see the [OOB pipeline](OOB-PIPELINE-CONFORMANCE.md).

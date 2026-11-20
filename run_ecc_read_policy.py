@@ -12,7 +12,7 @@ from run_v11 import FIRMWARE, ORDINARY, pinned_pair
 
 if __name__ == "__main__":
     modules = {name: MODULES[name] for name in
-               ("NandEcc", "NandSubpage", "NandMarkerAdmission", "NandPlainMarker",
+               ("NandEcc", "NandSubpage", "NandMarkerAdmission", "NandMarkerFallback", "NandPlainMarker",
                 "NandStreamingRecovery")}
     with tempfile.TemporaryDirectory() as directory:
         pinned_pair(Path(directory))

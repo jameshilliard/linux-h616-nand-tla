@@ -254,6 +254,55 @@ static unsigned erased_step_ranges(void)
     return checked;
 }
 
+/* A later raw reread must not forget an earlier erased step. A media
+ * failure updates ecc_stats; only a failed raw command fails this batch.
+ */
+static unsigned mixed_erased_steps(void)
+{
+    static const unsigned first_noise[] = {0, 1, 17}, second_noise[] = {0, 2, 17};
+    unsigned checked = 0;
+    for (unsigned first = 0; first < ARRAY_SIZE(first_noise); first++)
+    for (unsigned second = 0; second < ARRAY_SIZE(second_noise); second++)
+    for (unsigned split = 0; split < 2; split++)
+    for (unsigned fail = 0; fail <= 4; fail++) {
+        struct nand_chip n = setup(512, 2);
+        struct sunxi_nfc_ecc_read r = { .buf = main_data, .dma = true, .oob_required = true };
+        const unsigned noise[] = {first_noise[first], second_noise[second]};
+        n.options = NAND_NEED_SCRAMBLING;
+        for (unsigned step = 0; step < 2; step++)
+            set_noise(step * 512, noise[step]);
+        fail_raw_at = fail;
+        int ret = 0;
+        for (unsigned start = 0; start < 2 && !ret; start += split ? 1 : 2) {
+            struct sunxi_nfc_ecc_snapshot s = { .status = split ? 1 : 3, .count_reg = ~0U };
+            ret = sunxi_nfc_oob_read_batch(&n, &r, &s, start, split ? 1 : 2);
+        }
+        unsigned finished = fail ? (fail - 1) / 2 : 2;
+        unsigned corrected = 0, failed = 0, maximum = 0;
+        bool erased = false;
+        for (unsigned step = 0; step < finished; step++) {
+            if (noise[step] <= n.ecc.strength) {
+                corrected += noise[step];
+                if (noise[step] > maximum) maximum = noise[step];
+                erased = true;
+            } else {
+                failed++;
+            }
+        }
+        assert(ret == (fail ? -ETIMEDOUT : 0));
+        assert(r.has_erased_chunk == erased);
+        assert(r.max_bitflips == maximum && n.mtd.ecc_stats.corrected == corrected);
+        assert(n.mtd.ecc_stats.failed == failed && raw_calls == (fail ? fail : 4));
+        if (!ret) {
+            unsigned plain = plain_read_calls, randomized = random_read_calls;
+            assert(sunxi_nfc_oob_finish_read(&n, &r, NULL) == (int)maximum);
+            assert(plain_read_calls - plain == erased && random_read_calls - randomized == !erased);
+        }
+        checked++;
+    }
+    return checked;
+}
+
 static void wrapper_cases(void)
 {
     for (unsigned sub = 0; sub < 2; sub++)
@@ -336,6 +385,7 @@ static void firmware_cases(void)
 
 int main(void)
 {
+    unsigned mixed = mixed_erased_steps();
     unsigned checked = ordinary_cases();
     unsigned pio = pio_ranges();
     unsigned erased = erased_step_ranges();
@@ -343,8 +393,8 @@ int main(void)
 #if HAS_FW
     firmware_cases();
 #endif
-    printf("%u ordinary cases; %u PIO range/fault and %u erased-step geometry trials; "
+    printf("%u ordinary cases; %u PIO range/fault, %u erased-step geometry, %u mixed raw trials; "
            "core bad-block checks, DMA retry and packed register checks passed; firmware cases: %u\n",
-           checked, pio, erased, HAS_FW ? 25 : 0);
+           checked, pio, erased, mixed, HAS_FW ? 25 : 0);
     return 0;
 }

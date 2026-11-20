@@ -17,8 +17,8 @@ from run_marker_admission import declaration
 
 ROOT = Path(__file__).resolve().parent
 REF = ROOT / "reference/sunxi-v11"
-ORDINARY = "1098df8c3c7eaca65fc893ee0b4109cba886d9131eb565fa5f77cd7ccbeb39db"
-FIRMWARE = "37871b284a23cde56dfc669848ce49a7093383f85c634fc4768e71872c5f15f7"
+ORDINARY = "555426a171ec7993ac5cb38f16b00d5443bda9ab5b649347c402fa1d5381313f"
+FIRMWARE = "b157ebf3c1d149f7fa3c395b3160f65252410bd0142056faac249b24062ea247"
 CORE = "efcbf598df9bde05a304366e75e0bd1126ae002155cfe3d03dad0f4685ce807d"
 
 
@@ -143,6 +143,11 @@ def mutations(driver, cc, out, vendor):
         ("hw_ecc_read_error", "if (!step) {", "if (false) {", "ret == (int)corrected"),
         ("hw_ecc_read_error", "sunxi_get_oob_offset(sunxi_nand, ecc, step)",
          "sunxi_get_oob_offset(sunxi_nand, ecc, 0)", "r.max_bitflips == 3U + !!step"),
+        ("hw_ecc_read_error", "if (ret >= 0)\n\t\tread->has_erased_chunk = true;",
+         "read->has_erased_chunk = ret >= 0;", "r.has_erased_chunk == erased"),
+        ("hw_ecc_read_error", "if (ret >= 0)", "if (ret > 0)", "r.has_erased_chunk == erased"),
+        ("oob_finish_read", "!read->has_erased_chunk", "read->has_erased_chunk",
+         "plain_read_calls - plain == erased"),
         ("oob_read_batch", "if (!step)", "if (step)", "marker_commands == (want && pattern)"),
         ("oob_finish_read", "if (read->read_raw_bbm)", "if (read->oob_required)",
          "marker_commands == (want && pattern)"),
@@ -186,6 +191,9 @@ def main():
             test_driver(path.read_text(), args.cc, tmp)
             if args.mutations:
                 mutations(path.read_text(), args.cc, tmp, path == firmware)
+                if path == ordinary:
+                    subprocess.run([sys.executable, ROOT / "run_marker_admission.py", path,
+                                    "--cc", args.cc, "--omit-ordinary-guard"], check=True)
             if args.lifecycle:
                 subprocess.run([sys.executable, ROOT / "run_lifecycle.py", "--candidate-source", path,
                                 "--expect-available-children", "--expect-deferred-publication",

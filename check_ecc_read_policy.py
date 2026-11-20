@@ -42,8 +42,20 @@ def ordinary(source, snapshot, window=False):
             "if (!read->dma || randomized)\n\t\t\t\tmemset(data, pattern, ecc->size);",
             "if (pattern == 0xff)", "read->has_erased_chunk = true;", "continue;",
             "bitflips = sunxi_nfc_hw_ecc_read_count(", "sunxi_nfc_hw_ecc_update_stats(",
-            f"if ({raw_guard}!({field}status & NFC_ECC_ERR(slot)))", "sunxi_nfc_hw_ecc_read_error(",
-            "read->has_erased_chunk = true;")
+            f"if ({raw_guard}!({field}status & NFC_ECC_ERR(slot)))", "sunxi_nfc_hw_ecc_read_error(")
+    raw = body(source, PREFIX + "hw_ecc_read_error")
+    if "read->has_erased_chunk" in raw:
+        ordered(raw, "nand_check_erased_ecc_chunk(", "sunxi_nfc_hw_ecc_update_stats(",
+                "if (ret >= 0)\n\t\tread->has_erased_chunk = true;", "return 0;")
+        tail = batch.split("sunxi_nfc_hw_ecc_read_error(", 1)[1]
+        ordered(tail, "if (ret < 0)", "return ret;", "return 0;")
+        if "read->has_erased_chunk" in tail:
+            raise ValueError("batch unexpectedly interpreted an I/O status as an erased step")
+    elif not window or "sunxi_nfc_hw_ecc_read_chunks_pio(" not in source:
+        # Historical fixtures return the erased decision to the batch.
+        ordered(batch, "sunxi_nfc_hw_ecc_read_error(", "read->has_erased_chunk = true;")
+    else:
+        raise ValueError("missing erased-state accounting in the raw reread helper")
     finish = body(source, PREFIX + "oob_finish_read")
     ordered(finish, "if (read->oob_required)", "sunxi_nfc_hw_ecc_read_extra_oob(",
             "!read->has_erased_chunk", "return read->max_bitflips;")

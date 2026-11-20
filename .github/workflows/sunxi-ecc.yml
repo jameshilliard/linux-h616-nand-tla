@@ -7,6 +7,7 @@ on:
       - 'models/NandEcc.tla'
       - 'models/NandSubpage.tla'
       - 'models/NandMarkerAdmission.tla'
+      - 'models/NandMarkerFallback.tla'
       - 'models/NandPlainMarker.tla'
       - 'models/NandStreamingRecovery.tla'
       - 'models/NandOobPipeline.tla'

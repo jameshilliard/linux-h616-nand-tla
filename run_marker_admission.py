@@ -8,10 +8,54 @@ import subprocess
 import tempfile
 
 from run_c import HERE, extract_function
+from run_core import extract
 
 
 def declaration(source, start):
     return re.search("^" + re.escape(start) + r".*?^};", source, re.M | re.S)[0]
+
+
+def hamming_core(core):
+    """Execute the core's on-host -> Hamming dispatch with its actual layout/geometry functions."""
+    scan = extract(core, "nand_scan_tail")
+    start = scan.index("switch (ecc->engine_type) {\n\tcase NAND_ECC_ENGINE_TYPE_ON_HOST:")
+    dispatch = scan[start:scan.index("case NAND_ECC_ENGINE_TYPE_ON_DIE:", start)]
+    soft = extract(core, "nand_set_ecc_soft_ops").split("case NAND_ECC_ALGO_HAMMING:", 1)[1]
+    assert "rawnand_sw_hamming_init(chip)" in soft.split("case NAND_ECC_ALGO_BCH:", 1)[0]
+    return "\n".join([(HERE / "tests/marker_fallback_core.c").read_text(),
+                      (HERE / "reference/sunxi-v11/small-page-ecc.c").read_text(),
+                      extract(core, "rawnand_sw_hamming_init"), """
+struct hamming_geometry hamming_geometry(int on_host, int controller_layout)
+{
+    struct mtd_info media = {512, 16, controller_layout ? CONTROLLER : 0};
+    struct nand_chip chip_data = {.base.mtd = &media};
+    struct nand_chip *chip = &chip_data;
+    struct mtd_info *mtd = &media;
+    struct nand_ecc_ctrl *ecc = &chip->ecc;
+    int ret;
+    active = &chip->base;
+    ecc->engine_type = on_host ? NAND_ECC_ENGINE_TYPE_ON_HOST : NAND_ECC_ENGINE_TYPE_SOFT;
+    ecc->algo = NAND_ECC_ALGO_HAMMING;
+    ecc->size = 1024; ecc->strength = 16;
+""", dispatch, """
+    }
+    assert(ecc->engine_type == NAND_ECC_ENGINE_TYPE_SOFT);
+    struct hamming_geometry g = {ecc->size, ecc->bytes, ecc->steps, mtd->ooblayout == CONTROLLER, 0};
+    if (!g.controller_layout) {
+        assert(mtd->ooblayout == SMALL_PAGE);
+        for (int i = 0; i < 2; i++) {
+            struct mtd_oob_region p;
+            assert(!nand_ooblayout_ecc_sp(mtd, i, &p));
+            g.core_marker_in_parity |= p.offset <= 5 && 5 < p.offset + p.length;
+        }
+    }
+    struct nand_ecc_sw_hamming_conf *h = active->ecc.ctx.priv;
+    free(h->calc_buf); free(h->code_buf); free(h);
+    active = NULL;
+    return g;
+err_nand_manuf_cleanup:
+    abort();
+}"""])
 
 
 def main():
@@ -24,12 +68,22 @@ def main():
                    help="historical firmware candidate without either marker guard")
     p.add_argument("--expect-plain-unguarded", action="store_true",
                    help="historical ordinary layout allowed markers in parity")
+    p.add_argument("--omit-ordinary-guard", action="store_true",
+                   help="negative control: bypass just the ordinary marker guard")
     args = p.parse_args()
     src, header = args.driver.read_text(), args.header.read_text()
+    if args.omit_ordinary_guard:
+        guard = "if (nand->badblockpos >= SUNXI_NFC_BBM_SIZE)"
+        if src.count(guard) != 1:
+            p.error("expected exactly one ordinary marker guard")
+        src = src.replace(guard, "if (false)")
     vendor = "sunxi_nfc_allwinner_oob_attach_chip(" in src
     if args.expect_unguarded and not vendor:
         p.error("use --expect-plain-unguarded for an ordinary-only source")
     parts = ['#include "fixtures.h"', '#define round_down(x, y) ((x) & ~((y) - 1))']
+    parts += ['#include "marker_fallback.h"', 'static bool controller_layout;',
+              '#undef mtd_set_ooblayout', 'static int sunxi_nand_ooblayout_ops;',
+              '#define mtd_set_ooblayout(m, ops) (controller_layout = (ops) == &sunxi_nand_ooblayout_ops)']
     marker_size = re.search(r"^#define SUNXI_NFC_BBM_SIZE\s+\d+", src, re.M)
     if marker_size:
         parts.append(marker_size[0])
@@ -73,10 +127,15 @@ def main():
     parts.append((HERE / "tests/marker_admission.c").read_text())
     with tempfile.TemporaryDirectory() as tmp:
         exe = Path(tmp) / "marker"
-        subprocess.run([args.cc, "-std=gnu11", "-g", "-O1", "-Werror", "-no-pie",
-                        "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
-                        "-I", str(HERE / "tests"), f"-DUNGUARDED={int(args.expect_unguarded)}",
-                        f"-DPLAIN_UNGUARDED={int(args.expect_plain_unguarded or args.expect_unguarded)}",
+        # Compile the real core functions separately: layout mocks for the
+        # controller do not participate in the core's layout selection.
+        core_obj = Path(tmp) / "hamming.o"
+        flags = [args.cc, "-std=gnu11", "-g", "-O1", "-Werror", "-fsanitize=address,undefined",
+                 "-fno-sanitize-recover=all", "-I", str(HERE / "tests")]
+        subprocess.run([*flags, "-xc", "-", "-c", "-o", core_obj], check=True, text=True,
+                       input=hamming_core(args.core.read_text()))
+        subprocess.run([*flags, "-no-pie", core_obj, f"-DUNGUARDED={int(args.expect_unguarded)}",
+                        f"-DPLAIN_UNGUARDED={int(args.expect_plain_unguarded or args.expect_unguarded or args.omit_ordinary_guard)}",
                         f"-DHAS_FIRMWARE={int(vendor)}",
                         "-o", str(exe), "-xc", "-"], input="\n".join(parts), text=True, check=True)
         subprocess.run([exe], check=True)
