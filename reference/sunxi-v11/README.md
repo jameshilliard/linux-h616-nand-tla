@@ -20,14 +20,18 @@ The driver files retain the kernel source notices.
 `nand-core.c` is the base's unchanged `drivers/mtd/nand/core.c` (SHA-256
 `efcbf598df9bde05a304366e75e0bd1126ae002155cfe3d03dad0f4685ce807d`).
 The erased-buffer and erased-chunk functions are executed without editing
-their bodies. The bad-block decision and identification helpers extracted
-from the existing `reference/nand_base.c` match the NAND-next base. The
-older full-driver reference is deliberately unchanged for historical tests.
+their bodies. Applying the zero-context `nand-base.patch` to the historical
+`reference/nand_base.c` reproduces the base's entire raw NAND core,
+`drivers/mtd/nand/raw/nand_base.c` (SHA-256
+`b0850d52b1e3d0ebf76d4ced5e8c6e1540ffe712fbbdea75ba72af5e042b282f`).
+The v11 runners verify that hash before using it. Older references and
+their deliberate timing-recovery counterexample remain available to
+historical tests.
 
 `small-page-ecc.c` contains the base's unmodified
 `nand_ecc_sw_hamming_init_ctx()` and `nand_ooblayout_ecc_sp()`, from
 `drivers/mtd/nand/ecc-sw-hamming.c` and `drivers/mtd/nand/ecc.c`
 respectively. The small-page fixture also executes the on-host fallback
-switch and `rawnand_sw_hamming_init()` from `reference/nand_base.c`.
+switch and `rawnand_sw_hamming_init()` from this reconstructed NAND core.
 Allocation and request-buffer setup are host shims; this check concerns
 layout ownership and physical parity offsets, not Hamming data correction.

@@ -145,7 +145,10 @@ python3 run_v11.py --cc clang
 ```
 
 The [reference pair](../reference/sunxi-v11/README.md) fixes the exact
-sources for CI. Each tip executes 1,920 ordinary status/marker cases with
+sources for CI, including the generic NAND core at the submission base.
+The lifecycle test requires that core to return a failed mode-0 timing
+fallback; the older counterexample belongs to the historical suite.
+Each tip executes 1,920 ordinary status/marker cases with
 the real erased-chunk helper and the core's bad-block decision. The
 deferred tip also exercises its distinct page classification under PIO
 and DMA. Both PIO entry points execute the driver's page/step loop,

@@ -148,6 +148,8 @@ def main():
               transport_failures=sum(o["ret"]<0 for o in observations),
               all_zero_results=sum(o["main"][1] for o in observations),
               erased_results=sum(o["main"][2] for o in observations))
+    if "nand_base_sha256" in report:
+        meta["nand_base_sha256"] = report["nand_base_sha256"]
     (out/"summary.json").write_text(json.dumps(dict(passed=True,scope="source and independent byte oracle; TLC recorded separately",**meta),indent=2)+"\n")
     print(f"OOB pipeline: {len(traces)} source traces and independent full-buffer comparisons passed; logs: {out}",flush=True)
     if args.source_only: return 0

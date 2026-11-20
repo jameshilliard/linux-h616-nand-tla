@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Check both exact v11 source snapshots, not just the policy model."""
 import argparse
+from functools import cache
 import hashlib
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ REF = ROOT / "reference/sunxi-v11"
 ORDINARY = "555426a171ec7993ac5cb38f16b00d5443bda9ab5b649347c402fa1d5381313f"
 FIRMWARE = "b157ebf3c1d149f7fa3c395b3160f65252410bd0142056faac249b24062ea247"
 CORE = "efcbf598df9bde05a304366e75e0bd1126ae002155cfe3d03dad0f4685ce807d"
+NAND_BASE = "b0850d52b1e3d0ebf76d4ced5e8c6e1540ffe712fbbdea75ba72af5e042b282f"
 
 
 def checked(path, digest):
@@ -39,9 +41,22 @@ def pinned_pair(tmp):
     return ordinary, firmware
 
 
+@cache
+def pinned_nand_base():
+    # Older suites deliberately exercise the historical core. Only v11 uses
+    # the delta; verify the complete reconstructed file before extracting C.
+    with tempfile.TemporaryDirectory() as directory:
+        tmp = Path(directory)
+        target = tmp / "nand_base.c"
+        shutil.copyfile(ROOT / "reference/nand_base.c", target)
+        subprocess.run(["git", "apply", "--no-index", "--unidiff-zero", "--whitespace=error",
+                        REF / "nand-base.patch"], cwd=tmp, check=True)
+        return checked(target, NAND_BASE)
+
+
 def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
     core = checked(REF / "nand-core.c", CORE)
-    nand = (ROOT / "reference/nand_base.c").read_text()
+    nand = pinned_nand_base()
     header = (ROOT / "reference/rawnand.h").read_text()
     vendor = "sunxi_nfc_allwinner_oob_record_status(" in driver
     lines = [(ROOT / "tests/v11.h").read_text(), f"#define HAS_FW {int(vendor)}"]
@@ -122,7 +137,7 @@ def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
         subprocess.run([exe], check=True, env=dict(os.environ,
                        NAND_OOB_VECTORS=str(vectors), NAND_OOB_TRACE=str(trace)))
         raw = trace.read_bytes()
-        return dict(v11=True, passed=True, functions=functions,
+        return dict(v11=True, passed=True, functions=functions, nand_base_sha256=NAND_BASE,
                     driver_sha256=hashlib.sha256(driver.encode()).hexdigest(),
                     fixture_sha256=hashlib.sha256(unit.encode() + (ROOT / "tests/fixtures.h").read_bytes()).hexdigest(),
                     oob_traces_sha256=hashlib.sha256(raw).hexdigest(),
@@ -184,18 +199,22 @@ def main():
     with tempfile.TemporaryDirectory() as dest:
         tmp = Path(dest)
         ordinary, firmware = (args.ordinary, args.firmware) if args.ordinary else pinned_pair(tmp)
+        nand_base = tmp / "nand_base.c"
+        nand_base.write_text(pinned_nand_base())
         subprocess.run([sys.executable, ROOT / "check_ecc_read_policy.py", ordinary, firmware], check=True)
         for path in (ordinary, firmware):
             print(f"Source SHA-256: {hashlib.sha256(path.read_bytes()).hexdigest()}", flush=True)
-            subprocess.run([sys.executable, ROOT / "run_marker_admission.py", path, "--cc", args.cc], check=True)
+            marker = [sys.executable, ROOT / "run_marker_admission.py", path,
+                      "--core", nand_base, "--cc", args.cc]
+            subprocess.run(marker, check=True)
             test_driver(path.read_text(), args.cc, tmp)
             if args.mutations:
                 mutations(path.read_text(), args.cc, tmp, path == firmware)
                 if path == ordinary:
-                    subprocess.run([sys.executable, ROOT / "run_marker_admission.py", path,
-                                    "--cc", args.cc, "--omit-ordinary-guard"], check=True)
+                    subprocess.run([*marker, "--omit-ordinary-guard"], check=True)
             if args.lifecycle:
                 subprocess.run([sys.executable, ROOT / "run_lifecycle.py", "--candidate-source", path,
+                                "--candidate-nand-base", nand_base,
                                 "--expect-available-children", "--expect-deferred-publication",
                                 "--probe-traces"], check=True)
 

@@ -1,0 +1,50 @@
+--- a/nand_base.c
++++ b/nand_base.c
+@@ -843 +843 @@
+-	int ret;
++	int ret, reset_ret;
+@@ -912 +912,4 @@
+-	nand_reset_interface(chip, chipnr);
++	reset_ret = nand_reset_interface(chip, chipnr);
++	if (reset_ret)
++		return ret ?: reset_ret;
++
+@@ -914 +917 @@
+-	nand_reset_op(chip);
++	reset_ret = nand_reset_op(chip);
+@@ -917 +920 @@
+-	return ret;
++	return ret ?: reset_ret;
+@@ -3540,10 +3542,0 @@
+-			if (unlikely(oob)) {
+-				int toread = min(oobreadlen, max_oobsize);
+-
+-				if (toread) {
+-					oob = nand_transfer_oob(chip, oob, ops,
+-								toread);
+-					oobreadlen -= toread;
+-				}
+-			}
+-
+@@ -3568,0 +3562,10 @@
++			if (unlikely(oob)) {
++				int toread = min(oobreadlen, max_oobsize);
++
++				if (toread) {
++					oob = nand_transfer_oob(chip, oob, ops,
++								toread);
++					oobreadlen -= toread;
++				}
++			}
++
+@@ -5477 +5480 @@
+-	descs = devm_kcalloc(dev, ndescs, sizeof(*descs), GFP_KERNEL);
++	descs = devm_kzalloc_objs(dev, *descs, ndescs);
+@@ -5482,2 +5485,2 @@
+-		descs[i] = gpiod_get_index_optional(dev, "cs", i,
+-						    GPIOD_OUT_HIGH);
++		descs[i] = devm_gpiod_get_index_optional(dev, "cs", i,
++							 GPIOD_OUT_HIGH);
+@@ -6208 +6211 @@
+-	 * to explictly select the relevant die when interacting with the NAND
++	 * to explicitly select the relevant die when interacting with the NAND
