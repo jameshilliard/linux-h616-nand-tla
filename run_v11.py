@@ -115,6 +115,11 @@ def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
             add("sunxi_nfc_hw_ecc_" + n)
         if vendor:
             add("sunxi_nfc_allwinner_oob_read_subpage")
+        for n in ("buf_to_user_data", "dma_batch_steps", "hw_ecc_set_prot_oob_bytes",
+                  "hw_ecc_write_chunk", "hw_ecc_write_extra_oob", "hw_ecc_write_page",
+                  "hw_ecc_write_subpage", "hw_ecc_write_page_dma", "hw_ecc_write_oob"):
+            add("sunxi_nfc_" + n)
+        lines.append(extract((ROOT / "tests/flow.c").read_text(), "write_request"))
         lines.append((ROOT / "tests/v11.c").read_text())
     else:
         for n in ("buf_to_user_data", "dma_batch_steps", "allwinner_prefix_size",
@@ -172,6 +177,26 @@ def mutations(driver, cc, out, vendor):
         ("hw_ecc_read_chunks_pio", "step < end_step", "step + 1 < end_step",
          "observed_steps == mask"),
         ("reset_user_data_len", "int i = loop_step;", "int i = 0;", "!mmio_writes[reg / 4]"),
+        ("hw_ecc_write_page_dma", "if (first_step)\n\t\t\t\treturn ret;",
+         "if (false)\n\t\t\t\treturn ret;", "flow.begins == 1 && col == 0 && len == 0"),
+        ("hw_ecc_write_page_dma", "sunxi_nfc_wait_cmd_fifo_empty(nfc);\n\t\tif (ret)\n\t\t\treturn ret;",
+         "sunxi_nfc_wait_cmd_fifo_empty(nfc);\n\t\tif (ret)\n\t\t\tgoto pio_fallback;",
+         "ret == expected_error"),
+        ("hw_ecc_write_oob", "return nand->ecc.write_page(nand, buf, 1, page);",
+         "return nand->ecc.write_page(nand, buf, 1, page) ?: nand_prog_page_end_op(nand);",
+         "flow.confirms == 1"),
+        ("hw_ecc_write_page", "return nand_prog_page_end_op(nand);",
+         "nand_prog_page_end_op(nand); return 0;", "ret == expected_error"),
+        ("hw_ecc_write_page", "if (oob_required || (nand->options & NAND_NEED_SCRAMBLING))",
+         "if (oob_required)", "tail_writes == need_tail"),
+        ("hw_ecc_write_chunk", "sunxi_nfc_user_data_sz(sunxi_nand, step)",
+         "sunxi_nfc_user_data_sz(sunxi_nand, 0)", "== length / 4"),
+        ("hw_ecc_write_page_dma", "if (first_step)\n\t\t\twritel(mtd->writesize +",
+         "if (false)\n\t\t\twritel(mtd->writesize +", "== n->mtd.writesize + offset"),
+        ("hw_ecc_write_extra_oob", "*cur_off != offset + mtd->writesize", "*cur_off != offset",
+         "!again && ret == 0 && flow.confirms == 1 && flow.begins == 1"),
+        ("hw_ecc_write_page_dma", "return sunxi_nfc_hw_ecc_write_page(nand, buf, oob_required, page);",
+         "sunxi_nfc_hw_ecc_write_page(nand, buf, oob_required, page); return 0;", "ret == expected_error"),
     ] if not vendor else [
         ("allwinner_oob_finish_read", "if (result->zero_steps ==", "if (false && result->zero_steps ==",
          "n.mtd.ecc_stats.failed == (i != 0)"),

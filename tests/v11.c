@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Independent physical media, corrected USER_DATA and ECC flags. No flash writes. */
-static u8 image[8192];
+static u8 image[16384]; /* Includes the spare area of an 8 KiB test page. */
 static struct caps caps = {
     .reg_user_data = 0x100, .reg_user_data_len = 0x70, .reg_pat_id = 0x80,
     .reg_ecc_err_cnt = 0x90, .ecc_err_mask = 0xffff, .max_ecc_steps = 32,
@@ -383,6 +383,8 @@ static void firmware_cases(void)
 }
 #endif
 
+#include "v11_program.c"
+
 int main(void)
 {
     unsigned mixed = mixed_erased_steps();
@@ -396,5 +398,6 @@ int main(void)
     printf("%u ordinary cases; %u PIO range/fault, %u erased-step geometry, %u mixed raw trials; "
            "core bad-block checks, DMA retry and packed register checks passed; firmware cases: %u\n",
            checked, pio, erased, mixed, HAS_FW ? 25 : 0);
+    program_cases();
     return 0;
 }

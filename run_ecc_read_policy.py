@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Model the ordinary and firmware ECC read policies with stable TLC."""
+"""Check the ordinary and firmware ECC and page-transfer policies with stable TLC."""
 import sys
 import tempfile
 from pathlib import Path
@@ -13,7 +13,7 @@ from run_v11 import FIRMWARE, NAND_BASE, ORDINARY, pinned_nand_base, pinned_pair
 if __name__ == "__main__":
     modules = {name: MODULES[name] for name in
                ("NandEcc", "NandSubpage", "NandMarkerAdmission", "NandMarkerFallback", "NandPlainMarker",
-                "NandStreamingRecovery")}
+                "NandStreamingRecovery", "NandTransfer", "NandBatch")}
     with tempfile.TemporaryDirectory() as directory:
         pinned_pair(Path(directory))
     pinned_nand_base()

@@ -3,8 +3,8 @@
 EXTENDS Integers, FiniteSets
 CONSTANTS Write, Batches, Mutation, AbortStops
 \* Transport errors are distinct from ECC uncorrectability, which is handled
-\* in NandEcc. A single injected transport failure suffices to exercise every
-\* unwind edge; the subsequent PIO attempt is allowed to succeed.
+\* in NandEcc. Only failure to prepare the first write DMA mapping is
+\* retryable. The subsequent PIO write may itself fail, including at confirm.
 VARIABLE s
 vars == <<s>>
 Init == s =
@@ -13,7 +13,8 @@ Init == s =
      faultUsed |-> FALSE, failed |-> FALSE, terminalError |-> FALSE,
      begins |-> 0, confirms |-> 0, issued |-> 0, corrected |-> 7,
      fallback |-> FALSE, replayedWrite |-> FALSE, unsafeUnmap |-> FALSE,
-     prematureConfirm |-> FALSE]
+     prematureConfirm |-> FALSE, fifoFailed |-> FALSE, confirmFailed |-> FALSE]
+CanFail == ~s.faultUsed \/ (Write /\ s.mode = "pio")
 Setup ==
     /\ s.pc = "setup"
     /\ s' = [s EXCEPT !.pc = IF Write THEN "prepare" ELSE "read-begin"]
@@ -27,17 +28,23 @@ Prepare ==
     /\ s.pc = "prepare"
     /\ s' = [s EXCEPT !.mapped = s.mode = "dma", !.pc = "begin"]
 PrepareError ==
-    /\ s.pc = "prepare" /\ ~s.faultUsed
+    /\ s.pc = "prepare" /\ s.mode = "dma" /\ ~s.faultUsed
     /\ s' = [s EXCEPT !.faultUsed = TRUE, !.failed = TRUE, !.pc =
          IF ~Write \/ s.batch = 0 \/ Mutation = "partial-write-retry"
          THEN "fallback" ELSE "error"]
+\* Waiting for the controller FIFO precedes the DMA preparation. A failure
+\* here is a controller timeout, not a request to retry programming in PIO.
+FifoError ==
+    /\ Write /\ s.pc = "prepare" /\ s.mode = "dma" /\ ~s.faultUsed
+    /\ s' = [s EXCEPT !.faultUsed = TRUE, !.failed = TRUE, !.fifoFailed = TRUE,
+         !.pc = IF Mutation = "retry-fifo-timeout" THEN "fallback" ELSE "error"]
 Begin ==
     /\ s.pc = "begin"
     /\ s' = [s EXCEPT !.pc = "transfer",
          !.begins = IF Write /\ s.batch = 0 THEN @ + 1 ELSE @,
          !.ecc = TRUE, !.random = TRUE]
 BeginError ==
-    /\ s.pc = "begin" /\ ~s.faultUsed
+    /\ s.pc = "begin" /\ CanFail
     /\ s' = [s EXCEPT !.faultUsed = TRUE, !.failed = TRUE, !.pc = "abort"]
 Transfer ==
     /\ s.pc = "transfer"
@@ -47,7 +54,7 @@ FinishTransfer ==
     /\ s.pc = "wait"
     /\ s' = [s EXCEPT !.active = FALSE, !.pc = "cleanup"]
 TransferError ==
-    /\ s.pc = "wait" /\ ~s.faultUsed
+    /\ s.pc = "wait" /\ CanFail
     /\ s' = [s EXCEPT !.faultUsed = TRUE, !.failed = TRUE, !.pc = "abort"]
 Abort ==
     /\ s.pc = "abort"
@@ -72,7 +79,7 @@ Tail ==
     /\ s.pc = "tail"
     /\ s' = [s EXCEPT !.pc = IF Write THEN "confirm" ELSE "done"]
 TailError ==
-    /\ s.pc = "tail" /\ ~s.faultUsed
+    /\ s.pc = "tail" /\ CanFail
     /\ s' = [s EXCEPT !.faultUsed = TRUE, !.failed = TRUE,
                      !.pc = IF Write THEN "error" ELSE "fallback"]
 Fallback ==
@@ -91,19 +98,29 @@ Confirm ==
                      !.prematureConfirm = @ \/ s.failed \/ s.batch # Batches,
                      !.pc = IF Mutation = "oob-double-confirm" THEN "wrapper-confirm"
                             ELSE "done"]
+\* An errored confirm counts as an attempt; the array outcome is unknown.
+ConfirmError ==
+    /\ s.pc = "confirm" /\ CanFail
+    /\ s' = [s EXCEPT !.faultUsed = TRUE, !.confirms = @ + 1, !.confirmFailed = TRUE,
+         !.prematureConfirm = @ \/ s.failed \/ s.batch # Batches,
+         !.terminalError = ~(Mutation = "ignore-confirm-error" \/
+                             (s.fallback /\ Mutation = "ignore-retry-confirm-error")),
+         !.pc = "done"]
 WrapperConfirm ==
     /\ s.pc = "wrapper-confirm"
     /\ s' = [s EXCEPT !.confirms = @ + 1, !.pc = "done"]
 Done == s.pc = "done" /\ UNCHANGED vars
-Next == Setup \/ ReadBegin \/ ReadBeginError \/ Prepare \/ PrepareError \/
+Next == Setup \/ ReadBegin \/ ReadBeginError \/ Prepare \/ PrepareError \/ FifoError \/
         Begin \/ BeginError \/ Transfer \/ FinishTransfer \/ TransferError \/
         Abort \/ Cleanup \/ Consume \/ ConsumeError \/ Tail \/ TailError \/
-        Fallback \/ Error \/ Confirm \/ WrapperConfirm \/ Done
+        Fallback \/ Error \/ Confirm \/ ConfirmError \/ WrapperConfirm \/ Done
 Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
 NoUnsafeUnmap == ~s.unsafeUnmap
 NoWriteReplay == ~s.replayedWrite
 OneConfirm == s.confirms <= 1
 NoPrematureConfirm == ~s.prematureConfirm
+FifoTimeoutStopsWrite == s.fifoFailed => ~s.fallback
+ConfirmFailureReturned == s.confirmFailed => s.terminalError /\ s.confirms = 1
 ReturnCleanup == s.pc = "done" => ~s.mapped /\ ~s.ecc /\ ~s.random
 ReadStats == ~Write /\ s.pc = "done" /\ ~s.terminalError =>
     s.corrected = 7 + Batches

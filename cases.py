@@ -21,11 +21,12 @@ MODULES = {
     },
     "NandTransfer": {
         "invariants": ["NoUnsafeUnmap", "NoWriteReplay", "OneConfirm",
-                       "NoPrematureConfirm", "ReturnCleanup", "ReadStats", "WriteSuccess"],
-        "actions": ["Setup", "ReadBegin", "ReadBeginError", "Prepare", "PrepareError",
+                       "NoPrematureConfirm", "FifoTimeoutStopsWrite", "ConfirmFailureReturned",
+                       "ReturnCleanup", "ReadStats", "WriteSuccess"],
+        "actions": ["Setup", "ReadBegin", "ReadBeginError", "Prepare", "PrepareError", "FifoError",
                     "Begin", "BeginError", "Transfer", "FinishTransfer", "TransferError",
                     "Abort", "Cleanup", "Consume", "ConsumeError", "Tail", "TailError",
-                    "Fallback", "Error", "Confirm"],
+                    "Fallback", "Error", "Confirm", "ConfirmError"],
     },
     "NandEcc": {
         "invariants": ["CaptureBeforeRaw", "PendingErrors", "VendorEvidence",
@@ -137,6 +138,9 @@ for write in (False, True):
             ("oob-double-confirm", "OneConfirm"),
             ("confirm-on-error", "NoPrematureConfirm"),
             ("leak-ecc", "ReturnCleanup"),
+            ("retry-fifo-timeout", "FifoTimeoutStopsWrite"),
+            ("ignore-confirm-error", "ConfirmFailureReturned"),
+            ("ignore-retry-confirm-error", "ConfirmFailureReturned"),
         ):
             mutation("NandTransfer", c, name, invariant)
     else:

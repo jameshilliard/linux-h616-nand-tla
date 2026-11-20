@@ -46,12 +46,13 @@ static void reset_flow(unsigned failure)
     read_seen = pio_seen = 0;
 }
 
-static int write_case(struct nand_chip *nand, unsigned operation, bool want_oob)
+static int write_request(struct nand_chip *nand, unsigned operation, bool want_oob,
+                         unsigned offset, unsigned length)
 {
     switch (operation) {
     case 0: return sunxi_nfc_hw_ecc_write_page(nand, main_data, want_oob, 17);
     case 1: return sunxi_nfc_hw_ecc_write_page_dma(nand, main_data, want_oob, 17);
-    case 2: return sunxi_nfc_hw_ecc_write_subpage(nand, 1025, 1024, main_data, want_oob, 17);
+    case 2: return sunxi_nfc_hw_ecc_write_subpage(nand, offset, length, main_data, want_oob, 17);
     case 3:
         nand->ecc.write_page = sunxi_nfc_hw_ecc_write_page;
         return sunxi_nfc_hw_ecc_write_oob(nand, 17);
@@ -59,6 +60,11 @@ static int write_case(struct nand_chip *nand, unsigned operation, bool want_oob)
         nand->ecc.write_page = sunxi_nfc_hw_ecc_write_page_dma;
         return sunxi_nfc_hw_ecc_write_oob(nand, 17);
     }
+}
+
+static int write_case(struct nand_chip *nand, unsigned operation, bool want_oob)
+{
+    return write_request(nand, operation, want_oob, 1025, 1024);
 }
 
 static int read_case(struct nand_chip *nand, unsigned operation)

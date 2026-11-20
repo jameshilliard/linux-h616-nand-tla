@@ -180,13 +180,14 @@ enum flow_point { FP_NONE, FP_FIFO, FP_PREPARE, FP_BEGIN, FP_COLUMN,
                   FP_BUFFER, FP_WAIT, FP_CONFIRM, FP_READ };
 static struct {
     bool enabled, mapped, active, ecc, random, abort_failure, reset_held;
-    unsigned calls, fail_at, begins, confirms, issued, dma_issued, prepares, aborts;
+    unsigned calls, fail_at, fail_again_at, begins, confirms, issued, dma_issued, prepares, aborts;
     unsigned issued_at_failure;
+    int prepare_errno;
     enum flow_point failure;
 } flow;
 struct scatterlist { unsigned len; };
 static int flow_event(enum flow_point point) {
-    if (flow.enabled && ++flow.calls == flow.fail_at) {
+    if (flow.enabled && (++flow.calls == flow.fail_at || flow.calls == flow.fail_again_at)) {
         flow.failure = point;
         flow.issued_at_failure = flow.dma_issued;
         return -ETIMEDOUT;
@@ -211,6 +212,7 @@ static u32 readl(const void *p) {
     memcpy(&v, p, 4);
     return v;
 }
+static void (*program_issue_observer)(void);
 static void writel(u32 v, void *p) {
     assert(!flow.reset_held);
     ptrdiff_t off = (u8 *)p - controller.regs;
@@ -221,6 +223,7 @@ static void writel(u32 v, void *p) {
         flow.issued++;
         flow.active = flow.mapped;
         if (flow.mapped) flow.dma_issued++;
+        if (program_issue_observer) program_issue_observer();
     }
     memcpy(p, &v, 4);
 }
@@ -295,7 +298,7 @@ static int sunxi_nfc_dma_op_prepare(struct sunxi_nfc *n, const void *buf,
                                   struct scatterlist *sg) {
     assert(!flow.mapped && !flow.active);
     flow.prepares++;
-    if (flow_event(FP_PREPARE)) return -ETIMEDOUT;
+    if (flow_event(FP_PREPARE)) return flow.prepare_errno ? flow.prepare_errno : -ETIMEDOUT;
     sg->len = size * chunks;
     assert(sg->len > 0 && sg->len <= UINT16_MAX);
     flow.mapped = true;
@@ -341,14 +344,17 @@ static int nand_prog_page_begin_op(struct nand_chip *n, int page, unsigned col,
 static int nand_change_write_column_op(struct nand_chip *n, unsigned col,
                                       const void *data, unsigned len, bool force) {
     assert(col + len <= n->mtd.writesize + n->mtd.oobsize);
+    if (n->mtd.writesize <= 512) return -ENOTSUPP;
     if (flow_event(FP_COLUMN)) return -ETIMEDOUT;
     column = col + len;
     return 0;
 }
+static void (*write_buffer_observer)(struct nand_chip *, const u8 *, unsigned);
 static int sunxi_nfc_randomizer_write_buf(struct nand_chip *n, const u8 *buf,
                                          int len, bool ecc, int page) {
     assert(column + len <= n->mtd.writesize + n->mtd.oobsize);
     if (flow_event(FP_BUFFER)) return -ETIMEDOUT;
+    if (write_buffer_observer) write_buffer_observer(n, buf, len);
     column += len;
     return 0;
 }

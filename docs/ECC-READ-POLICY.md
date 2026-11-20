@@ -182,6 +182,32 @@ control has no outstanding transfer, so a DMA retirement failure cannot
 mask it. Separate assumptions test ineffective retirement. The C tests
 check the exact errno from both the full-page and subpage wrappers.
 
+### Page program ordering
+
+The same two source snapshots supply the page, subpage and OOB writers.
+Only a failed first DMA preparation can retry a write in PIO. A timeout
+waiting for the controller FIFO, or a failure after data has been issued,
+must not replay it. A failed confirm is still a confirm attempt; a failed
+PIO retry must return its own error. `NandTransfer` checks these paths,
+including a negative control reachable only if both attempts fail.
+
+The C fixture injects errors at successive command, DMA and buffer
+boundaries. It distinguishes a rejected mapping, a command timeout and
+a failed abort by their return codes. At each command it checks the
+protected OOB bytes programmed into the registers, including the H616
+32/16/0-byte transition and the first slot after a bank rollover, against
+an independent geometry calculation. `NandBatch` checks the corresponding
+step, slot, column and length properties. Separate small-page controls
+require a sequential PIO write without a random-column command; they do
+not claim hardware support for a layout rejected during attach.
+
+The ordinary tip executes 1,887 programming cases and the deferred tip
+executes 2,739, including its firmware layouts. The fixture observes commands
+and returned errors, not NAND-array durability or the physical effects of
+an ambiguous confirm. Those remain NAND-part assumptions.
+
+### Deferred byte pipeline
+
 For the deferred branch, the [byte-pipeline checker](OOB-PIPELINE-CONFORMANCE.md)
 also runs 430 source traces through the public batch and finish dispatchers,
 including mixed statuses and transport errors. An independent oracle checks

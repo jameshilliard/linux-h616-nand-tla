@@ -3,8 +3,10 @@
 The [November 20 fix-only v11 and deferred-format validation](docs/ECC-READ-POLICY.md#marker-admission-and-readback)
 checks both source snapshots. It distinguishes a corrected bad-block marker
 from a physical marker on an erased or pattern read, and rejects layouts
-in which parity would overwrite the marker. Run `python3 run_v11.py` to
-exercise both drivers without an external kernel checkout.
+in which parity would overwrite the marker. The [program checks](docs/ECC-READ-POLICY.md#page-program-ordering)
+exercise the same snapshots from the first transfer through program confirm,
+including failures during a PIO retry. Run `python3 run_v11.py` to exercise
+both drivers without an external kernel checkout.
 
 The [November 16 parser-reference update](docs/PARSER-REFERENCE-LIFETIME.md)
 distinguishes metadata retention from provider-open permission, reproduces the
