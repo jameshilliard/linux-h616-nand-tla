@@ -7,12 +7,21 @@ on:
       - 'models/NandEcc.tla'
       - 'models/NandSubpage.tla'
       - 'models/NandMarkerAdmission.tla'
+      - 'models/NandPlainMarker.tla'
       - 'cases.py'
       - 'run.py'
       - 'run_ecc_read_policy.py'
       - 'check_ecc_read_policy.py'
       - 'mtdchar_cases.py'
       - 'run_c.py'
+      - 'run_core.py'
+      - 'run_lifecycle.py'
+      - 'run_marker_admission.py'
+      - 'run_v11.py'
+      - 'source_coverage.py'
+      - 'reference/sunxi-v11/**'
+      - 'reference/nand_base.c'
+      - 'reference/rawnand.h'
       - 'reference/sunxi_nand.c'
       - 'source.json'
       - 'tests/**'
@@ -35,3 +44,5 @@ jobs:
           java-version: '21'
       - run: python3 run_ecc_read_policy.py --download
       - run: python3 run_c.py
+      - run: python3 run_v11.py --cc gcc --lifecycle --mutations
+      - run: python3 run_v11.py --cc clang

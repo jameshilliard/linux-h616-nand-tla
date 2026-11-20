@@ -1,6 +1,15 @@
 # Current sunxi driver verification
 
-## Current submission and local lifetime-v6 integration (2026-11-16)
+## Fix-only submission and deferred format (2026-11-20)
+
+The [pinned pair](../reference/sunxi-v11/README.md) corresponds to the
+26-patch fix-only branch and its two-patch format extension, on NAND-next
+`ec1e844b9486`. Neither depends on the lifetime or boot-partition work.
+The [ECC validation](ECC-READ-POLICY.md#marker-admission-and-readback)
+distinguishes the two policies and executes the actual code for each.
+Historical measurements below are not hardware tests of these tips.
+
+## Earlier submission and local lifetime-v6 integration (2026-11-16)
 
 The 30-patch Sunxi v11 submission draft is `fa01ab338914`, based on NAND-next
 `30daaf3e7897`, posted lifetime v5 and its posted prerequisite fixes, and posted

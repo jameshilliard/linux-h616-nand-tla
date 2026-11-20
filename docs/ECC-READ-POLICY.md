@@ -11,7 +11,7 @@ ordinary format.
 | ECC error, with or without a pattern | Preserve the slot for a raw erased-step check after consuming the batch. Propagate raw-read transport failures. | Preserve decoded main and protected OOB, including on data-only reads. Record the exception and independently record any zero pattern. No ordinary raw reread. |
 | Pattern without an ECC error | Fill main data on PIO or scrambled DMA; plain DMA preserves its delivered main bytes. Fill requested OOB with the slot's pattern. An all-ones step marks the page as having an erased chunk. | Record the pattern as an exception even if hardware suppressed the ECC error. |
 | Neither flag | Use the corrected bytes and correction count. | Collect the count for a possible ordinary decoded-page result. |
-| End of read | Only read the tail when OOB is requested; use the raw tail if any step was erased. | A zero pattern reported for every ECC step takes priority without inspecting the unprotected tail: zero-fill and count one failed step per step. Otherwise an exception plus erased spare yields an erased page. Other pages keep the decoded data and only read unprotected OOB on request. |
+| End of read | Only read the tail when OOB is requested; use the raw tail if any step was erased. If the first step's OOB was synthesized from a pattern, read its two physical marker bytes after the tail. | A zero pattern reported for every ECC step takes priority without inspecting the unprotected tail: zero-fill and count one failed step per step. Otherwise an exception plus erased spare yields an erased page. Other pages keep the decoded data and only read unprotected OOB on request. |
 
 `NandEcc` dispatches before both batch consumption and page finish. Its
 independent oracle uses the original logical inputs, not the decision
@@ -92,7 +92,7 @@ bodies to the reference used by the C harness. It intentionally fails closed
 on source drift. It does not execute the candidate or certify a new
 implementation of a helper.
 
-### Firmware marker admission
+### Marker admission and readback
 
 The firmware spare check examines byte zero. On x8 NAND with a 512-byte
 page the raw NAND core uses byte five for its bad-block marker. A10/A23
@@ -101,28 +101,47 @@ data and byte five is generated parity. A successful controller attach
 alone therefore does not imply that a later mark-bad write can set the
 marker the core will read.
 
-`NandMarkerAdmission` checks the opt-in gate independently of page-read
-status. The normal format keeps its existing admission rules, the marker
-is not relocated, and otherwise valid byte-zero layouts remain usable.
-The four negative controls drop the gate, accept any protected byte,
-relocate the marker, or apply the restriction to ordinary NAND. This model
-takes geometry validity as an input; it does not simulate BCH.
+`NandMarkerAdmission` checks both layouts. Ordinary controller ECC reserves
+bytes zero and one of the first step; the firmware check specifically needs
+byte zero. Neither changes the marker selected by the NAND core. Software
+ECC on an ordinary chip does not need the controller's marker restriction.
+The model takes geometry validity as an input; the C test runs the actual
+identification and geometry checks on 8- and 16-bit interfaces, with A10,
+A23 and H616 capabilities. The historical ordinary driver accepted eight
+tested small-page layouts with the marker in parity; neither current driver
+accepts any. Geometry tests do not program a chip.
 
-To check the actual geometry calculation, run the source-extracted attach
-test against the deferred driver and the NAND core from the matching tree:
+On an otherwise erased ordinary first step with a programmed 0x00 marker,
+the old fallback treated that marker as eight corrected bitflips and could
+return 0xff to `nand_block_bad()`. `NandPlainMarker` models the marker
+separately from noise in user data or parity. A raw erased check preserves
+the two reserved bytes, a hardware pattern needs the physical marker when
+OOB was requested, and successful ECC uses the corrected marker. Error,
+all-zero and all-ones hardware outputs are independent inputs: these tests
+do not infer which output an actual chip will produce for a factory marker.
+The model also checks the raw marker command is issued only for the first
+step, after a successful tail read, and its error is not converted to success.
+
+Run the current proof and its C checks from a clean checkout:
 
 ```sh
-python3 run_marker_admission.py linux/drivers/mtd/nand/raw/sunxi_nand.c \
-    --core linux/drivers/mtd/nand/raw/nand_base.c --header linux/include/linux/mtd/rawnand.h
+python3 run_ecc_read_policy.py --download
+python3 run_v11.py --cc gcc --lifecycle --mutations
+python3 run_v11.py --cc clang
 ```
 
-The test covers A10, A23 and H616 capability fields, hardware and software
-ECC, both format selections, three page sizes and five spare sizes. The
-pre-guard driver (`--expect-unguarded`) accepted eight cases in which the
-marker fell in parity; the guarded driver accepted none. Register setup
-and page program operations are not executed.
+The [reference pair](../reference/sunxi-v11/README.md) fixes the exact
+sources for CI. Each tip executes 1,920 ordinary status/marker cases with
+the real erased-chunk helper and the core's bad-block decision. The
+deferred tip also exercises its distinct page classification under PIO
+and DMA. Additional cases inject column errors, check that later steps
+do not own the BBM, preserve the reset errno in both DMA read wrappers,
+and check all four packed length registers after switching modes.
+Seven intentional C changes must fail their named assertions; compiler
+failures or unrelated crashes do not count as successful controls.
 
-The range and pattern-read checks passed on the fix-only driver with SHA-256
+Before the ordinary-marker fixes, the range and pattern-read checks passed
+on the fix-only driver with SHA-256
 `a2ad1b837a00df0a89aeefe550f6817193a50e542091731bf71d55086efd944a`
 and its dependent firmware variant,
 `a77f3dab060faf9783590d51f55a867c0524835288ec06417d83b531d7169c2f`.

@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Check both exact v11 source snapshots, not just the policy model."""
+import argparse
+import hashlib
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+
+from run_core import extract
+from run_marker_admission import declaration
+
+ROOT = Path(__file__).resolve().parent
+REF = ROOT / "reference/sunxi-v11"
+ORDINARY = "cc99bdbc76e0fc9ed069cdd8cc06b09e2d5f3f3e251c1c63f3982872ea2aa355"
+FIRMWARE = "3bcabc69afb688297c5595433a9e3e23eae9fe96d6e420672294cd051df32336"
+CORE = "efcbf598df9bde05a304366e75e0bd1126ae002155cfe3d03dad0f4685ce807d"
+
+
+def checked(path, digest):
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ValueError(f"{path.name}: reference hash mismatch")
+    return data.decode()
+
+
+def test_driver(driver, cc, out, expected_failure=None):
+    core = checked(REF / "nand-core.c", CORE)
+    nand = (ROOT / "reference/nand_base.c").read_text()
+    header = (ROOT / "reference/rawnand.h").read_text()
+    vendor = "sunxi_nfc_allwinner_oob_record_status(" in driver
+    lines = [(ROOT / "tests/v11.h").read_text(), f"#define HAS_FW {int(vendor)}"]
+    for name in ("NAND_BBM_FIRSTPAGE", "NAND_BBM_SECONDPAGE", "NAND_BBM_LASTPAGE"):
+        lines.append(re.search(r"^#define " + name + r"\s+.+", header, re.M)[0])
+    for name in ("SUNXI_NFC_BBM_SIZE", "NFC_MAX_BYTE_COUNT"):
+        lines.append(re.search(r"^#define " + name + r"\s+\d+", driver, re.M)[0])
+    for prefix in ("page", "ecc512", "ecc1024"):
+        lines.append(declaration(driver, "static const u16 sunxi_nfc_randomizer_" + prefix + "_seeds[] = {"))
+    if vendor:
+        lines.append(declaration(driver, "struct sunxi_nfc_allwinner_oob_status {"))
+    for name in ("ecc_read", "ecc_snapshot"):
+        lines.append(declaration(driver, "struct sunxi_nfc_" + name + " {"))
+    lines += [extract(core, n) for n in ("nand_check_erased_buf", "nand_check_erased_ecc_chunk")]
+    lines += [extract(nand, n) for n in ("nand_bbm_get_next_page", "nand_block_bad")]
+    common = """randomizer_step randomizer_state randomize_bbm user_data_to_buf
+              user_data_before user_data_sz hw_ecc_get_prot_oob_bytes hw_ecc_update_stats
+              read_column hw_ecc_read_error hw_ecc_read_pattern_id hw_ecc_read_count
+              hw_ecc_read_extra_oob reset_user_data_len user_data_len_code
+              set_user_data_len_pio set_user_data_len_dma""".split()
+    # get_oob_offset and get_ecc_offset deliberately have no nfc_ prefix.
+    for n in common[:5]:
+        lines.append(extract(driver, "sunxi_nfc_" + n))
+    for n in ("sunxi_get_oob_offset", "sunxi_get_ecc_offset"):
+        lines.append(extract(driver, n))
+    if vendor:
+        lines.append(extract(driver, "sunxi_nfc_bbm_needs_compensation"))
+    for n in common[5:]:
+        lines.append(extract(driver, "sunxi_nfc_" + n))
+    if vendor:
+        extra = """sunxi_nfc_buf_chunk_size sunxi_nfc_randomize_buf sunxi_nfc_allwinner_oob_record_status
+                   sun4i_a10_nfc_spare_is_erased sun50i_h6_nfc_spare_is_erased
+                   sunxi_nfc_allwinner_oob_spare_is_erased sunxi_nfc_allwinner_oob_read_unprotected
+                   sunxi_nfc_allwinner_oob_read_batch sunxi_nfc_allwinner_oob_finish_read""".split()
+        lines += [extract(driver, n) for n in extra]
+    for n in ("oob_read_batch", "oob_finish_read", "hw_ecc_read_page_dma", "hw_ecc_read_subpage_dma"):
+        lines.append(extract(driver, "sunxi_nfc_" + n))
+    lines.append((ROOT / "tests/v11.c").read_text())
+    exe = out / "policy"
+    subprocess.run([cc, "-std=gnu11", "-g", "-O1", "-Wall", "-Wextra", "-Werror",
+                    "-Wno-unused-parameter", "-Wno-unused-function", "-Wno-unused-variable",
+                    "-Wno-sign-compare", "-fno-strict-aliasing", "-fno-strict-overflow",
+                    "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-no-pie",
+                    "-I", str(ROOT / "tests"), "-xc", "-", "-o", exe],
+                   input="\n".join(lines), text=True, check=True)
+    if expected_failure is None:
+        subprocess.run([exe], check=True)
+    else:
+        failure = subprocess.run([exe], cwd=out, capture_output=True, text=True)
+        if failure.returncode != -signal.SIGABRT or expected_failure not in failure.stderr:
+            raise RuntimeError(f"did not detect {expected_failure!r}: {failure.stderr}")
+
+
+def mutations(driver, cc, out, vendor):
+    # A compiler failure, sanitizer error or unrelated assertion is not
+    # evidence that the relevant behavioural regression was detected.
+    controls = [
+        ("hw_ecc_read_error", "if (!data_off) {", "if (false) {", "ret == (int)corrected"),
+        ("oob_read_batch", "if (!step)", "if (step)", "marker_commands == (want && pattern)"),
+        ("oob_finish_read", "if (read->read_raw_bbm)", "if (read->oob_required)",
+         "marker_commands == (want && pattern)"),
+        ("hw_ecc_read_page_dma", " || nfc->recovery_failed", "", "ret == (first_fails"),
+        ("hw_ecc_read_subpage_dma", " || nfc->recovery_failed", "", "ret == (first_fails"),
+        ("reset_user_data_len", "int i = loop_step;", "int i = 0;", "!mmio_writes[reg / 4]"),
+    ] if not vendor else [
+        ("allwinner_oob_finish_read", "if (result->zero_steps ==", "if (false && result->zero_steps ==",
+         "n.mtd.ecc_stats.failed == (i != 0)"),
+    ]
+    for name, before, after, oracle in controls:
+        body = extract(driver, "sunxi_nfc_" + name)
+        if body.count(before) != 1:
+            raise ValueError("mutation does not match current " + name)
+        test_driver(driver.replace(body, body.replace(before, after), 1), cc, out, oracle)
+        print(f"Detected source mutation: {name}", flush=True)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--cc", default="gcc")
+    p.add_argument("--lifecycle", action="store_true",
+                   help="also exercise scan, publication and unwind on each tip with GCC/gcov")
+    p.add_argument("--mutations", action="store_true",
+                   help="require each deliberate regression to fail its specific assertion")
+    p.add_argument("--ordinary", type=Path)
+    p.add_argument("--firmware", type=Path)
+    args = p.parse_args()
+    if bool(args.ordinary) != bool(args.firmware):
+        p.error("provide both candidate files or neither")
+    with tempfile.TemporaryDirectory() as dest:
+        tmp = Path(dest)
+        ordinary = args.ordinary or REF / "sunxi_nand.c"
+        firmware = args.firmware or tmp / "sunxi_nand.c"
+        if not args.ordinary:
+            checked(ordinary, ORDINARY)
+            shutil.copyfile(ordinary, firmware)
+            subprocess.run(["git", "apply", "--no-index", "--whitespace=error", "-p5", REF / "firmware.patch"],
+                           cwd=tmp, check=True)
+            checked(firmware, FIRMWARE)
+        subprocess.run([sys.executable, ROOT / "check_ecc_read_policy.py", ordinary, firmware], check=True)
+        for path in (ordinary, firmware):
+            print(f"Source SHA-256: {hashlib.sha256(path.read_bytes()).hexdigest()}", flush=True)
+            subprocess.run([sys.executable, ROOT / "run_marker_admission.py", path, "--cc", args.cc], check=True)
+            test_driver(path.read_text(), args.cc, tmp)
+            if args.mutations:
+                mutations(path.read_text(), args.cc, tmp, path == firmware)
+            if args.lifecycle:
+                subprocess.run([sys.executable, ROOT / "run_lifecycle.py", "--candidate-source", path,
+                                "--expect-available-children", "--expect-deferred-publication",
+                                "--probe-traces"], check=True)
+
+
+if __name__ == "__main__":
+    main()

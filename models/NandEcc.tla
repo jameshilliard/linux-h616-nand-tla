@@ -60,6 +60,8 @@ SlotCount == Counts[s.slot % 4]
 \* Error wins over a simultaneously detected pattern. pendingRaw is a
 \* history variable: the C second pass examines saved hardware error bits.
 \* Model DMA's main-buffer contents independently of pattern status.
+\* Ordinary OOB here denotes the step payload, not the two reserved
+\* first-step marker bytes. NandPlainMarker checks their distinct sources.
 OrdinarySlot ==
     /\ s.pc = "ordinary" /\ s.slot < s.count
     /\ LET i == LogicalStep

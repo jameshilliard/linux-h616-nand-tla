@@ -129,6 +129,7 @@ struct sunxi_nfc {
     void *dev;
     void *dmac;
     bool use_mdma;
+    bool recovery_failed;
     void *mdma_desc;
 };
 struct sunxi_nfc_oob_ops;
@@ -147,6 +148,7 @@ struct nand_chip {
     unsigned buf_align;
     const struct sunxi_nfc_oob_ops *oob_ops;
     unsigned badblockpos, user_data_step, user_data_total;
+    unsigned badblockbits, page_shift, pagemask;
     bool allwinner_oob;
 };
 struct mtd_oob_region { unsigned offset, length; };

@@ -1,0 +1,471 @@
+diff --git a/drivers/mtd/nand/raw/sunxi_nand.c b/drivers/mtd/nand/raw/sunxi_nand.c
+index fc1664922545..fc8ee53d6b2f 100644
+--- a/drivers/mtd/nand/raw/sunxi_nand.c
++++ b/drivers/mtd/nand/raw/sunxi_nand.c
+@@ -274,6 +274,7 @@ struct sunxi_nfc_timings {
+  * @sels: array of CS lines descriptions
+  * @user_data_total: protected user bytes in a programmable layout
+  * @user_data_step: maximum bytes assigned to each step, zero for a fixed layout
++ * @allwinner_oob: use the Allwinner firmware page format
+  * @registered: whether the MTD device has been registered
+  */
+ struct sunxi_nand_chip {
+@@ -285,6 +286,7 @@ struct sunxi_nand_chip {
+ 	u32 timing_ctl;
+ 	u16 user_data_total;
+ 	u8 user_data_step;
++	bool allwinner_oob;
+ 	bool registered;
+ 	int nsels;
+ 	struct sunxi_nand_chip_sel sels[] __counted_by(nsels);
+@@ -340,6 +342,7 @@ struct sunxi_nfc_user_data_layout {
+  * @max_user_data_len:	Maximum programmable user-data bytes per ECC step
+  * @sram_size:		Size of the NAND controller SRAM
+  * @timings:		Controller timing characteristics
++ * @spare_is_erased:	Firmware erased-page check on re-encoded protected OOB
+  */
+ struct sunxi_nfc_caps {
+ 	bool has_mdma;
+@@ -368,6 +371,7 @@ struct sunxi_nfc_caps {
+ 	unsigned int max_ecc_steps;
+ 	int sram_size;
+ 	const struct sunxi_nfc_timings *timings;
++	bool (*spare_is_erased)(struct nand_chip *nand, const u8 *spare, int page);
+ };
+ 
+ /**
+@@ -933,6 +937,11 @@ static void sunxi_nfc_randomizer_disable(struct nand_chip *nand)
+ 	       nfc->regs + NFC_REG_ECC_CTL);
+ }
+ 
++static bool sunxi_nfc_bbm_needs_compensation(struct nand_chip *nand)
++{
++	return (nand->options & NAND_NEED_SCRAMBLING) && !to_sunxi_nand(nand)->allwinner_oob;
++}
++
+ static void sunxi_nfc_randomize_bbm(struct nand_chip *nand, int page, u8 *bbm)
+ {
+ 	u16 state = sunxi_nfc_randomizer_state(nand, page, true);
+@@ -1057,7 +1066,7 @@ static void sunxi_nfc_hw_ecc_get_prot_oob_bytes(struct nand_chip *nand, u8 *oob,
+ 	}
+ 
+ 	/* Undo hardware de-randomization of the plain on-flash BBM. */
+-	if (bbm && (nand->options & NAND_NEED_SCRAMBLING))
++	if (bbm && sunxi_nfc_bbm_needs_compensation(nand))
+ 		sunxi_nfc_randomize_bbm(nand, page, oob);
+ }
+ 
+@@ -1138,7 +1147,7 @@ static void sunxi_nfc_hw_ecc_set_prot_oob_bytes(struct nand_chip *nand,
+ 	unsigned int i;
+ 
+ 	/* Compensate hardware randomization so the BBM stays plain on flash. */
+-	if (bbm && (nand->options & NAND_NEED_SCRAMBLING)) {
++	if (bbm && sunxi_nfc_bbm_needs_compensation(nand)) {
+ 		memcpy(user_data, oob, user_data_sz);
+ 		sunxi_nfc_randomize_bbm(nand, page, user_data);
+ 		oob = user_data;
+@@ -1212,8 +1221,16 @@ static int sunxi_nfc_hw_ecc_read_error(struct nand_chip *nand,
+ 	return ret >= 0;
+ }
+ 
++struct sunxi_nfc_allwinner_oob_status {
++	u32 error_steps;
++	u32 zero_steps;
++	unsigned int corrected;
++	unsigned int max_bitflips;
++};
++
+ /* Shared across a read's transfers; buf remains the full-page buffer base. */
+ struct sunxi_nfc_ecc_read {
++	struct sunxi_nfc_allwinner_oob_status allwinner_oob;
+ 	u8 *buf;
+ 	int page;
+ 	int first_req_step;
+@@ -1332,6 +1349,242 @@ static int sunxi_nfc_hw_ecc_read_extra_oob(struct nand_chip *nand,
+ 	return 0;
+ }
+ 
++static void sunxi_nfc_randomize_buf(u16 state, u8 *buf, unsigned int len)
++{
++	while (len--) {
++		*buf++ ^= state;
++		state = sunxi_nfc_randomizer_step(state, 8);
++	}
++}
++
++static void
++sunxi_nfc_allwinner_oob_record_status(struct nand_chip *nand,
++				      struct sunxi_nfc_allwinner_oob_status *result,
++				      int logical_step, int hw_step,
++				      struct sunxi_nfc_ecc_snapshot *snapshot)
++{
++	u32 count;
++
++	if ((snapshot->pattern_found & BIT(hw_step)) &&
++	    !(snapshot->pattern_id & BIT(hw_step)))
++		result->zero_steps |= BIT(logical_step);
++
++	/*
++	 * Exception mode can suppress the ECC error for a physical pattern.
++	 * Classify these steps with the Allwinner randomized-OOB page check too,
++	 * and do not use their correction counters. Keep their decoded data until
++	 * then.
++	 */
++	if ((snapshot->status & NFC_ECC_ERR(hw_step)) ||
++	    (snapshot->pattern_found & BIT(hw_step))) {
++		result->error_steps |= BIT(logical_step);
++		return;
++	}
++
++	count = sunxi_nfc_hw_ecc_read_count(nand, snapshot, hw_step);
++	result->corrected += count;
++	result->max_bitflips = max(result->max_bitflips, count);
++}
++
++static bool sun4i_a10_nfc_spare_is_erased(struct nand_chip *nand,
++					  const u8 *spare, int page)
++{
++	struct mtd_info *mtd = nand_to_mtd(nand);
++	unsigned int block_page = page % mtd_div_by_ws(mtd->erasesize, mtd);
++
++	/*
++	 * Older Allwinner firmware recognizes exact four-byte erased
++	 * signatures on page zero and pages 127 modulo 128. With their
++	 * 1 KiB ECC steps these correspond to four physical 0xff bytes.
++	 * Other pages require all eight spare bytes to be 0xff.
++	 */
++	if (nand->ecc.size == 1024 &&
++	    (!block_page || block_page % 128 == 127) &&
++	    !memchr_inv(spare, 0xff, USER_DATA_SZ))
++		return true;
++
++	return !memchr_inv(spare, 0xff, 8);
++}
++
++static bool sun50i_h6_nfc_spare_is_erased(struct nand_chip *nand,
++					  const u8 *spare, int page)
++{
++	unsigned int erased = 0;
++	int i;
++
++	/* Keep the marker byte erased; tolerate one other non-0xff byte. */
++	for (i = 0; i < 10; i++)
++		erased += spare[i] == 0xff;
++
++	return spare[0] == 0xff && erased >= 9;
++}
++
++static bool sunxi_nfc_allwinner_oob_spare_is_erased(struct nand_chip *nand,
++						    int page)
++{
++	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
++	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
++	struct nand_ecc_ctrl *ecc = &nand->ecc;
++	u16 state = sunxi_nfc_randomizer_state(nand, page, true);
++	u8 spare[10];
++	unsigned int len, pos = 0;
++	int i, off;
++
++	/*
++	 * Re-encode ECC-decoded protected OOB for the firmware's spare check.
++	 * This is not a raw reread: ECC-corrected bytes stay corrected. Each
++	 * step restarts the OOB randomizer; H6/H616 pack the entire prefix in
++	 * step zero. Pad unavailable bytes with 0xff.
++	 */
++	memset(spare, 0xff, sizeof(spare));
++	for (i = 0; i < ecc->steps && pos < sizeof(spare); i++) {
++		len = min_t(unsigned int, sunxi_nfc_user_data_sz(sunxi_nand, i),
++			    sizeof(spare) - pos);
++		off = sunxi_get_oob_offset(sunxi_nand, ecc, i);
++		memcpy(spare + pos, nand->oob_poi + off, len);
++		sunxi_nfc_randomize_buf(state, spare + pos, len);
++		pos += len;
++	}
++
++	return nfc->caps->spare_is_erased(nand, spare, page);
++}
++
++static int sunxi_nfc_allwinner_oob_read_unprotected(struct nand_chip *nand,
++						    bool dma, int page)
++{
++	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
++	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
++	struct mtd_info *mtd = nand_to_mtd(nand);
++	struct nand_ecc_ctrl *ecc = &nand->ecc;
++	unsigned int len, off;
++	u16 state;
++	int ret, i;
++
++	for (i = 0; i < ecc->steps; i++) {
++		off = sunxi_get_ecc_offset(sunxi_nand, ecc, i);
++		len = ecc->bytes;
++		/* Keep decoded user data, but combine adjacent parity regions. */
++		while (i + 1 < ecc->steps &&
++		       !sunxi_nfc_user_data_sz(sunxi_nand, i + 1)) {
++			len += ecc->bytes;
++			i++;
++		}
++		if (i + 1 == ecc->steps)
++			len = mtd->oobsize - off;
++
++		ret = sunxi_nfc_read_column(nand, page, mtd->writesize + off,
++					    nand->oob_poi + off, len);
++		if (ret)
++			return ret;
++	}
++
++	/* Preserve each path's normal representation of ECC bytes. */
++	if (!dma) {
++		for (i = 0; i < ecc->steps; i++) {
++			len = sunxi_nfc_user_data_sz(sunxi_nand, i);
++			off = sunxi_get_ecc_offset(sunxi_nand, ecc, i);
++			state = sunxi_nfc_randomizer_state(nand, page, true);
++			state = sunxi_nfc_randomizer_step(state, len * 8 + 15);
++			sunxi_nfc_randomize_buf(state, nand->oob_poi + off,
++						ecc->bytes);
++		}
++	}
++
++	off = sunxi_get_oob_offset(sunxi_nand, ecc, ecc->steps);
++	len = mtd->oobsize - off;
++	if (len) {
++		/* Each NORMAL write command restarts the tail's randomizer. */
++		state = sunxi_nfc_randomizer_state(nand, page, false);
++		state = sunxi_nfc_randomizer_step(state, 15);
++		while (len) {
++			unsigned int cnt = sunxi_nfc_buf_chunk_size(nfc, len);
++
++			sunxi_nfc_randomize_buf(state, nand->oob_poi + off, cnt);
++			off += cnt;
++			len -= cnt;
++		}
++	}
++
++	return 0;
++}
++
++static int sunxi_nfc_allwinner_oob_read_batch(struct nand_chip *nand,
++					      struct sunxi_nfc_ecc_read *read,
++					      struct sunxi_nfc_ecc_snapshot *snapshot,
++					      int first_step, int nsteps)
++{
++	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
++	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
++	struct nand_ecc_ctrl *ecc = &nand->ecc;
++	unsigned int reg_index = 0, user_data_sz;
++	int i;
++
++	/* Page classification also needs pattern IDs for steps with ECC errors. */
++	if (snapshot->pattern_found)
++		sunxi_nfc_hw_ecc_read_pattern_id(nand, snapshot);
++
++	for (i = 0; i < nsteps; i++, reg_index += user_data_sz / 4) {
++		int step = first_step + i;
++		int oob_off = sunxi_get_oob_offset(sunxi_nand, ecc, step);
++		u8 *oob = nand->oob_poi + oob_off;
++
++		user_data_sz = sunxi_nfc_user_data_sz(sunxi_nand, step);
++		sunxi_nfc_allwinner_oob_record_status(nand, &read->allwinner_oob,
++						      step, i, snapshot);
++		if (!read->dma)
++			memcpy_fromio(read->buf + step * ecc->size,
++				      nfc->regs + NFC_RAM0_BASE, ecc->size);
++		/* Page classification needs protected OOB even for data-only reads. */
++		sunxi_nfc_hw_ecc_get_prot_oob_bytes(nand, oob, reg_index, !step,
++						    read->page, user_data_sz);
++	}
++
++	return 0;
++}
++
++static int sunxi_nfc_allwinner_oob_finish_read(struct nand_chip *nand,
++					       struct sunxi_nfc_ecc_read *read)
++{
++	struct sunxi_nfc_allwinner_oob_status *result = &read->allwinner_oob;
++	u8 *buf = read->buf;
++	bool oob_required = read->oob_required;
++	bool dma = read->dma;
++	int page = read->page;
++	struct mtd_info *mtd = nand_to_mtd(nand);
++	struct nand_ecc_ctrl *ecc = &nand->ecc;
++	int ret;
++
++	/* A zero pattern in every ECC step takes precedence over the spare test. */
++	if (result->zero_steps == GENMASK(ecc->steps - 1, 0)) {
++		memset(buf, 0, mtd->writesize);
++		memset(nand->oob_poi, 0, mtd->oobsize);
++		mtd->ecc_stats.failed += ecc->steps;
++		return 0;
++	}
++
++	if (result->error_steps && sunxi_nfc_allwinner_oob_spare_is_erased(nand, page)) {
++		memset(buf, 0xff, mtd->writesize);
++		memset(nand->oob_poi, 0xff, mtd->oobsize);
++		return 0;
++	}
++
++	/*
++	 * Keep the original decoded main and protected OOB bytes on ECC failure.
++	 * BBT pattern scans inspect them even when an ECC error is reported.
++	 * Read the remaining OOB only when requested, not to classify the page.
++	 */
++	if (oob_required) {
++		ret = sunxi_nfc_allwinner_oob_read_unprotected(nand, dma, page);
++		if (ret)
++			return ret;
++	}
++
++	mtd->ecc_stats.corrected += result->corrected;
++	mtd->ecc_stats.failed += hweight32(result->error_steps);
++
++	return result->max_bitflips;
++}
++
+ /* Interpret one PIO step or a completed DMA batch before reusing its status. */
+ static int sunxi_nfc_oob_read_batch(struct nand_chip *nand,
+ 				    struct sunxi_nfc_ecc_read *read,
+@@ -1346,6 +1599,9 @@ static int sunxi_nfc_oob_read_batch(struct nand_chip *nand,
+ 	unsigned int reg_index = 0, user_data_sz;
+ 	int slot, ret;
+ 
++	if (sunxi_nand->allwinner_oob)
++		return sunxi_nfc_allwinner_oob_read_batch(nand, read, snapshot, first_step, nsteps);
++
+ 	if (snapshot->pattern_found & ~snapshot->status)
+ 		sunxi_nfc_hw_ecc_read_pattern_id(nand, snapshot);
+ 
+@@ -1447,6 +1703,9 @@ static int sunxi_nfc_oob_finish_read(struct nand_chip *nand,
+ {
+ 	int ret;
+ 
++	if (to_sunxi_nand(nand)->allwinner_oob)
++		return sunxi_nfc_allwinner_oob_finish_read(nand, read);
++
+ 	if (read->oob_required) {
+ 		ret = sunxi_nfc_hw_ecc_read_extra_oob(nand, nand->oob_poi, cur_off,
+ 						      !read->has_erased_chunk, read->page);
+@@ -2349,12 +2608,42 @@ static const struct sunxi_nfc_user_data_layout sunxi_nfc_variable_layout = {
+ 	.init_user_data = sunxi_nfc_variable_init_user_data,
+ };
+ 
++static int sunxi_nfc_allwinner_oob_read_subpage(struct nand_chip *nand,
++						u32 data_offs, u32 readlen,
++						u8 *buf, int page)
++{
++	return nand->ecc.read_page(nand, buf, false, page);
++}
++
++/* Firmware metadata limit, not the controller's user-data register capacity. */
++#define SUNXI_NFC_H6_ALLWINNER_OOB_MAX_USER_DATA_SZ 16
++
++/* Firmware packs at most 16 protected bytes ahead of step-zero parity. */
++static unsigned int sunxi_nfc_allwinner_prefix_size(int nsteps)
++{
++	return min(nsteps * USER_DATA_SZ, SUNXI_NFC_H6_ALLWINNER_OOB_MAX_USER_DATA_SZ);
++}
++
++static int sunxi_nfc_allwinner_init_prefix(struct nand_chip *nand, int nsteps)
++{
++	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
++
++	sunxi_nand->user_data_total = sunxi_nfc_allwinner_prefix_size(nsteps);
++	sunxi_nand->user_data_step = sunxi_nand->user_data_total;
++	return 0;
++}
++
++static const struct sunxi_nfc_user_data_layout sunxi_nfc_allwinner_prefix_layout = {
++	.min_user_data = sunxi_nfc_allwinner_prefix_size,
++	.init_user_data = sunxi_nfc_allwinner_init_prefix,
++};
++
+ static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *nand,
+-				       struct nand_ecc_ctrl *ecc)
++				       struct nand_ecc_ctrl *ecc,
++				       const struct sunxi_nfc_user_data_layout *layout)
+ {
+ 	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
+ 	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
+-	const struct sunxi_nfc_user_data_layout *layout = nfc->caps->layout;
+ 	const u8 *strengths = nfc->caps->ecc_strengths;
+ 	struct mtd_info *mtd = nand_to_mtd(nand);
+ 	struct nand_device *nanddev = mtd_to_nanddev(mtd);
+@@ -2489,8 +2778,41 @@ static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *nand,
+ 	return 0;
+ }
+ 
++static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *nand)
++{
++	struct sunxi_nand_chip *sunxi_nand = to_sunxi_nand(nand);
++	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
++	const struct sunxi_nfc_user_data_layout *layout = nfc->caps->layout;
++	int ret;
++
++	if (nand->ecc.engine_type != NAND_ECC_ENGINE_TYPE_ON_HOST)
++		return dev_err_probe(nfc->dev, -EINVAL,
++				     "Allwinner OOB format requires controller ECC\n");
++
++	if (nand->badblockpos != 0)
++		return dev_err_probe(nfc->dev, -EINVAL,
++				     "Allwinner OOB format requires the bad block marker at offset 0\n");
++
++	sunxi_nand->allwinner_oob = true;
++	if (nfc->caps->reg_user_data_len)
++		layout = &sunxi_nfc_allwinner_prefix_layout;
++	nand->options |= NAND_NEED_SCRAMBLING | NAND_NO_SUBPAGE_WRITE;
++	ret = sunxi_nand_hw_ecc_ctrl_init(nand, &nand->ecc, layout);
++	if (ret)
++		return ret;
++
++	/* Do not let the NAND core switch this format to software ECC. */
++	if (nand->ecc.size > nand_to_mtd(nand)->writesize)
++		return -EINVAL;
++
++	/* This format's spare and all-zero checks classify the whole page. */
++	nand->ecc.read_subpage = sunxi_nfc_allwinner_oob_read_subpage;
++	return 0;
++}
++
+ static int sunxi_nand_attach_chip(struct nand_chip *nand)
+ {
++	struct sunxi_nfc *nfc = to_sunxi_nfc(nand->controller);
+ 	const struct nand_ecc_props *requirements =
+ 		nanddev_get_ecc_requirements(&nand->base);
+ 	struct nand_ecc_ctrl *ecc = &nand->ecc;
+@@ -2512,9 +2834,12 @@ static int sunxi_nand_attach_chip(struct nand_chip *nand)
+ 	if (!ecc->size || !ecc->strength)
+ 		return -EINVAL;
+ 
++	if (of_property_read_bool(nand_get_flash_node(nand), "allwinner,randomized-oob"))
++		return sunxi_nfc_allwinner_oob_attach_chip(nand);
++
+ 	switch (ecc->engine_type) {
+ 	case NAND_ECC_ENGINE_TYPE_ON_HOST:
+-		ret = sunxi_nand_hw_ecc_ctrl_init(nand, ecc);
++		ret = sunxi_nand_hw_ecc_ctrl_init(nand, ecc, nfc->caps->layout);
+ 		if (ret)
+ 			return ret;
+ 		break;
+@@ -3019,6 +3344,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_a10_caps = {
+ 	.max_ecc_steps = 16,
+ 	.sram_size = 1024,
+ 	.timings = &sun4i_a10_nfc_timings,
++	.spare_is_erased = sun4i_a10_nfc_spare_is_erased,
+ };
+ 
+ static const struct sunxi_nfc_caps sunxi_nfc_a23_caps = {
+@@ -3042,6 +3368,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_a23_caps = {
+ 	.max_ecc_steps = 16,
+ 	.sram_size = 1024,
+ 	.timings = &sun4i_a10_nfc_timings,
++	.spare_is_erased = sun4i_a10_nfc_spare_is_erased,
+ };
+ 
+ static const struct sunxi_nfc_caps sunxi_nfc_h616_caps = {
+@@ -3069,6 +3396,7 @@ static const struct sunxi_nfc_caps sunxi_nfc_h616_caps = {
+ 	.max_ecc_steps = 32,
+ 	.sram_size = 8192,
+ 	.timings = &sun50i_h616_nfc_timings,
++	.spare_is_erased = sun50i_h6_nfc_spare_is_erased,
+ };
+ 
+ static const struct of_device_id sunxi_nfc_ids[] = {

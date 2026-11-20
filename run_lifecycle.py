@@ -48,7 +48,8 @@ def main():
     pin = json.loads((HERE / "source.json").read_text())
     sources = {name: (HERE / "reference" / name).read_text() for name in FUNCTIONS}
     bodies, prototypes, hashes = [], [], {}
-    for name, names in FUNCTIONS.items():
+    functions = {name: list(names) for name, names in FUNCTIONS.items()}
+    for name, names in functions.items():
         src = sources[name]
         expected = pin["driver_sha256"] if name == "sunxi_nand.c" else pin["core_sources"][name]["sha256"]
         if hashlib.sha256(src.encode()).hexdigest() != expected:
@@ -60,6 +61,8 @@ def main():
             src = args.candidate_source.read_text()
             sources[name] = src
         if name == "sunxi_nand.c":
+            if "sunxi_nand_detach_chip(" not in src:
+                names.remove("sunxi_nand_detach_chip")
             names.extend(oob_policy_functions(src))
         for func in names:
             body = extract(src, func)
@@ -87,6 +90,7 @@ def main():
         f'#define DEFERRED_PUBLICATION {int(args.expect_deferred_publication)}\n' +
         f'#define DEFERRED_SELECTION {int("sunxi_nfc_select_oob_ops(" in sources["sunxi_nand.c"])}\n' +
         f'#define HAS_VENDOR {int("sunxi_nfc_allwinner_oob_attach_chip(" in sources["sunxi_nand.c"])}\n' +
+        f'#define HAS_DETACH {int("sunxi_nand_detach_chip" in functions["sunxi_nand.c"])}\n' +
         oob_policy_defines(sources["sunxi_nand.c"]) + fixture + "\n" + "\n".join(bodies) +
         '\n#line 1 "lifecycle-tests.c"\n' + tests)
     command = [args.cc, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
@@ -106,7 +110,13 @@ def main():
     if args.probe_traces:
         passed = passed and "ALL PROBE TRACE CHECKS PASSED" in run.stdout
     trace_bytes = (out / "probe-traces.jsonl").read_bytes() if passed and args.probe_traces else None
-    coverage = build_and_collect(out, command, sources, FUNCTIONS) if passed else None
+    coverage_functions = {name: list(items) for name, items in functions.items()}
+    if "sunxi_nand_detach_chip" not in functions["sunxi_nand.c"]:
+        # In the geometry-based driver these casts are needed by page I/O,
+        # not by the ordinary lifecycle path. Do not claim those calls here.
+        for cast in ("to_sunxi_nand", "to_sunxi_nfc"):
+            coverage_functions["sunxi_nand.c"].remove(cast)
+    coverage = build_and_collect(out, command, sources, coverage_functions) if passed else None
     if trace_bytes is not None:
         assert trace_bytes == (out / "probe-traces.jsonl").read_bytes(), "sanitizer/GCOV traces differ"
     if coverage:

@@ -144,6 +144,7 @@ struct sunxi_nand_chip {
 };
 struct sunxi_nfc_caps {
     bool has_ecc_clk,has_mbus_clk,needs_bus_reset;
+    const void *layout;
     const struct sunxi_nfc_oob_ops *allwinner_oob_ops;
     const struct sunxi_nfc_oob_ops *plain_oob_ops, *scrambled_oob_ops;
 };
@@ -227,6 +228,8 @@ static void release(const void *p)
 #define kmalloc(n,f) allocate(n,false)
 #define kfree(p) release(p)
 #define devm_kzalloc(d,n,f) allocate(n,true)
+#define devm_kzalloc_obj(d,obj) allocate(sizeof(obj),true)
+#define devm_kzalloc_flex(d,obj,m,n) allocate(struct_size(&(obj),m,n),true)
 #define devm_kfree(d,p) ((void)(d), release(p))
 static struct mtd_info *nand_to_mtd(struct nand_chip *c) { return &c->mtd; }
 static struct nand_chip *mtd_to_nand(struct mtd_info *m) { return container_of(m,struct nand_chip,mtd); }
@@ -393,42 +396,56 @@ static int nand_create_bbt(struct nand_chip *c)
     return bbt_fail_stage==2 ? -EIO : 0;
 }
 /* Real ECC geometry/attachment is executed by run_c.py; this fixture owns its resources. */
-static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *c,struct nand_ecc_ctrl *e,
+static int sunxi_nand_hw_ecc_ctrl_init(struct nand_chip *c,struct nand_ecc_ctrl *e
 #if SINGLE_INSTALL
-                                     const struct sunxi_nfc_oob_ops *ops)
-#else
-                                     struct device_node *n)
+                                     ,const struct sunxi_nfc_oob_ops *ops
+#elif HAS_DETACH
+                                     ,struct device_node *n
+#elif HAS_VENDOR
+                                     ,const void *layout_policy
 #endif
+                                     )
 {
+#if HAS_DETACH
     struct sunxi_nand_chip *s=to_sunxi_nand(c);
+#endif
 #if SINGLE_INSTALL
     CHECK(!s->oob_ops && ops);
     CHECK(ops==sunxi_nfc_get_oob_ops(c));
 #endif
+#if HAS_DETACH
     s->user_data_bytes=allocate(writesize/e->size,true); if (!s->user_data_bytes) return -ENOMEM;
+#endif
     e->bytes=28; e->read_page=e->write_page=e->read_oob=e->write_oob=io_stub;
     if (with_calc) e->calculate=io_stub;
     c->mtd.ooblayout=&layout; return fail("attach-after-alloc")?-EINVAL:0;
 }
 #if HAS_VENDOR
-static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c,
+static int sunxi_nfc_allwinner_oob_attach_chip(struct nand_chip *c
 #if SINGLE_INSTALL
-                                             const struct sunxi_nfc_oob_ops *ops)
-#else
-                                             struct device_node *n)
+                                             ,const struct sunxi_nfc_oob_ops *ops
+#elif HAS_DETACH
+                                             ,struct device_node *n
 #endif
+                                             )
 { if (c->ecc.engine_type!=NAND_ECC_ENGINE_TYPE_ON_HOST) return -EINVAL;
   c->options|=NAND_NEED_SCRAMBLING|NAND_NO_SUBPAGE_WRITE;
 #if SINGLE_INSTALL
   CHECK(ops==TEST_VENDOR_OOB_OPS(true) && !to_sunxi_nand(c)->oob_ops);
   return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,ops); }
-#else
+#elif HAS_DETACH
   to_sunxi_nand(c)->oob_ops=&sunxi_nfc_allwinner_oob_ops;
   return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,n); }
+#else
+  return sunxi_nand_hw_ecc_ctrl_init(c,&c->ecc,NULL); }
 #endif
 #endif
 static const struct nand_controller_ops sunxi_nand_controller_ops={
-    .attach_chip=sunxi_nand_attach_chip,.detach_chip=sunxi_nand_detach_chip,.setup_interface=setup_interface};
+    .attach_chip=sunxi_nand_attach_chip,.setup_interface=setup_interface,
+#if HAS_DETACH
+    .detach_chip=sunxi_nand_detach_chip,
+#endif
+};
 static int nand_scan(struct nand_chip *c,unsigned n)
 {
 #if SINGLE_INSTALL
@@ -474,7 +491,10 @@ static struct resource resource;
 static struct sunxi_nfc_caps caps={.has_ecc_clk=true,.has_mbus_clk=true,
                                    .plain_oob_ops=TEST_H6_PLAIN_OPS,
                                    .scrambled_oob_ops=TEST_H6_SCRAMBLED_OPS,
-                                   .allwinner_oob_ops=TEST_H6_VENDOR_OPS};
+#if HAS_DETACH
+                                   .allwinner_oob_ops=TEST_H6_VENDOR_OPS,
+#endif
+};
 static unsigned regs[16];
 static void *devm_platform_get_and_ioremap_resource(struct platform_device *p,int i,struct resource **r)
 { *r=&resource; return fail("ioremap")?ERR_PTR(-ENOMEM):regs; }

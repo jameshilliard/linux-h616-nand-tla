@@ -39,8 +39,13 @@ MODULES = {
         "actions": ["BeginBatch", "Corrected", "StartRaw", "Reread", "Advance", "Finish"],
     },
     "NandMarkerAdmission": {
-        "invariants": ["MarkerRoundTrips", "OrdinaryUnchanged", "GeometryPreserved"],
+        "invariants": ["MarkerRoundTrips", "OrdinaryMarkerProtected", "SoftwareUnchanged",
+                       "GeometryPreserved"],
         "actions": ["Attach"],
+    },
+    "NandPlainMarker": {
+        "invariants": ["Source", "Stats", "Traffic", "Io"],
+        "actions": ["First", "Tail", "Marker"],
     },
 }
 
@@ -61,7 +66,15 @@ def mutation(module, base, mutation_name, invariant, **changes):
 add("NandMarkerAdmission", "firmware-marker-admission", {})
 for variant in ("no-guard", "within-field", "relocate"):
     mutation("NandMarkerAdmission", {}, variant, "MarkerRoundTrips")
-mutation("NandMarkerAdmission", {}, "ordinary-too", "OrdinaryUnchanged")
+for variant in ("ordinary-no-guard", "ordinary-within-field"):
+    mutation("NandMarkerAdmission", {}, variant, "OrdinaryMarkerProtected")
+mutation("NandMarkerAdmission", {}, "restrict-software", "SoftwareUnchanged")
+add("NandPlainMarker", "ordinary-physical-marker", {})
+for variant, rule in (("erase-marker", "Source"), ("count-marker", "Stats"),
+                      ("trust-pattern", "Source"), ("wrong-step", "Traffic"),
+                      ("read-data-only", "Traffic"), ("read-before-tail", "Traffic"),
+                      ("ignore-marker-io", "Io"), ("bypass-correction", "Source")):
+    mutation("NandPlainMarker", {}, variant, rule)
 
 geometries = {
     "legacy-16": (4,) * 16,

@@ -8,6 +8,7 @@ from mtdchar_cases import TLC  # pinned stable toolchain, shared with CI
 from run import main
 
 if __name__ == "__main__":
-    modules = {name: MODULES[name] for name in ("NandEcc", "NandSubpage", "NandMarkerAdmission")}
+    modules = {name: MODULES[name] for name in
+               ("NandEcc", "NandSubpage", "NandMarkerAdmission", "NandPlainMarker")}
     raise SystemExit(main(sys.argv[1:], cases=[c for c in CASES if c["module"] in modules],
                           modules=modules, toolchain=TLC))

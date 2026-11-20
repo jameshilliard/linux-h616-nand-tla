@@ -56,13 +56,22 @@ Two issues encountered while developing the initial suite were validation issues
   always implied at least one hardware step. On legacy 512-byte pages with a
   requested 1 KiB step, `nand_scan_tail()` switches to software ECC before page
   callbacks run. The test now classifies these as core-fallback cases. The
-  vendor format rejects zero steps instead.
+  vendor format rejects zero steps instead. In the November 20 fix-only
+  snapshot the ordinary on-host check also rejects an x8 small-page marker
+  at byte five before the core could fall back. Explicit software ECC does
+  not use this gate.
 
 ## DMA stop is a real prerequisite, not a proven hardware property
 
-`sunxi_nfc_dma_op_abort()` calls controller reset for integrated DMA or
+In the historical reference, `sunxi_nfc_dma_op_abort()` calls controller reset for integrated DMA or
 `dmaengine_terminate_all()` for an external channel. Their return values are not
 propagated by that helper. Cleanup subsequently unmaps the buffer.
+
+The [current driver pair](../reference/sunxi-v11/README.md) instead requires
+the H616 AHB reset and preserves a failed recovery's errno in both DMA read
+wrappers. The positive H616 checks rely on the reset actually stopping DMA.
+A failed or ineffective reset is not proof that an outstanding bus access
+was retired. A10/A23 external DMA is a separate provider contract.
 
 The positive transfer and composed-controller models assume abort has stopped
 further DMA accesses.

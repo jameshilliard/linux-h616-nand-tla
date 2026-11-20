@@ -1,0 +1,2 @@
+# In a stored unified diff the context marker is a literal leading space.
+firmware.patch whitespace=-space-before-tab,-blank-at-eol
