@@ -10,7 +10,10 @@ The series tips below identify drafts, not released kernel versions.
 
 `sunxi_nand.c` is the fix-only driver. Applying `firmware.patch` to it
 reconstructs the complete deferred driver, without carrying a second
-nearly identical file. `run_v11.py` checks both hashes before compiling.
+nearly identical file. Both runners verify these hashes. The focused TLC
+report records the pair under `input_metadata`; its top-level
+`driver_sha256` identifies the older reference shared by the model suite.
+`run_v11.py` compiles the separate source checks.
 It can also accept a pair of explicit candidate files for a later review.
 The driver files retain the kernel source notices.
 

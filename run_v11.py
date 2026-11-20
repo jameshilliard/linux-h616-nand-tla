@@ -28,6 +28,16 @@ def checked(path, digest):
     return data.decode()
 
 
+def pinned_pair(tmp):
+    ordinary, firmware = REF / "sunxi_nand.c", tmp / "sunxi_nand.c"
+    checked(ordinary, ORDINARY)
+    shutil.copyfile(ordinary, firmware)
+    subprocess.run(["git", "apply", "--no-index", "--whitespace=error", "-p5", REF / "firmware.patch"],
+                   cwd=tmp, check=True)
+    checked(firmware, FIRMWARE)
+    return ordinary, firmware
+
+
 def test_driver(driver, cc, out, expected_failure=None):
     core = checked(REF / "nand-core.c", CORE)
     nand = (ROOT / "reference/nand_base.c").read_text()
@@ -121,14 +131,7 @@ def main():
         p.error("provide both candidate files or neither")
     with tempfile.TemporaryDirectory() as dest:
         tmp = Path(dest)
-        ordinary = args.ordinary or REF / "sunxi_nand.c"
-        firmware = args.firmware or tmp / "sunxi_nand.c"
-        if not args.ordinary:
-            checked(ordinary, ORDINARY)
-            shutil.copyfile(ordinary, firmware)
-            subprocess.run(["git", "apply", "--no-index", "--whitespace=error", "-p5", REF / "firmware.patch"],
-                           cwd=tmp, check=True)
-            checked(firmware, FIRMWARE)
+        ordinary, firmware = (args.ordinary, args.firmware) if args.ordinary else pinned_pair(tmp)
         subprocess.run([sys.executable, ROOT / "check_ecc_read_policy.py", ordinary, firmware], check=True)
         for path in (ordinary, firmware):
             print(f"Source SHA-256: {hashlib.sha256(path.read_bytes()).hexdigest()}", flush=True)
