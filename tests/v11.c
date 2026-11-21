@@ -303,28 +303,6 @@ static unsigned mixed_erased_steps(void)
     return checked;
 }
 
-static void wrapper_cases(void)
-{
-    for (unsigned sub = 0; sub < 2; sub++)
-    for (unsigned first_fails = 0; first_fails < 2; first_fails++)
-    for (unsigned poisoned = 0; poisoned < 2; poisoned++)
-    for (unsigned ri = 0; ri < 3; ri++) {
-        struct nand_chip n = setup(1024, 2);
-        begin_pio(0);
-        controller.recovery_failed = poisoned;
-        dma_result = (int[]){0, 3, -ENXIO}[ri]; dma_calls = 0;
-        fail_raw_at = first_fails;
-        int ret = sub ? sunxi_nfc_hw_ecc_read_subpage_dma(&n, 1030, 15, main_data, 0) :
-                        sunxi_nfc_hw_ecc_read_page_dma(&n, main_data, false, 0);
-        bool retry = !first_fails && dma_result < 0 && !poisoned;
-        assert(ret == (first_fails ? -ETIMEDOUT : retry ? 2 : dma_result));
-        assert(dma_calls == !first_fails && observed_steps == (retry ? (sub ? 2U : 3U) : 0U));
-        assert(!flow.ecc && !flow.random);
-        if (!first_fails) assert(dma_first == sub && dma_end == 2);
-    }
-    memset(&flow, 0, sizeof(flow));
-}
-
 static void length_cases(void)
 {
     /* Prior transfer left arbitrary bits in all four physical words. */
@@ -383,7 +361,42 @@ static void firmware_cases(void)
 }
 #endif
 
+/* Independent controller register maps and 8-KiB media layouts shared by
+ * the full read/write callback tests. Return the unprotected tail offset. */
+static unsigned transfer_geometry(struct nand_chip *n, struct caps *c, unsigned backend,
+                                  unsigned profile, unsigned lengths[8])
+{
+    static const unsigned wide[] = {32, 32, 32, 32, 32, 16, 0, 0};
+    bool variable = backend == 2, fw = profile == 2;
+    c->reg_user_data_len = variable ? 0x70 : 0;
+    c->reg_ecc_err_cnt = variable ? 0x50 : 0x40;
+    c->reg_user_data = variable ? 0x80 : 0x50;
+    c->reg_pat_found = variable ? 0x3c : NFC_REG_ECC_ST;
+    c->reg_pat_id = variable ? 0x118 : 0xa4;
+    c->ecc_err_mask = variable ? ~0U : 0xffffU;
+    c->pat_found_mask = variable ? ~0U : 0xffff0000U;
+    c->reg_spare_area = variable ? 0x114 : 0xa0;
+    c->max_ecc_steps = variable ? 32 : 16;
+    c->max_user_data_len = variable ? 32 : 0;
+    c->sram_size = variable ? 8192 : 1024;
+    controller.caps = c;
+    controller.use_mdma = backend != 0;
+    n->options = profile ? NAND_NEED_SCRAMBLING : 0;
+    n->allwinner_oob = fw;
+    n->user_data_step = variable ? (fw ? 16 : 32) : 0;
+    n->user_data_total = variable ? (fw ? 16 : 176) : 0;
+    n->ecc.bytes = 56;
+    n->ecc.strength = 32;
+    for (unsigned i = 0; i < 8; i++)
+        lengths[i] = !variable ? 4 : fw ? (i ? 0 : 16) : wide[i];
+#if HAS_FW
+    if (fw) c->spare_is_erased = variable ? sun50i_h6_nfc_spare_is_erased : sun4i_a10_nfc_spare_is_erased;
+#endif
+    return 8 * 56 + (variable ? n->user_data_total : 8 * 4);
+}
+
 #include "v11_program.c"
+#include "v11_dma_read.c"
 
 int main(void)
 {
@@ -391,7 +404,7 @@ int main(void)
     unsigned checked = ordinary_cases();
     unsigned pio = pio_ranges();
     unsigned erased = erased_step_ranges();
-    column_cases(); wrapper_cases(); length_cases();
+    column_cases(); length_cases();
 #if HAS_FW
     firmware_cases();
 #endif
@@ -399,5 +412,6 @@ int main(void)
            "core bad-block checks, DMA retry and packed register checks passed; firmware cases: %u\n",
            checked, pio, erased, mixed, HAS_FW ? 25 : 0);
     program_cases();
+    dma_read_cases();
     return 0;
 }

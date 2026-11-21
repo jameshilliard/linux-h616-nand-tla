@@ -108,6 +108,8 @@ def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
     for n in ("oob_read_batch", "oob_finish_read", "hw_ecc_read_status"):
         add("sunxi_nfc_" + n)
     if vectors is None:
+        for n in ("dma_batch_steps", "hw_ecc_read_batch_dma", "hw_ecc_read_chunks_dma"):
+            add("sunxi_nfc_" + n)
         add("sunxi_nfc_hw_ecc_read_chunk")
         if "sunxi_nfc_hw_ecc_read_chunks_pio(" in driver:
             add("sunxi_nfc_hw_ecc_read_chunks_pio")
@@ -115,7 +117,7 @@ def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
             add("sunxi_nfc_hw_ecc_" + n)
         if vendor:
             add("sunxi_nfc_allwinner_oob_read_subpage")
-        for n in ("buf_to_user_data", "dma_batch_steps", "hw_ecc_set_prot_oob_bytes",
+        for n in ("buf_to_user_data", "hw_ecc_set_prot_oob_bytes",
                   "hw_ecc_write_chunk", "hw_ecc_write_extra_oob", "hw_ecc_write_page",
                   "hw_ecc_write_subpage", "hw_ecc_write_page_dma", "hw_ecc_write_oob"):
             add("sunxi_nfc_" + n)
@@ -171,8 +173,23 @@ def mutations(driver, cc, out, vendor):
         ("oob_read_batch", "if (!step)", "if (step)", "marker_commands == (want && pattern)"),
         ("oob_finish_read", "if (read->read_raw_bbm)", "if (read->oob_required)",
          "marker_commands == (want && pattern)"),
-        ("hw_ecc_read_page_dma", " || nfc->recovery_failed", "", "ret == (first_fails"),
-        ("hw_ecc_read_subpage_dma", " || nfc->recovery_failed", "", "ret == (first_fails"),
+        ("hw_ecc_read_page_dma", " || nfc->recovery_failed", "", "flow.page_attempts == 1U + retry"),
+        ("hw_ecc_read_subpage_dma", " || nfc->recovery_failed", "", "flow.page_attempts == 1U + retry"),
+        ("hw_ecc_read_chunks_dma", "mtd->ecc_stats.corrected = corrected;", "(void)corrected;",
+         "n->mtd.ecc_stats.corrected == old_corrected"),
+        ("hw_ecc_read_chunks_dma", "mtd->ecc_stats.failed = failed;", "(void)failed;",
+         "n->mtd.ecc_stats.failed == old_failed"),
+        ("hw_ecc_read_chunks_dma", ".first_req_step = first_req_step", ".first_req_step = 0",
+         "n->mtd.ecc_stats.corrected == old_corrected + corrected"),
+        ("hw_ecc_read_batch_dma", "read->buf + first_step * ecc->size", "read->buf",
+         "flow.mapped_buf == main_data + first * n->ecc.size"),
+        ("hw_ecc_read_batch_dma", "if (first_step)\n\t\twritel(mtd->writesize +",
+         "if (false)\n\t\twritel(mtd->writesize +", "== n->mtd.writesize + off"),
+        ("hw_ecc_read_batch_dma", "if (nfc->use_mdma)", "if (!nfc->use_mdma)",
+         "flow.pending_issues == (controller.use_mdma ? 0 : flow.dma_issued)"),
+        ("hw_ecc_read_batch_dma", "ret = sunxi_nfc_wait_events(nfc, wait, false, 0);",
+         "sunxi_nfc_hw_ecc_read_status(nand, &snapshot);\n\tret = sunxi_nfc_wait_events(nfc, wait, false, 0);",
+         "!flow.active"),
         ("hw_ecc_read_chunks_pio", "step = first_step", "step = 0", "observed_steps == mask"),
         ("hw_ecc_read_chunks_pio", "step < end_step", "step + 1 < end_step",
          "observed_steps == mask"),

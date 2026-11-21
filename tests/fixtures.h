@@ -182,6 +182,9 @@ static struct {
     bool enabled, mapped, active, ecc, random, abort_failure, reset_held;
     unsigned calls, fail_at, fail_again_at, begins, confirms, issued, dma_issued, prepares, aborts;
     unsigned issued_at_failure;
+    unsigned page_attempts, pending_issues, mapped_bytes, dma_wait_events;
+    const void *mapped_buf;
+    int mapped_direction;
     int prepare_errno;
     enum flow_point failure;
 } flow;
@@ -203,16 +206,18 @@ static const void *memchr_inv(const void *data, int value, size_t n) {
     for (size_t i = 0; i < n; i++) if (p[i] != (u8)value) return p + i;
     return NULL;
 }
+static void (*register_read_observer)(unsigned);
 static u32 readl(const void *p) {
     assert(!flow.reset_held);
     ptrdiff_t off = (const u8 *)p - controller.regs;
     u32 v;
     assert(off >= 0 && off + 4 <= (ptrdiff_t)sizeof(controller.regs) && !(off % 4));
+    if (register_read_observer) register_read_observer(off);
     mmio_reads[off / 4]++;
     memcpy(&v, p, 4);
     return v;
 }
-static void (*program_issue_observer)(void);
+static void (*command_issue_observer)(u32);
 static void writel(u32 v, void *p) {
     assert(!flow.reset_held);
     ptrdiff_t off = (u8 *)p - controller.regs;
@@ -223,7 +228,7 @@ static void writel(u32 v, void *p) {
         flow.issued++;
         flow.active = flow.mapped;
         if (flow.mapped) flow.dma_issued++;
-        if (program_issue_observer) program_issue_observer();
+        if (command_issue_observer) command_issue_observer(v);
     }
     memcpy(p, &v, 4);
 }
@@ -255,6 +260,7 @@ static int transfer(struct nand_chip *n, unsigned col, void *dst, unsigned len) 
 }
 static int nand_read_page_op(struct nand_chip *n, unsigned page,
                             unsigned col, void *dst, unsigned len) {
+    flow.page_attempts++;
     if (flow.reset_held) return -EIO;
     page_reads++;
     return transfer(n, col, dst, len);
@@ -289,6 +295,7 @@ static int sunxi_nfc_wait_cmd_fifo_empty(struct sunxi_nfc *n) {
 }
 static int sunxi_nfc_wait_events(struct sunxi_nfc *n, u32 events, bool poll, int ms) {
     assert(events == NFC_CMD_INT_FLAG || events == (NFC_CMD_INT_FLAG | NFC_DMA_INT_FLAG));
+    if (flow.mapped) flow.dma_wait_events = events;
     if (flow_event(FP_WAIT)) return -ETIMEDOUT;
     flow.active = false;
     return 0;
@@ -301,6 +308,9 @@ static int sunxi_nfc_dma_op_prepare(struct sunxi_nfc *n, const void *buf,
     if (flow_event(FP_PREPARE)) return flow.prepare_errno ? flow.prepare_errno : -ETIMEDOUT;
     sg->len = size * chunks;
     assert(sg->len > 0 && sg->len <= UINT16_MAX);
+    flow.mapped_buf = buf;
+    flow.mapped_bytes = sg->len;
+    flow.mapped_direction = direction;
     flow.mapped = true;
     return 0;
 }
@@ -308,6 +318,7 @@ static int sunxi_nfc_dma_op_abort(struct sunxi_nfc *n) {
     flow.aborts++;
     flow.active = false;
     if (flow.abort_failure) {
+        n->recovery_failed = true;
         flow.reset_held=true;
         flow.ecc=flow.random=false;
         return -EIO;
@@ -315,12 +326,16 @@ static int sunxi_nfc_dma_op_abort(struct sunxi_nfc *n) {
     return 0;
 }
 static void dma_rmb(void) { }
+static void (*dma_unmap_observer)(const void *, unsigned, int);
 static void sunxi_nfc_dma_op_cleanup(struct sunxi_nfc *n, int dir,
                                    struct scatterlist *sg) {
     assert(flow.mapped && !flow.active);
+    assert(dir == flow.mapped_direction && sg->len == flow.mapped_bytes);
+    if (dma_unmap_observer) dma_unmap_observer(flow.mapped_buf, sg->len, dir);
     flow.mapped = false;
+    flow.mapped_buf = NULL;
 }
-static void dma_async_issue_pending(void *dmac) { assert(flow.mapped); }
+static void dma_async_issue_pending(void *dmac) { assert(flow.mapped); flow.pending_issues++; }
 static int select_error;
 static int sunxi_nfc_select_chip(struct nand_chip *n, unsigned cs)
 { return flow.reset_held ? -EIO : select_error; }

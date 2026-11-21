@@ -13,7 +13,7 @@ from run_v11 import FIRMWARE, NAND_BASE, ORDINARY, pinned_nand_base, pinned_pair
 if __name__ == "__main__":
     modules = {name: MODULES[name] for name in
                ("NandEcc", "NandSubpage", "NandMarkerAdmission", "NandMarkerFallback", "NandPlainMarker",
-                "NandStreamingRecovery", "NandTransfer", "NandBatch")}
+                "NandStreamingRecovery", "NandTransfer", "NandReadRetry", "NandBatch")}
     with tempfile.TemporaryDirectory() as directory:
         pinned_pair(Path(directory))
     pinned_nand_base()

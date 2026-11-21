@@ -11,6 +11,7 @@ on:
       - 'models/NandPlainMarker.tla'
       - 'models/NandStreamingRecovery.tla'
       - 'models/NandTransfer.tla'
+      - 'models/NandReadRetry.tla'
       - 'models/NandBatch.tla'
       - 'models/NandOobPipeline.tla'
       - 'cases.py'

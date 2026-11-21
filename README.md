@@ -372,6 +372,7 @@ unused null-derived address in the pinned `vchan_complete()`; see the
 | `NandOob` | Unprotected-read coalescing preserves protected bytes; parity and tail use their intended representations |
 | `NandIrq` | No stale register writes or completion reuse across two operations; timeout drains the handler and rechecks remaining events; polling completion |
 | `NandTransfer` | No unmap while DMA remains active; no replay of partially written pages; one program confirm; cleanup and read-stat rollback |
+| [`NandReadRetry`](docs/ECC-READ-POLICY.md#dma-read-accounting-across-a-retry) | DMA rollback before a PIO retry or failed-reset return; partial PIO accounting and the successful attempt's maximum bitflip count |
 | `NandEcc` | Transfer-local status/counter caches; capture before raw rereads; pattern synthesis; vendor classification precedence; decoded-data preservation; correction/failure accounting |
 | `NandController` | Combined DMA/IRQ/timeout recovery, repeated failures, PIO read retry, program-confirm rules and operation reuse |
 | `NandDma` | External DMAengine, register MDMA and descriptor MDMA; mapping/unmapping, validation, descriptor publication and block encoding |

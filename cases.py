@@ -28,6 +28,11 @@ MODULES = {
                     "Abort", "Cleanup", "Consume", "ConsumeError", "Tail", "TailError",
                     "Fallback", "Error", "Confirm", "ConfirmError"],
     },
+    "NandReadRetry": {
+        "invariants": ["DiscardBeforeDecision", "NoClosedRetry", "Success", "Error"],
+        "actions": ["Open", "OpenError", "Step", "DmaError", "PioError",
+                    "Discard", "Retry", "Closed", "Finish"],
+    },
     "NandEcc": {
         "invariants": ["CaptureBeforeRaw", "PendingErrors", "VendorEvidence",
                        "TransportCorrect", "TailCorrect", "ResultCorrect", "StatsCorrect",
@@ -147,6 +152,16 @@ for write in (False, True):
         mutation("NandTransfer", c, "keep-partial-stats", "ReadStats")
         add("NandTransfer", "assumption-abort-does-not-stop-dma",
             dict(c, AbortStops=False), expected="NoUnsafeUnmap", kind="assumption")
+
+for profile, first, deferred in (("full", 1, False), ("range", 2, False), ("deferred", 1, True)):
+    c = dict(N=4, First=first, Deferred=deferred)
+    add("NandReadRetry", "dma-read-retry-" + profile, c)
+    if profile == "full":
+        for name, invariant in (("keep-dma-corrected", "DiscardBeforeDecision"),
+                                ("keep-dma-failed", "DiscardBeforeDecision"),
+                                ("reuse-dma-peak", "Success"),
+                                ("retry-closed-read", "NoClosedRetry")):
+            mutation("NandReadRetry", c, name, invariant)
 
 kinds = {"normal", "zero", "ones", "error", "zero-error", "ones-error"}
 for vendor in (False, True):

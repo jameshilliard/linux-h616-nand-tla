@@ -9,7 +9,7 @@ static u8 spare_byte(unsigned i) { return (u8)(0x25 + 19 * i + (i >> 4)); }
 
 /* Observe the words the controller would consume when the driver issues
  * the command. Derive offsets from the test geometry, not driver helpers. */
-static void observe_program_issue(void)
+static void observe_program_issue(u32 command)
 {
     struct nand_chip *n = program_chip;
     struct caps *c = controller.caps;
@@ -97,9 +97,8 @@ static unsigned program_trial(struct nand_chip *n, unsigned op, bool extra,
 
 static void program_cases(void)
 {
-    static const unsigned tapered[] = {32, 32, 32, 32, 32, 16, 0, 0};
     unsigned cases = 0, retries = 0, closed = 0, select_errors = 0, small = 0;
-    program_issue_observer = observe_program_issue;
+    command_issue_observer = observe_program_issue;
     write_buffer_observer = observe_program_buffer;
     for (unsigned backend = 0; backend < 3; backend++)
     for (unsigned profile = 0; profile < (HAS_FW ? 3U : 2U); profile++) {
@@ -108,24 +107,9 @@ static void program_cases(void)
         bool variable = backend == 2, fw = profile == 2;
         struct nand_chip n = setup(1024, 8);
         struct caps c = caps;
-        c.reg_user_data_len = variable ? 0x70 : 0;
-        c.reg_user_data = variable ? 0x80 : 0x50;
-        c.reg_spare_area = variable ? 0x114 : 0xa0;
-        c.max_ecc_steps = variable ? 32 : 16;
-        c.max_user_data_len = variable ? 32 : 0;
-        controller.caps = &c;
-        controller.use_mdma = backend != 0;
-        n.options = profile ? NAND_NEED_SCRAMBLING : 0;
-        n.allwinner_oob = fw;
-        n.user_data_step = variable ? (fw ? 16 : 32) : 0;
-        n.user_data_total = variable ? (fw ? 16 : 176) : 0;
-        n.ecc.bytes = 56;
-        n.ecc.strength = 32;
-        tail_offset = 8 * 56 + (variable ? n.user_data_total : 8 * 4);
+        tail_offset = transfer_geometry(&n, &c, backend, profile, protected);
         n.mtd.oobsize = tail_offset + (variable && !fw ? 3 : 16);
         unsigned batches = variable && !fw ? 5 : 1;
-        for (unsigned i = 0; i < 8; i++)
-            protected[i] = !variable ? 4 : fw ? (i ? 0 : 16) : tapered[i];
 
         for (unsigned op = 0; op < 5; op++)
         for (unsigned extra = 0; extra < 2; extra++) {
@@ -179,7 +163,7 @@ static void program_cases(void)
         controller.caps = &caps;
         small++;
     }
-    program_issue_observer = NULL;
+    command_issue_observer = NULL;
     write_buffer_observer = NULL;
     flow = (typeof(flow)){0};
     printf("write/OOB/subpage: %u single-fault/control, %u PIO retry faults, "

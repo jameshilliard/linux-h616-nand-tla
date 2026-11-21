@@ -165,13 +165,10 @@ command must return its error without charging that step to ECC statistics.
 On a completed batch the tests also check whether the real finish function
 uses the raw or randomized transport for the spare tail.
 The deferred subpage entry point must still read and classify a full page.
-The DMA fallback tests exercise the real PIO retry; DMA results, SRAM,
-register status and the transport failures are fixture inputs.
-
-Additional cases preserve the reset errno in both DMA read wrappers and
-check all four packed length registers after switching modes.
-Thirteen intentional C changes must fail their named assertions; compiler
-failures or unrelated crashes do not count as successful controls.
+The DMA fallback tests below execute both attempts. Separate controls check
+all four packed length registers after switching modes. Each intentional
+source regression must fail its named assertion; compiler failures and
+unrelated crashes do not count.
 
 The two branches also share the H616 DMA read-recovery policy:
 after a transfer abort, a successful reset permits a fresh read in PIO;
@@ -181,6 +178,31 @@ after closure or skip a retry after recovery. The failed-reset retry
 control has no outstanding transfer, so a DMA retirement failure cannot
 mask it. Separate assumptions test ineffective retirement. The C tests
 check the exact errno from both the full-page and subpage wrappers.
+
+### DMA read accounting across a retry
+
+A failed DMA read can already have accounted for several ECC steps. The
+driver restores both page-entry counters before deciding whether to retry.
+A successful PIO retry returns its own maximum bitflip count. If PIO also
+fails, ordinary reads keep only the steps already accounted for by PIO;
+the deferred format publishes nothing until it classifies the page.
+`NandReadRetry` checks those outcomes for a programmed page, including a
+subpage whose DMA transfer starts before the requested range. Media errors
+contribute to the failed counter; they do not trigger a transport retry.
+
+The source tests call both pinned drivers' actual DMA page, subpage,
+batch and ECC functions. The fixtures supply DMA data, command completion,
+registers and transport failures. They check each mapping's direction,
+buffer offset and length, the spare column at a bank transition, external
+versus internal DMA completion, and the returned bytes in the requested
+range. The fixture rejects reads of ECC status while DMA is active and
+exposes device writes to the CPU buffer only at unmap. Tests vary the
+number of bitflips between DMA and PIO so a stale
+maximum or duplicated counts are observable. A second fault can stop PIO
+before its first step or after two completed steps. The ordinary tip runs
+1,939 of these cases; the deferred tip runs 2,449, including firmware
+subpage requests routed through a full-page read. These tests do not prove
+physical DMA completion or reproduce a transport fault on silicon.
 
 ### Page program ordering
 
