@@ -44,6 +44,10 @@ MODULES = {
         "invariants": ["StepScope", "Complete", "Stats", "Result"],
         "actions": ["BeginBatch", "Corrected", "StartRaw", "Reread", "Advance", "Finish"],
     },
+    "NandSubpageProgram": {
+        "invariants": ["DataScope", "OobScope", "DataComplete", "OobComplete"],
+        "actions": ["Begin", "Program", "Oob", "Finish"],
+    },
     "NandMarkerAdmission": {
         "invariants": ["MarkerRoundTrips", "OrdinaryMarkerProtected", "SoftwareUnchanged",
                        "GeometryPreserved"],
@@ -59,7 +63,6 @@ MODULES = {
     },
 }
 
-
 def add(module, name, constants, *, expected=None, kind="positive", temporal=False):
     config = dict(constants)
     config.setdefault("Mutation", "none")
@@ -71,6 +74,22 @@ def mutation(module, base, mutation_name, invariant, **changes):
     constants = dict(base, Mutation=mutation_name, **changes)
     add(module, f"{module}-{mutation_name}", constants,
         expected=invariant, kind="mutation")
+
+
+for name, oob, mode in (("data-only", False, "none"),
+                         ("auto-oob", True, "auto"),
+                         ("place-oob", True, "place")):
+    add("NandSubpageProgram", "program-" + name,
+        dict(Steps=4, First=1, End=3, OobSteps={1, 2},
+             OobRequired=oob, OobMode=mode))
+mutation("NandSubpageProgram", dict(Steps=4, First=1, End=3,
+                                    OobSteps={1, 2}, OobRequired=False,
+                                    OobMode="none"),
+         "write-page-tail", "DataScope")
+mutation("NandSubpageProgram", dict(Steps=4, First=1, End=3,
+                                    OobSteps={0, 1, 2}, OobRequired=True,
+                                    OobMode="auto"),
+         "oob-outside", "OobScope")
 
 
 add("NandMarkerAdmission", "firmware-marker-admission", {})

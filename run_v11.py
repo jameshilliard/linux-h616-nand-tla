@@ -4,6 +4,7 @@
 import argparse
 from functools import cache
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -121,6 +122,16 @@ def test_driver(driver, cc, out, expected_failure=None, *, vectors=None):
                   "hw_ecc_write_chunk", "hw_ecc_write_extra_oob", "hw_ecc_write_page",
                   "hw_ecc_write_subpage", "hw_ecc_write_page_dma", "hw_ecc_write_oob"):
             add("sunxi_nfc_" + n)
+        add("sunxi_nand_ooblayout_free")
+        lines.append('#include "v11_write_core.h"')
+        refs = json.loads((ROOT / "source.json").read_text())["core_sources"]
+        for file, names in (("mtd.h", ["mtd_oobavail"]),
+                            ("mtdcore.c", ["mtd_ooblayout_free", "mtd_ooblayout_find_region",
+                                           "mtd_ooblayout_set_bytes", "mtd_ooblayout_set_databytes"])):
+            source = checked(ROOT / "reference" / file, refs[file]["sha256"])
+            lines.extend(extract(source, name) for name in names)
+        lines.append(re.search(r"^#define NOTALIGNED\(x\).+", nand, re.M)[0])
+        lines.extend(extract(nand, name) for name in ("nand_fill_oob", "nand_write_page", "nand_do_write_ops"))
         lines.append(extract((ROOT / "tests/flow.c").read_text(), "write_request"))
         lines.append((ROOT / "tests/v11.c").read_text())
     else:
@@ -207,7 +218,7 @@ def mutations(driver, cc, out, vendor):
         ("hw_ecc_write_page", "if (oob_required || (nand->options & NAND_NEED_SCRAMBLING))",
          "if (oob_required)", "tail_writes == need_tail"),
         ("hw_ecc_write_chunk", "sunxi_nfc_user_data_sz(sunxi_nand, step)",
-         "sunxi_nfc_user_data_sz(sunxi_nand, 0)", "== length / 4"),
+         "sunxi_nfc_user_data_sz(sunxi_nand, 0)", "subwr_issue"),
         ("hw_ecc_write_page_dma", "if (first_step)\n\t\t\twritel(mtd->writesize +",
          "if (false)\n\t\t\twritel(mtd->writesize +", "== n->mtd.writesize + offset"),
         ("hw_ecc_write_extra_oob", "*cur_off != offset + mtd->writesize", "*cur_off != offset",

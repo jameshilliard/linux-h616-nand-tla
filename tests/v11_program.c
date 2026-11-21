@@ -113,7 +113,7 @@ static void program_cases(void)
 
         for (unsigned op = 0; op < 5; op++)
         for (unsigned extra = 0; extra < 2; extra++) {
-            if ((op == 2 && (profile || extra)) || (op >= 3 && !extra))
+            if ((op == 2 && profile) || (op >= 3 && !extra))
                 continue; /* Scrambled chips disallow subpage programs. */
             if (op == 1 || op == 4) {
                 flow = (typeof(flow)){ .enabled = true };

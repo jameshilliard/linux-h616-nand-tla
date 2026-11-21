@@ -396,6 +396,7 @@ static unsigned transfer_geometry(struct nand_chip *n, struct caps *c, unsigned 
 }
 
 #include "v11_program.c"
+#include "v11_subpage_write.c"
 #include "v11_dma_read.c"
 
 int main(void)
@@ -411,6 +412,7 @@ int main(void)
     printf("%u ordinary cases; %u PIO range/fault, %u erased-step geometry, %u mixed raw trials; "
            "core bad-block checks, DMA retry and packed register checks passed; firmware cases: %u\n",
            checked, pio, erased, mixed, HAS_FW ? 25 : 0);
+    subpage_write_cases();
     program_cases();
     dma_read_cases();
     return 0;

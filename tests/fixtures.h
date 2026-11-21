@@ -91,6 +91,7 @@ struct nand_ecc_ctrl {
     int engine_type;
     u32 ecc_ctl;
     int (*write_page)(struct nand_chip *, const u8 *, int, int);
+    int (*write_page_raw)(struct nand_chip *, const u8 *, int, int);
     int (*read_page)(struct nand_chip *, u8 *, int, int);
     int (*read_subpage)(struct nand_chip *, u32, u32, u8 *, int);
     int (*write_subpage)(struct nand_chip *, u32, u32, const u8 *, int, int);
@@ -101,6 +102,8 @@ struct nand_ecc_ctrl {
 };
 struct mtd_info {
     unsigned writesize, oobsize, erasesize, ecc_step_size;
+    unsigned oobavail;
+    const struct mtd_ooblayout_ops *ooblayout;
     struct { unsigned corrected, failed; } ecc_stats;
 };
 struct nand_chip;
@@ -149,6 +152,8 @@ struct nand_chip {
     const struct sunxi_nfc_oob_ops *oob_ops;
     unsigned badblockpos, user_data_step, user_data_total;
     unsigned badblockbits, page_shift, pagemask;
+    unsigned chip_shift, subpagesize;
+    struct { int page; } pagecache;
     bool allwinner_oob;
 };
 struct mtd_oob_region { unsigned offset, length; };

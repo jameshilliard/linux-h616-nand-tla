@@ -223,8 +223,19 @@ step, slot, column and length properties. Separate small-page controls
 require a sequential PIO write without a random-column command; they do
 not claim hardware support for a layout rejected during attach.
 
-The ordinary tip executes 1,887 programming cases and the deferred tip
-executes 2,739, including its firmware layouts. The fixture observes commands
+The fixture also links the pinned NAND core's nand_do_write_ops(),
+nand_fill_oob() and nand_write_page() to the driver callbacks. It checks
+data-only, AUTO_OOB and PLACE_OOB subpage writes over multiple ECC-step
+ranges, including nonzero OOB offsets and untouched-step canaries. This keeps
+the core's full-page bounce-buffer preparation and the driver's per-step
+column selection in the same test. The TLA+ NandSubpageProgram model checks
+the corresponding data and OOB scope and includes mutations that write outside
+the requested steps.
+
+The callback suite reports 1,920 ordinary cases for each tip; the deferred
+tip additionally runs its firmware layouts. The core-dispatch extension adds
+27 data-only, 52 AUTO_OOB and 90 PLACE_OOB cases per tip. The fixture observes
+commands
 and returned errors, not NAND-array durability or the physical effects of
 an ambiguous confirm. Those remain NAND-part assumptions.
 
